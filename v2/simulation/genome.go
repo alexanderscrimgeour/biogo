@@ -41,6 +41,8 @@ type Genome struct {
 	NeuronCount      byte // Neurons count as the middle layer in the nnet
 	NeurologyLength  byte // NeurologyLength determines the number of connections
 	Neurology        []*Gene
+	// TODO
+	// ReproductionRate <- Determines how many children
 }
 
 func (g Gene) String() string {
@@ -87,11 +89,11 @@ func (g Genome) PrettyString() string {
 }
 
 // WeightAsFloat converts from a byte to a float64 range 0...1
-func byteAsFloat(val byte) float64 {
-	return 2*(float64(val)/math.MaxUint8) - 1
+func byteAsFloat(val byte) float32 {
+	return 2*(float32(val)/math.MaxUint8) - 1
 }
 
-func (g Gene) WeightAsFloat() float64 {
+func (g Gene) WeightAsFloat32() float32 {
 	return byteAsFloat(g.Weight)
 }
 
@@ -120,7 +122,7 @@ func MakeRandomGenome() *Genome {
 	g := Genome{
 		OscPeriod:        makeRandomByte(),
 		MaxEnergy:        utils.ClampByte(Params.MinEnergy, Params.MaxEnergy, makeRandomByte()),
-		SightDistance:    makeRandomByte(),
+		SightDistance:    utils.ClampByte(Params.MinSightDistance, Params.MaxSightDistance, makeRandomByte()),
 		Responsiveness:   makeRandomByte(),
 		MutationRate:     makeRandomByte(),
 		ReproductionType: makeRandomBool(),
@@ -168,7 +170,9 @@ func Mutate(g *Genome) {
 				new ^= byte(1 << (rand.Uint32() >> 29))
 				g.MaxEnergy = utils.ClampByte(Params.MinEnergy, Params.MaxEnergy, new)
 			case SIGHT_DISTANCE:
-				g.SightDistance ^= byte(1 << (rand.Uint32() >> 29))
+				new := g.SightDistance
+				new ^= byte(1 << (rand.Uint32() >> 29))
+				g.SightDistance ^= utils.ClampByte(Params.MinSightDistance, Params.MaxSightDistance, new)
 			case RESPONSIVENESS:
 				g.Responsiveness ^= byte(1 << (rand.Uint32() >> 29))
 			case MUTATION_RATE:

@@ -31,15 +31,15 @@ type Node struct {
 type NodeMap map[byte]*Node
 
 func (n Neuron) String() string {
-	return fmt.Sprintf("[Output: %d, Drive: %t],", n.Output, n.Driven)
+	return fmt.Sprintf("[Output: %f, Driven: %t],", n.Output, n.Driven)
 }
 
 func (n NeuralNet) String() string {
-	str := "NNET| Edges: "
+	str := "NNET| Edges: ["
 	for _, val := range n.Edges {
 		str += fmt.Sprintf("%s ", val.String())
 	}
-	str += "\n    | Neurons: "
+	str += "]\n    | Neurons: "
 	for _, val := range n.HiddenNeurons {
 		str += fmt.Sprintf("%s ", val.String())
 	}
@@ -67,9 +67,7 @@ func CreateNeuralNetworkFromGenome(genes []*Gene, neuronCount byte) *NeuralNet {
 	nodeMap := createNodeMap(neuralGenes)
 	finalGenes := removeUselessGenes(neuralGenes, nodeMap)
 	// The remaining nodes in nodeMap will need to be re-indexed
-	fmt.Printf("Before: %s\n", nodeMap.String())
 	setNodeNewIDValues(nodeMap)
-	fmt.Printf("After: %s\n", nodeMap.String())
 	neuralNet := createNeuralNetworkFromGenesAndNodeMap(finalGenes, nodeMap)
 	return neuralNet
 }
@@ -84,13 +82,10 @@ func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 			// Create gene copy
 			new := *gene
 
-			if _, ok := n[gene.SinkID]; !ok {
-				fmt.Printf("\n%d of type %d not in %s", gene.SinkID, gene.SinkType, n)
-			}
 			// Fix the Sink id
 			new.SinkID = n[gene.SinkID].NewID
 			// If we're coming _from_ a NEURON, we need to fix it too
-			if gene.SourceID == NEURON {
+			if gene.SourceType == NEURON {
 				new.SourceID = n[gene.SourceID].NewID
 			}
 			// Add the new gene to the nnet
@@ -135,7 +130,6 @@ func removeUselessGenes(g []*Gene, n NodeMap) []*Gene {
 	if len(n) == 0 {
 		return g
 	}
-
 	final := g
 	// Iterate until we're done
 	done := false
@@ -144,10 +138,7 @@ func removeUselessGenes(g []*Gene, n NodeMap) []*Gene {
 		for key, node := range n {
 			if node.OutputCount == node.SelfLoopCount {
 				done = false
-				// val := len(final)
 				final = removeConnectionsToGene(final, n, key)
-				// val2 := len(final)
-				// fmt.Printf("\nRemoving %d with %d %d - %d", key, node.OutputCount, node.SelfLoopCount, val-val2)
 				delete(n, key)
 			}
 		}
@@ -164,6 +155,7 @@ func removeConnectionsToGene(genes []*Gene, n NodeMap, key byte) []*Gene {
 					n[gene.SourceID].OutputCount--
 				}
 			}
+		} else {
 			new = append(new, gene)
 		}
 	}

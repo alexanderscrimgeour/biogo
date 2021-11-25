@@ -40,7 +40,7 @@ func (c *Creature) CreateNeuralNet() {
 }
 
 func (c Creature) String() string {
-	return fmt.Sprintf("\nCREATURE| \nID: %d,\nEnergy: %d,\nAge: %d,\nAlive: %t,\nNnet: \n%s,\nLoc: %v,\nBirthLoc: %v,\nLastMoveDir%v",
+	return fmt.Sprintf("\nCREATURE| \nID: %d,\nEnergy: %f,\nAge: %d,\nAlive: %t,\nNnet: \n%s,\nLoc: %v,\nBirthLoc: %v,\nLastMoveDir%v",
 		c.Id,
 		c.Energy,
 		c.Age,

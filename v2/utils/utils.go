@@ -27,6 +27,10 @@ func ClampByte(min, max, val byte) byte {
 	return byte(((float32(val) / math.MaxUint8) * float32(max-min)) + float32(min))
 }
 
+func ClampFloat32(min, max, oldMin, oldMax, val float32) float32 {
+	return ((float32(val) / math.MaxUint8) * float32(max-min)) + float32(min)
+}
+
 func Min(a int, b int) int {
 	if b < a {
 		return b
@@ -55,6 +59,10 @@ func MaxFloat32(a, b float32) float32 {
 		return b
 	}
 	return a
+}
+
+func RestrictFloat32(min, max, val float32) float32 {
+	return MinFloat32(MaxFloat32(val, min), max)
 }
 
 // Equal compare two rune arrays and return if they are equals or not
