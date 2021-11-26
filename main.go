@@ -14,11 +14,8 @@ import (
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	g := simulation.MakeRandomGenome()
-	fmt.Println(g.BinaryString())
-
 	sim := simulation.New()
-	for i := 0; i < 500*simulation.Params.MaxAge; i++ {
+	for i := 0; i < 50*simulation.Params.MaxAge; i++ {
 		start := time.Now()
 		sim.Update()
 		end := time.Now()

@@ -4,9 +4,6 @@ This is a simple genetic simulator written in Go.
 
 Heavily inspired by https://github.com/davidrmiller/biosim4/tree/main/src
 
-
-![Generation 508](./images/generation-508.gif)
-
 #### About
 
 This project simulates natural selection and genetic inheritence. 
@@ -37,11 +34,16 @@ In the simple case above, we create a simple neural network with three neurons:
     |--------|             |--------|             |--------|
 ```
 
-At the start of the simulation a number of creatures are created with random genomes. The creatures must solve a challenge, e.g. reach the left 10% of the map, before the "generation" is over. Those that achieve this go on to populate the next generation.
+At the start of the simulation a number of creatures are created with random genomes. The creatures must solve a challenge, e.g. reach the left 10% of the map, before the "generation" is over. 
+At first, the creatures are terrible at solving the problem:
+![Generation 1](./images/generation-1.gif)
 
-A creature's offspring has a chance of genetic mutation when inheriting the parent's genome.
+However, those that succeed go on to populate the next generation. Eventually, those that are most able to move left are able to dominate the genetic makeup of the population. However, some of these creatures are still blocked by the wall, and as such the survival rate stabilises at around 70%.
+![Generation 1](./images/generation-51.gif)
 
-In the example presented above, by the 500th generation 99.6% of creatures managed to survive the challenge and reach the left hand side.
+The final piece of the puzzle is that a creature's offspring has a chance of genetic mutation when inheriting the parent's genome. This means that eventually, a more optimal strategy will emerge, and this new genome will take over. In this test, a mutation occured that allowed the children to first travel down to below the wall before heading left.
+By the 500th generation 99.6% of creatures managed to survive the challenge and reach the left hand side:
+![Generation 508](./images/generation-508.gif)
 
 ### Install
 `
