@@ -46,4 +46,5 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid) {
 			instruction.Creature.Loc = instruction.Loc
 		}
 	}
+	p.MoveQueue = []MoveInstruction{}
 }

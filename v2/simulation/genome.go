@@ -77,11 +77,11 @@ func (g Genome) ToByteArray() []byte {
 }
 
 func (g Gene) PrettyString() string {
-	return fmt.Sprintf("|%b|%08b|%b|%08b|%08b", g.SourceID, g.SourceType, g.SinkID, g.SinkType, g.Weight)
+	return fmt.Sprintf("|%b|%d|%b|%d|%08b", g.SourceType, g.SourceID, g.SinkType, g.SinkID, g.Weight)
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.NeurologyLength)
+	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.NeurologyLength)
 	for _, gene := range g.Neurology {
 		str += gene.PrettyString()
 	}
@@ -98,11 +98,6 @@ func (g Gene) WeightAsFloat32() float32 {
 }
 
 // makeRandomByte creates a random byte
-func makeRandomByte() byte {
-	return byte(rand.Uint32() >> 24)
-}
-
-// makeRandomByte creates a random byte
 func makeRandomBool() byte {
 	return byte(rand.Uint32() >> 31)
 }
@@ -110,24 +105,24 @@ func makeRandomBool() byte {
 // MakeRandomGene creates a random gene
 func MakeRandomGene() *Gene {
 	return &Gene{
-		SourceType: makeRandomByte() & 1,
-		SourceID:   makeRandomByte(),
-		SinkType:   makeRandomByte() & 1,
-		SinkID:     makeRandomByte(),
-		Weight:     makeRandomByte(),
+		SourceType: utils.MakeRandomByte() & 1,
+		SourceID:   utils.MakeRandomByte(),
+		SinkType:   utils.MakeRandomByte() & 1,
+		SinkID:     utils.MakeRandomByte(),
+		Weight:     utils.MakeRandomByte(),
 	}
 }
 
 func MakeRandomGenome() *Genome {
 	g := Genome{
-		OscPeriod:        makeRandomByte(),
-		MaxEnergy:        utils.ClampByte(Params.MinEnergy, Params.MaxEnergy, makeRandomByte()),
-		SightDistance:    utils.ClampByte(Params.MinSightDistance, Params.MaxSightDistance, makeRandomByte()),
-		Responsiveness:   makeRandomByte(),
-		MutationRate:     makeRandomByte(),
+		OscPeriod:        utils.ClampByte(1, math.MaxUint8, utils.MakeRandomByte()), // Must be clamped above zero
+		MaxEnergy:        utils.ClampByte(Params.MinEnergy, Params.MaxEnergy, utils.MakeRandomByte()),
+		SightDistance:    utils.ClampByte(Params.MinSightDistance, Params.MaxSightDistance, utils.MakeRandomByte()),
+		Responsiveness:   utils.MakeRandomByte(),
+		MutationRate:     utils.MakeRandomByte(),
 		ReproductionType: makeRandomBool(),
-		NeuronCount:      utils.ClampByte(Params.MinHiddenLayerCount, Params.MaxHiddenLayerCount, makeRandomByte()),
-		NeurologyLength:  utils.ClampByte(Params.MinNeuronCount, Params.MaxNeuronCount, makeRandomByte()),
+		NeuronCount:      utils.ClampByte(Params.MinHiddenLayerCount, Params.MaxHiddenLayerCount, utils.MakeRandomByte()),
+		NeurologyLength:  utils.ClampByte(Params.MinNeuronCount, Params.MaxNeuronCount, utils.MakeRandomByte()),
 	}
 	for i := byte(0); i < g.NeurologyLength; i++ {
 		gene := MakeRandomGene()
@@ -191,20 +186,22 @@ func Mutate(g *Genome) {
 		}
 	}
 	for j := 0; j < len(g.Neurology); j++ {
-		chance := rand.Float32()
-		switch {
-		case chance < 0.2:
-			g.Neurology[j].SourceType ^= 1
-		case chance < 0.4:
-			g.Neurology[j].SinkType ^= 1
-		case chance < 0.6:
-			g.Neurology[j].SourceID ^= byte(1 << (rand.Uint32() >> 29))
-		case chance < 0.8:
-			g.Neurology[j].SinkID ^= byte(1 << (rand.Uint32() >> 29))
-		default:
-			g.Neurology[j].Weight ^= byte(1 << (rand.Uint32() >> 29))
+		r := rand.Float32()
+		if r < mutationRate {
+			chance := rand.Float32()
+			switch {
+			case chance < 0.2:
+				g.Neurology[j].SourceType ^= 1
+			case chance < 0.4:
+				g.Neurology[j].SinkType ^= 1
+			case chance < 0.6:
+				g.Neurology[j].SourceID ^= byte(1 << (rand.Uint32() >> 29))
+			case chance < 0.8:
+				g.Neurology[j].SinkID ^= byte(1 << (rand.Uint32() >> 29))
+			default:
+				g.Neurology[j].Weight ^= byte(1 << (rand.Uint32() >> 29))
+			}
 		}
-
 	}
 	diff := int(g.NeurologyLength) - len(g.Neurology)
 	if diff > 0 {

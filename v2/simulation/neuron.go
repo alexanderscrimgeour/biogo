@@ -104,12 +104,12 @@ func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 	}
 	nnet.HiddenNeurons = make(map[byte]*Neuron, len(n))
 	// Create the neurons
-	for id, node := range n {
+	for _, node := range n {
 		neuron := &Neuron{
 			Output: CreateInitialNeuronOutput(),
 			Driven: node.InputCount != 0,
 		}
-		nnet.HiddenNeurons[id] = neuron
+		nnet.HiddenNeurons[node.NewID] = neuron
 	}
 	return &nnet
 }

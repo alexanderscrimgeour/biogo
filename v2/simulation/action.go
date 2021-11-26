@@ -9,7 +9,6 @@ const (
 	MOVE_RIGHT
 	MOVE_RANDOM
 	SET_OSCILLATOR_PERIOD
-	SET_LONG_PROBE_DIST
 	SET_RESPONSIVENESS
 	MOVE_EAST
 	MOVE_WEST
@@ -21,3 +20,7 @@ const (
 	REPRODUCE
 	EAT
 )
+
+func IsActionEnabled(a byte) bool {
+	return a < ACTION_COUNT
+}

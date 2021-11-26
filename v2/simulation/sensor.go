@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"fmt"
 	"gopop/v2/grid"
 	"gopop/v2/utils"
 	"math"
@@ -81,7 +82,11 @@ func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep 
 		output = float32(c.Loc.Y) / float32(Params.GridHeight-1)
 
 	case OSC1:
-		phase := float64((simStep % int(c.Genome.OscPeriod)) / int(c.Genome.OscPeriod))
+		val := int(c.Genome.OscPeriod)
+		if val == 0 {
+			val += 1
+		}
+		phase := float64(simStep % val / val)
 		factor := math.Cos(phase * 2 * math.Pi)
 		factor += 1
 		factor /= 2
@@ -106,9 +111,13 @@ func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep 
 		}
 		if g.IsInBounds(newLoc) && g.IsOccupiedAt(newLoc) {
 			otherCreatureId := g.Data[newLoc.X][newLoc.Y]
-			otherCreature := p.Creatures[otherCreatureId-grid.RESERVED_CELL_TYPES]
-			if otherCreature.Alive {
-				output = GenomeSimilarity(*c.Genome, *otherCreature.Genome)
+			if otherCreatureId-grid.RESERVED_CELL_TYPES < 0 || otherCreatureId-grid.RESERVED_CELL_TYPES > len(p.Creatures) {
+				fmt.Println("\nError: %d with %d reserved\n", otherCreatureId, grid.RESERVED_CELL_TYPES)
+			} else {
+				otherCreature := p.Creatures[otherCreatureId-grid.RESERVED_CELL_TYPES]
+				if otherCreature.Alive {
+					output = GenomeSimilarity(*c.Genome, *otherCreature.Genome)
+				}
 			}
 		}
 	case RANDOM:
@@ -149,7 +158,7 @@ func getLocalPopulationDensity(loc grid.Coord, g *grid.Grid) float32 {
 	countOccupied := 0
 	for dx := -utils.Min(Params.PopulationSensorRadius, loc.X); dx <= utils.Min(Params.PopulationSensorRadius, Params.GridWidth-loc.X-1); dx++ {
 		x := loc.X + dx
-		extentY := int(math.Sqrt(float64(Params.PopulationSensorRadius*Params.PopulationSensorRadius) - float64(dx*dx)))
+		extentY := int(math.Sqrt(float64(Params.PopulationSensorRadius)*float64(Params.PopulationSensorRadius) - float64(dx*dx)))
 		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(Params.PopulationSensorRadius, Params.GridHeight-loc.Y-1); dy++ {
 			y := loc.Y + dy
 			countLocs++
@@ -165,7 +174,7 @@ func getPopulationDensityAlongAxis(loc grid.Coord, g *grid.Grid, lastMoveDir gri
 	sum := float32(0)
 	for dx := -utils.Min(Params.PopulationSensorRadius, loc.X); dx <= utils.Min(Params.PopulationSensorRadius, Params.GridWidth-loc.X-1); dx++ {
 		x := loc.X + dx
-		extentY := int(math.Sqrt(float64(Params.PopulationSensorRadius*Params.PopulationSensorRadius) - float64(dx*dx)))
+		extentY := int(math.Sqrt(float64(Params.PopulationSensorRadius)*float64(Params.PopulationSensorRadius) - float64(dx*dx)))
 		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(Params.PopulationSensorRadius, Params.GridHeight-loc.Y-1); dy++ {
 			y := loc.Y + dy
 			tLoc := grid.Coord{x, y}
@@ -179,8 +188,12 @@ func getPopulationDensityAlongAxis(loc grid.Coord, g *grid.Grid, lastMoveDir gri
 		}
 	}
 	maxSumMag := float32(6 * Params.PopulationSensorRadius)
-	if sum < -maxSumMag || sum >= maxSumMag {
-		panic("Population density is impossibly large")
+	if sum >= maxSumMag {
+		sum = maxSumMag
+		fmt.Println("Population density is impossibly large")
+	} else if sum < -maxSumMag {
+		sum = -maxSumMag
+		fmt.Println("Population density is impossibly small")
 	}
 	return float32(sum / maxSumMag)
 }

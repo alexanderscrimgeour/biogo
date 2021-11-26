@@ -2,13 +2,15 @@ package grid
 
 import (
 	"fmt"
+	"gopop/v2/utils"
+	"math"
 	"math/rand"
 )
 
 const (
 	EMPTY int = iota
 	WALL
-	FOOD
+	// FOOD
 	RESERVED_CELL_TYPES
 )
 
@@ -81,13 +83,37 @@ func (grid *Grid) Set(loc Coord, id int) {
 	grid.Data[loc.X][loc.Y] = id
 }
 
-func (grid Grid) FindEmptyLocation() Coord {
+func (g Grid) FindEmptyLocation() Coord {
 	loc := Coord{}
 	for {
-		loc.X = rand.Intn(grid.SizeX() - 1)
-		loc.Y = rand.Intn(grid.SizeY() - 1)
-		if grid.IsEmptyAt(loc) {
+		loc.X = rand.Intn(g.SizeX() - 1)
+		loc.Y = rand.Intn(g.SizeY() - 1)
+		if g.IsEmptyAt(loc) {
 			return loc
 		}
 	}
+}
+
+func (g Grid) FindEmptyLocationRightHalf() Coord {
+	loc := Coord{}
+	for {
+		loc.X = int(g.SizeX()/2 + rand.Intn(g.SizeX()/2) - 1)
+		loc.Y = rand.Intn(g.SizeY() - 1)
+		if g.IsEmptyAt(loc) {
+			return loc
+		}
+	}
+}
+
+func (g Grid) GetNeighbours(loc Coord, radius float32) []Coord {
+	coords := []Coord{}
+	for dx := -utils.Min(int(radius), loc.X); dx <= utils.Min(int(radius), g.SizeX()-loc.X-1); dx++ {
+		x := loc.X + dx
+		extentY := int(math.Sqrt(float64(radius)*float64(radius) - float64(dx*dx)))
+		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(int(radius), g.SizeY()-loc.Y-1); dy++ {
+			y := loc.Y + dy
+			coords = append(coords, Coord{x, y})
+		}
+	}
+	return coords
 }

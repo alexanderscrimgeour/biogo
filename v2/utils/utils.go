@@ -2,6 +2,7 @@ package utils
 
 import (
 	"math"
+	"math/rand"
 )
 
 func MinByte(a byte, b byte) byte {
@@ -27,7 +28,7 @@ func ClampByte(min, max, val byte) byte {
 	return byte(((float32(val) / math.MaxUint8) * float32(max-min)) + float32(min))
 }
 
-func ClampFloat32(min, max, oldMin, oldMax, val float32) float32 {
+func ClampByteAsFloat32(min, max, val byte) float32 {
 	return ((float32(val) / math.MaxUint8) * float32(max-min)) + float32(min)
 }
 
@@ -76,4 +77,9 @@ func Equal(a, b []rune) bool {
 		}
 	}
 	return true
+}
+
+// makeRandomByte creates a random byte
+func MakeRandomByte() byte {
+	return byte(rand.Uint32() >> 24)
 }
