@@ -41,7 +41,7 @@ At first, the creatures are terrible at solving the problem:
 However, those that succeed go on to populate the next generation. Eventually, those that are most able to move left are able to dominate the genetic makeup of the population. However, some of these creatures are still blocked by the wall, and as such the survival rate stabilises at around 70%.
 ![Generation 51](./images/generation-51.gif)
 
-The final piece of the puzzle is that a creature's offspring has a chance of genetic mutation when inheriting the parent's genome. This means that eventually, a more optimal strategy will emerge, and this new genome will take over. In this test, a mutation occured that allowed the children to first travel down to below the wall before heading left.
+The final piece of the puzzle is that there is a chance of genetic mutation when children inherit their parent's genome. This means that a more optimal strategy emerges and this new genome flourishes. In this example, a mutation occured that allowed the children to first travel down to below the wall before heading left.
 By the 500th generation 99.6% of creatures managed to survive the challenge and reach the left hand side:
 ![Generation 508](./images/generation-508.gif)
 
@@ -59,7 +59,6 @@ Dependencies:
 - github.com/hajimehoshi/ebiten/v2
 - golang.org/x/exp
 - golang.org/x/image
-
 
 #### TODO
 - Concurrent execution of neural FFward steps to improve performance
