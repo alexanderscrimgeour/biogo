@@ -41,7 +41,7 @@ func NewCreature(id int, loc grid.Coord, g *Genome) *Creature {
 
 // Takes a creature's genome and uses it to build a NeuralNetwork
 func (c *Creature) CreateNeuralNet() {
-	c.Nnet = *CreateNeuralNetworkFromGenome(c.Genome.Neurology, c.Genome.NeuronCount)
+	c.Nnet = *CreateNeuralNetworkFromGenome(c.Genome.Brain, c.Genome.NeuronCount)
 }
 
 func (c Creature) String() string {

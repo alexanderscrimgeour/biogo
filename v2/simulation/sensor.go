@@ -116,6 +116,7 @@ func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep 
 			} else {
 				otherCreature := p.Creatures[otherCreatureId-grid.RESERVED_CELL_TYPES]
 				if otherCreature.Alive {
+					//TODO: This function performs very poorly, replace
 					output = GenomeSimilarity(*c.Genome, *otherCreature.Genome)
 				}
 			}
@@ -147,53 +148,35 @@ func calculateSightPopFwd(c Creature, g *grid.Grid) float32 {
 		toTest--
 	}
 	if toTest > 0 && !g.IsInBounds(newLoc) {
-		return float32(1)
+		return float32(c.Genome.SightDistance) / float32(c.Genome.SightDistance)
 	} else {
 		return float32(count) / float32(c.Genome.SightDistance)
 	}
 }
 
 func getLocalPopulationDensity(loc grid.Coord, g *grid.Grid) float32 {
-	countLocs := 0
-	countOccupied := 0
-	for dx := -utils.Min(Params.PopulationSensorRadius, loc.X); dx <= utils.Min(Params.PopulationSensorRadius, Params.GridWidth-loc.X-1); dx++ {
-		x := loc.X + dx
-		extentY := int(math.Sqrt(float64(Params.PopulationSensorRadius)*float64(Params.PopulationSensorRadius) - float64(dx*dx)))
-		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(Params.PopulationSensorRadius, Params.GridHeight-loc.Y-1); dy++ {
-			y := loc.Y + dy
-			countLocs++
-			if g.IsOccupiedAt(grid.Coord{x, y}) {
-				countOccupied++
-			}
+
+	delta := func(g grid.Grid, x, y int) int {
+		if g.IsOccupiedAt(grid.Coord{X: x, Y: y}) {
+			return 1
 		}
+		return 0
 	}
-	return float32(countOccupied / countLocs)
+	return g.DensityNeighbours(loc, float32(Params.PopulationSensorRadius), delta)
 }
 
 func getPopulationDensityAlongAxis(loc grid.Coord, g *grid.Grid, lastMoveDir grid.Dir) float32 {
-	sum := float32(0)
-	for dx := -utils.Min(Params.PopulationSensorRadius, loc.X); dx <= utils.Min(Params.PopulationSensorRadius, Params.GridWidth-loc.X-1); dx++ {
-		x := loc.X + dx
-		extentY := int(math.Sqrt(float64(Params.PopulationSensorRadius)*float64(Params.PopulationSensorRadius) - float64(dx*dx)))
-		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(Params.PopulationSensorRadius, Params.GridHeight-loc.Y-1); dy++ {
-			y := loc.Y + dy
-			tLoc := grid.Coord{x, y}
-			if tLoc != loc && g.IsOccupiedAt(tLoc) {
-				offset := grid.GetDirection(loc, tLoc)
-				posCos := grid.RaySameness(loc, tLoc)
-				dist := float32(math.Sqrt(float64(offset.X*offset.X + offset.Y*offset.Y)))
-				contrib := (1 / dist) * posCos
-				sum += contrib
-			}
+	delta := func(g grid.Grid, x, y int, dir grid.Dir) float32 {
+		tLoc := grid.Coord{X: x, Y: y}
+		if tLoc != loc && g.IsOccupiedAt(tLoc) {
+			offset := grid.GetDirection(loc, tLoc)
+			posCos := grid.RaySameness(offset, dir)
+			dist := float32(math.Sqrt(float64(offset.X*offset.X + offset.Y*offset.Y)))
+			contrib := (1 / dist) * posCos
+			return contrib
 		}
+		return 0
 	}
-	maxSumMag := float32(6 * Params.PopulationSensorRadius)
-	if sum >= maxSumMag {
-		sum = maxSumMag
-		fmt.Println("Population density is impossibly large")
-	} else if sum < -maxSumMag {
-		sum = -maxSumMag
-		fmt.Println("Population density is impossibly small")
-	}
-	return float32(sum / maxSumMag)
+
+	return g.DensityAxis(loc, float32(Params.PopulationSensorRadius), lastMoveDir, delta)
 }

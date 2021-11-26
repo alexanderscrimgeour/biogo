@@ -55,13 +55,13 @@ func GetDirection(fromLoc, toLoc Coord) Dir {
 	return Dir{X: xDir, Y: yDir}
 }
 
-func RaySameness(fromLoc, toLoc Coord) float32 {
-	fromMag := math.Sqrt(float64(fromLoc.X*fromLoc.X + fromLoc.Y*fromLoc.Y))
-	toMag := math.Sqrt(float64(toLoc.X*toLoc.X + toLoc.Y*toLoc.Y))
+func RaySameness(fromDir, toDir Dir) float32 {
+	fromMag := math.Sqrt(float64(fromDir.X*fromDir.X + fromDir.Y*fromDir.Y))
+	toMag := math.Sqrt(float64(toDir.X*toDir.X + toDir.Y*toDir.Y))
 	if fromMag == 0 || toMag == 0 {
 		return 1
 	}
-	dot := float64(fromLoc.X*toLoc.X + fromLoc.Y*toLoc.Y)
+	dot := float64(fromDir.X*toDir.X + fromDir.Y*toDir.Y)
 	cos := float32(dot / (fromMag * toMag))
 	cos = utils.MinFloat32(utils.MaxFloat32(cos, -1), 1)
 	return cos

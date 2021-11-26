@@ -39,8 +39,8 @@ type Genome struct {
 	MutationRate     byte
 	ReproductionType byte
 	NeuronCount      byte // Neurons count as the middle layer in the nnet
-	NeurologyLength  byte // NeurologyLength determines the number of connections
-	Neurology        []*Gene
+	BrainLength      byte // BrainLength determines the number of connections
+	Brain            []*Gene
 	// TODO
 	// ReproductionRate <- Determines how many children
 }
@@ -50,12 +50,57 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%b%08b", g.OscPeriod, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.NeurologyLength)
-	for _, gene := range g.Neurology {
+	str := fmt.Sprintf("%08b%08b%08b%08b%b%08b", g.OscPeriod, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
+	for _, gene := range g.Brain {
 		str += gene.String()
 	}
 	return str
 }
+
+// To represent genetic diversity visually, we create a color from the genome
+//
+
+func (g Genome) ToColor() (uint8, uint8, uint8, uint8) {
+	first := g.Brain[0]
+	mid := g.Brain[len(g.Brain)/2]
+	last := g.Brain[len(g.Brain)-1]
+	firstAsByte := (first.SourceID&3)<<6 | (first.SourceType&3)<<4 | (first.SinkID&3)<<2 | (first.SinkType & 3)
+	midAsByte := (mid.SourceID&3)<<6 | (mid.SourceType&3)<<4 | (mid.SinkID&3)<<2 | (mid.SinkType & 3)
+	lastAsByte := (last.SourceID&3)<<6 | (last.SourceType&3)<<4 | (last.SinkID&3)<<2 | (last.SinkType & 3)
+
+	red := firstAsByte
+	green := midAsByte
+	blue := lastAsByte
+
+	return red, green, blue, 255
+}
+
+// func (g Genome) ToColor() (uint8, uint8, uint8, uint8) {
+
+// 	// Feature related := red
+// 	red := uint32(g.ReproductionType)<<16 | uint32(g.MutationRate)<<8 | uint32(g.Responsiveness)
+// 	maxRed := math.MaxUint32 >> (32 - bits.Len32(red))
+// 	redVal := 255 - uint8(float32(red)/float32(maxRed)*255)
+
+// 	// energy related := Green
+// 	// Still able to add more detail here
+// 	green := uint32(g.OscPeriod)<<16 | uint32(g.MaxEnergy)<<8 | uint32(g.Responsiveness)
+// 	// maximum value without leading zeros
+// 	maxGreen := math.MaxUint32 >> (32 - bits.Len32(green))
+// 	greenVal := 255 - uint8(float32(green)/float32(maxGreen)*255)
+
+// 	// Brain == blue
+// 	first := g.Brain[0]
+// 	last := g.Brain[1]
+// 	firstAsByte := (first.SourceID&3)<<6 | (first.SourceType&3)<<4 | (first.SinkID&3)<<2 | (first.SinkType & 3)
+// 	lastAsByte := (last.SourceID&3)<<6 | (last.SourceType&3)<<4 | (last.SinkID&3)<<2 | (last.SinkType & 3)
+
+// 	blue := uint32(g.BrainLength)<<24 | uint32(g.NeuronCount)<<16 | uint32(firstAsByte)<<8 | uint32(lastAsByte)
+// 	maxBlue := math.MaxUint32 >> (32 - bits.Len32(blue))
+// 	blueVal := 255 - uint8(float32(blue)/float32(maxBlue)*255)
+
+// 	return redVal, greenVal, blueVal, 255
+// }
 
 func (g Genome) ToByteArray() []byte {
 	arr := []byte{}
@@ -66,8 +111,8 @@ func (g Genome) ToByteArray() []byte {
 	arr = append(arr, g.MutationRate)
 	arr = append(arr, g.ReproductionType)
 	arr = append(arr, g.NeuronCount)
-	arr = append(arr, g.NeurologyLength)
-	for _, n := range g.Neurology {
+	arr = append(arr, g.BrainLength)
+	for _, n := range g.Brain {
 		arr = append(arr, n.SourceType)
 		arr = append(arr, n.SourceID)
 		arr = append(arr, n.SinkType)
@@ -81,8 +126,8 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.NeurologyLength)
-	for _, gene := range g.Neurology {
+	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
+	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
 	return str
@@ -122,11 +167,11 @@ func MakeRandomGenome() *Genome {
 		MutationRate:     utils.MakeRandomByte(),
 		ReproductionType: makeRandomBool(),
 		NeuronCount:      utils.ClampByte(Params.MinHiddenLayerCount, Params.MaxHiddenLayerCount, utils.MakeRandomByte()),
-		NeurologyLength:  utils.ClampByte(Params.MinNeuronCount, Params.MaxNeuronCount, utils.MakeRandomByte()),
+		BrainLength:      utils.ClampByte(Params.MinStartNeuronCount, Params.MaxStartNeuronCount, utils.MakeRandomByte()),
 	}
-	for i := byte(0); i < g.NeurologyLength; i++ {
+	for i := byte(0); i < g.BrainLength; i++ {
 		gene := MakeRandomGene()
-		g.Neurology = append(g.Neurology, gene)
+		g.Brain = append(g.Brain, gene)
 	}
 
 	return &g
@@ -142,10 +187,10 @@ func (g *Gene) Copy() *Gene {
 func (g *Genome) Copy() *Genome {
 	new := *g
 	temp := []*Gene{}
-	for _, n := range g.Neurology {
+	for _, n := range g.Brain {
 		temp = append(temp, n.Copy())
 	}
-	new.Neurology = temp
+	new.Brain = temp
 	return &new
 }
 
@@ -177,41 +222,41 @@ func Mutate(g *Genome) {
 			case NEURON_COUNT:
 				new := g.NeuronCount
 				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.NeurologyLength = utils.ClampByte(Params.MinHiddenLayerCount, Params.MaxHiddenLayerCount, new)
+				g.BrainLength = utils.ClampByte(Params.MinHiddenLayerCount, Params.MaxHiddenLayerCount, new)
 			case NEUROLOGY_LENGTH:
-				new := g.NeurologyLength
+				new := g.BrainLength
 				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.NeurologyLength = utils.ClampByte(Params.MinNeuronCount, Params.MaxNeuronCount, new)
+				g.BrainLength = utils.ClampByte(Params.MinNeuronCount, Params.MaxNeuronCount, new)
 			}
 		}
 	}
-	for j := 0; j < len(g.Neurology); j++ {
+	for j := 0; j < len(g.Brain); j++ {
 		r := rand.Float32()
 		if r < mutationRate {
 			chance := rand.Float32()
 			switch {
 			case chance < 0.2:
-				g.Neurology[j].SourceType ^= 1
+				g.Brain[j].SourceType ^= 1
 			case chance < 0.4:
-				g.Neurology[j].SinkType ^= 1
+				g.Brain[j].SinkType ^= 1
 			case chance < 0.6:
-				g.Neurology[j].SourceID ^= byte(1 << (rand.Uint32() >> 29))
+				g.Brain[j].SourceID ^= byte(1 << (rand.Uint32() >> 29))
 			case chance < 0.8:
-				g.Neurology[j].SinkID ^= byte(1 << (rand.Uint32() >> 29))
+				g.Brain[j].SinkID ^= byte(1 << (rand.Uint32() >> 29))
 			default:
-				g.Neurology[j].Weight ^= byte(1 << (rand.Uint32() >> 29))
+				g.Brain[j].Weight ^= byte(1 << (rand.Uint32() >> 29))
 			}
 		}
 	}
-	diff := int(g.NeurologyLength) - len(g.Neurology)
+	diff := int(g.BrainLength) - len(g.Brain)
 	if diff > 0 {
 		for i := 0; i < diff; i++ {
-			g.Neurology = append(g.Neurology, MakeRandomGene())
+			g.Brain = append(g.Brain, MakeRandomGene())
 		}
 	} else if diff < 0 {
 		for i := 0; i > diff; i-- {
-			index := rand.Intn(len(g.Neurology))
-			g.Neurology = append(g.Neurology[:index], g.Neurology[index+1:]...)
+			index := rand.Intn(len(g.Brain))
+			g.Brain = append(g.Brain[:index], g.Brain[index+1:]...)
 		}
 	}
 

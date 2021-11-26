@@ -14,18 +14,30 @@ const (
 	RESERVED_CELL_TYPES
 )
 
+type MapType int
+
+const (
+	MIDDLE_WALL MapType = iota
+)
+
 type Grid struct {
-	Data [][]int
+	Data          [][]int
+	WallLocations []Coord
+	Type          MapType
 }
 
-func NewGrid(xSize, ySize int) *Grid {
+func NewGrid(xSize, ySize int, gridMap int) *Grid {
 	data := make([][]int, xSize)
 	for i := int(0); i < xSize; i++ {
 		data[i] = make([]int, ySize)
 	}
-	return &Grid{
+
+	g := &Grid{
 		Data: data,
+		Type: MapType(gridMap),
 	}
+	g.CreateWall()
+	return g
 }
 
 func (grid Grid) SizeX() int {
@@ -40,6 +52,31 @@ func (grid *Grid) ZeroFill() {
 	for x := range grid.Data {
 		for y := range grid.Data[x] {
 			grid.Data[x][y] = EMPTY
+		}
+	}
+	grid.WallLocations = []Coord{}
+}
+
+func (g *Grid) CreateWall() {
+	switch g.Type {
+	case MIDDLE_WALL:
+		// Width 1 wall
+		width := 5
+		center := g.SizeX() / 2
+		minX := center - width/2
+		maxX := center + width/2
+		minY := g.SizeY() / 4
+		maxY := minY + g.SizeY()/2
+		g.DrawBox(minX, minY, maxX, maxY)
+	}
+}
+
+func (g *Grid) DrawBox(minX, minY, maxX, maxY int) {
+	for x := minX; x < maxX; x++ {
+		for y := minY; y < maxY; y++ {
+			coord := Coord{X: x, Y: y}
+			g.Set(coord, WALL)
+			g.WallLocations = append(g.WallLocations, coord)
 		}
 	}
 }
@@ -116,4 +153,53 @@ func (g Grid) GetNeighbours(loc Coord, radius float32) []Coord {
 		}
 	}
 	return coords
+}
+
+func (g Grid) CountNeighbours(loc Coord, radius float32, fn func(g Grid, x, y int) int) int {
+	sum := 0
+	for dx := -utils.Min(int(radius), loc.X); dx <= utils.Min(int(radius), g.SizeX()-loc.X-1); dx++ {
+		x := loc.X + dx
+		extentY := int(math.Sqrt(float64(radius)*float64(radius) - float64(dx*dx)))
+		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(int(radius), g.SizeY()-loc.Y-1); dy++ {
+			y := loc.Y + dy
+			sum += fn(g, x, y)
+		}
+	}
+	return sum
+}
+
+func (g Grid) DensityNeighbours(loc Coord, radius float32, fn func(g Grid, x, y int) int) float32 {
+	area := 0
+	sum := 0
+	for dx := -utils.Min(int(radius), loc.X); dx <= utils.Min(int(radius), g.SizeX()-loc.X-1); dx++ {
+		x := loc.X + dx
+		extentY := int(math.Sqrt(float64(radius)*float64(radius) - float64(dx*dx)))
+		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(int(radius), g.SizeY()-loc.Y-1); dy++ {
+			y := loc.Y + dy
+			area++
+			sum += fn(g, x, y)
+		}
+	}
+	return float32(sum) / float32(area)
+}
+
+func (g Grid) DensityAxis(loc Coord, radius float32, lastMoveDir Dir, fn func(g Grid, x, y int, dir Dir) float32) float32 {
+	sum := float32(0)
+	for dx := -utils.Min(int(radius), loc.X); dx <= utils.Min(int(radius), g.SizeX()-loc.X-1); dx++ {
+		x := loc.X + dx
+		extentY := int(math.Sqrt(float64(radius)*float64(radius) - float64(dx*dx)))
+		for dy := -utils.Min(extentY, loc.Y); dy <= utils.Min(int(radius), g.SizeY()-loc.Y-1); dy++ {
+			y := loc.Y + dy
+			sum += fn(g, x, y, lastMoveDir)
+		}
+	}
+	maxSumMag := float32(6 * radius)
+	if sum > maxSumMag {
+		fmt.Printf("Population density is impossibly large: %f", sum)
+		sum = maxSumMag
+	} else if sum < -maxSumMag {
+		fmt.Printf("Population density is impossibly small: %f", sum)
+		sum = -maxSumMag
+	}
+	return sum / maxSumMag
 }

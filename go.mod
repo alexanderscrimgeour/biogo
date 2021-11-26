@@ -1,4 +1,4 @@
-module gopop
+module biogo
 
 go 1.15
 

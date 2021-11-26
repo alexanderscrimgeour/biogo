@@ -14,6 +14,7 @@ const (
 	Groups
 	Center
 	AllSurvive
+	MiddleWall
 )
 
 func PassedSurvivalCriteria(c *Creature, s *Simulation) bool {
@@ -34,12 +35,17 @@ func PassedSurvivalCriteria(c *Creature, s *Simulation) bool {
 			return true
 		}
 	case Groups:
-		minNeighbours := 2
-		radius := float32(1.5)
+		minNeighbours := 4
+		radius := float32(4)
 
 		if s.Grid.IsBorder(c.Loc) {
 			return false
 		}
+
+		if c.Loc.X < 5 || c.Loc.X > s.Grid.SizeX()-6 || c.Loc.Y < 5 || c.Loc.Y > s.Grid.SizeY()-6 {
+			return false
+		}
+
 		n := 0
 		neighbours := s.Grid.GetNeighbours(c.Loc, radius)
 		for _, coord := range neighbours {
@@ -52,7 +58,7 @@ func PassedSurvivalCriteria(c *Creature, s *Simulation) bool {
 		}
 	case Center:
 		center := grid.Coord{X: int(s.Grid.SizeX() / 2), Y: int(s.Grid.SizeY() / 2)}
-		radius := 40
+		radius := 50
 		offset := grid.Coord{
 			X: int(math.Abs(float64(c.Loc.X - center.X))),
 			Y: int(math.Abs(float64(c.Loc.Y - center.Y))),

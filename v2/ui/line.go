@@ -10,11 +10,13 @@ type Line struct {
 	geoM *ebiten.GeoM
 }
 
-func NewLine(width, height int, x, y float64) *Line {
+func NewLine(minX, minY, maxX, maxY float64) *Line {
+	width := int(maxX - minX)
+	height := int(maxY - minY)
 	img := ebiten.NewImage(width, height)
-	img.Fill(colornames.Black)
+	img.Fill(colornames.White)
 	geoM := &ebiten.GeoM{}
-	geoM.Translate(x, y)
+	geoM.Translate(minX, minY)
 	return &Line{img: img, geoM: geoM}
 }
 

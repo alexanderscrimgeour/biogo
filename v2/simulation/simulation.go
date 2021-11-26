@@ -9,11 +9,12 @@ import (
 )
 
 type Simulation struct {
-	Grid       *grid.Grid
-	Population *Population
-	step       int
-	Generation int // Might be useless?
-	Challenge  ChallengeType
+	Grid             *grid.Grid
+	Population       *Population
+	Tick             int
+	Generation       int // Might be useless?
+	GeneticDiversity float32
+	Challenge        ChallengeType
 }
 
 func New() *Simulation {
@@ -26,7 +27,7 @@ func New() *Simulation {
 }
 
 func (s *Simulation) InitializeGrid() {
-	s.Grid = grid.NewGrid(Params.GridWidth, Params.GridHeight)
+	s.Grid = grid.NewGrid(Params.GridWidth, Params.GridHeight, 0)
 }
 
 func (s *Simulation) InitializeFirstGeneration() {
@@ -40,7 +41,7 @@ func (s *Simulation) InitializeFirstGeneration() {
 }
 
 func (s *Simulation) Update() {
-	if s.step < Params.MaxAge {
+	if s.Tick < Params.MaxAge {
 		s.Step()
 	} else {
 		s.InitializeNewGeneration()
@@ -51,8 +52,9 @@ func (s *Simulation) Update() {
 }
 
 func (s *Simulation) InitializeNewGeneration() {
+	// s.GeneticDiversity = s.Population.GeneticDiversity()
 	s.Generation += 1
-	s.step = 0
+	s.Tick = 0
 	childrenGenomes := []*Genome{}
 	for _, creature := range s.Population.Creatures {
 		if PassedSurvivalCriteria(creature, s) {
@@ -81,6 +83,7 @@ func (s *Simulation) InitializeNewGeneration() {
 		MoveQueue:  []MoveInstruction{},
 	}
 	s.Grid.ZeroFill()
+	s.Grid.CreateWall()
 }
 
 func (s *Simulation) Step() {
@@ -93,12 +96,12 @@ func (s *Simulation) Step() {
 	// TODO()
 	// s.Population.ProcessReproductionQueue(s.Grid)
 	// s.Population.ProcessDeathQueue()
-	s.step++
+	s.Tick++
 }
 
 func (s *Simulation) StepCreature(c *Creature) {
 	c.Age++
-	actionLevels := c.FeedForward(s.Grid, s.Population, s.step)
+	actionLevels := c.FeedForward(s.Grid, s.Population, s.Tick)
 	s.ExecuteActions(c, actionLevels)
 }
 

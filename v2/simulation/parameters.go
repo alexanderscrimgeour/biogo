@@ -1,27 +1,29 @@
 package simulation
 
 var Params = &Parameters{
-	MaxGenerations:                  1000, // For testing purposes
+	MaxGenerations:                  10000, // For testing purposes
 	MaxPopulation:                   1000,
 	StartingPopulation:              1000,
 	PopulationSensorRadius:          6,
-	GridWidth:                       200,
-	GridHeight:                      200,
-	MaxAge:                          500, // Equivalent to "Steps per generation"
-	MinEnergy:                       2,   // Byte representation of the max energy a creature can have
-	MaxEnergy:                       255, // Byte representation of the max energy a creature can have
-	MinNeuronCount:                  10,  // > 1 | Note: This doesn't necessarily reflect the true NNet as useless neurons are culled.
-	MaxNeuronCount:                  20,  // < whatever the comuter accepts
-	MinHiddenLayerCount:             2,   // > 0 | Note: This doesn't necessarily reflect the true NNet as useless neurons are culled.
-	MaxHiddenLayerCount:             8,   // < MaxNeuronCount
-	MinSightDistance:                5,
+	GridWidth:                       600,
+	GridHeight:                      400,
+	MaxAge:                          1000, // Equivalent to "Steps per generation"
+	MinEnergy:                       2,    // Byte representation of the max energy a creature can have
+	MaxEnergy:                       255,  // Byte representation of the max energy a creature can have
+	MinStartNeuronCount:             2,
+	MaxStartNeuronCount:             20,
+	MinNeuronCount:                  1,  // > 1 | Note: This doesn't necessarily reflect the true NNet as useless neurons are culled.
+	MaxNeuronCount:                  20, // < whatever the comuter accepts
+	MinHiddenLayerCount:             2,  // > 0 | Note: This doesn't necessarily reflect the true NNet as useless neurons are culled.
+	MaxHiddenLayerCount:             8,  // < MaxNeuronCount
+	MinSightDistance:                2,
 	MaxSightDistance:                10,
-	BaseMutationRate:                0.000001, // Mutation rate is very small
-	BaseGenomeMutationRate:          0.001,    // Not used, set in the
+	BaseMutationRate:                0.0001, // Mutation rate is very small
+	BaseGenomeMutationRate:          0.001,  // Not used, set in the
 	SexualReproductionSimilarityMin: 0.9,
 	SexualReproductionSimilarityMax: 0.98,
 	ResponseCurveKFactor:            2,
-	Challenge:                       Center,
+	Challenge:                       FarLeftSurvive,
 }
 
 type Parameters struct {
@@ -34,6 +36,8 @@ type Parameters struct {
 	MaxAge                          int
 	MinEnergy                       byte
 	MaxEnergy                       byte
+	MinStartNeuronCount             byte
+	MaxStartNeuronCount             byte
 	MinNeuronCount                  byte // The minimum number of neurons (connections) in the Nnet, pre removal of useless neurons
 	MaxNeuronCount                  byte // The maximum number of neurons (connections) in the Nnet
 	MinHiddenLayerCount             byte

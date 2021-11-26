@@ -1,6 +1,10 @@
 package simulation
 
-import "gopop/v2/grid"
+import (
+	"gopop/v2/grid"
+	"gopop/v2/utils"
+	"math/rand"
+)
 
 type Population struct {
 	Creatures         []*Creature
@@ -47,4 +51,27 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid) {
 		}
 	}
 	p.MoveQueue = []MoveInstruction{}
+}
+
+// Random sample of population and compare genetics
+func (p *Population) GeneticDiversity() float32 {
+	if len(p.Creatures) < 2 {
+		return 0
+	}
+
+	sampleSize := utils.Min(200, len(p.Creatures))
+	count := sampleSize
+	genomeSimilarityTotal := float32(0)
+	for count > 0 {
+		i1 := rand.Intn(len(p.Creatures))
+		i2 := rand.Intn(len(p.Creatures))
+		for i2 == i1 {
+			i2 = rand.Intn(len(p.Creatures))
+		}
+		c1 := p.Creatures[i1]
+		c2 := p.Creatures[i2]
+		genomeSimilarityTotal += 1 - GenomeSimilarity(*c1.Genome, *c2.Genome)
+		sampleSize--
+	}
+	return genomeSimilarityTotal / float32(sampleSize)
 }
