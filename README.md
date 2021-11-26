@@ -13,7 +13,7 @@ Currently the challenges are very simple, e.g. Creatures on the left 10% of the 
 
 Those that survive go on to populate the next generation. Eventually, the creatures learn to overcome the challenge and survive:
 
-[Generation 508](./images/generation-508.gif)
+![Generation 508](./images/generation-508.gif)
 
 ### Install
 `
