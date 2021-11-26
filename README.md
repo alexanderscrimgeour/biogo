@@ -13,14 +13,15 @@ This project simulates natural selection and genetic inheritence.
 
 To start, we represent behaviour via a genome, which is a collection of bytes that determine general characteristics, as well as a slice of genes responsible for generating a neural network.
 
-E.g. A genome may look something like this:\
+A genome may look something like this:\
 
-`
+```
 00101011|01001010|00000111|11110110|01010000|1|00000010|0|00000110|1|10110110|10000111|1|10110110|0|01110001|10101110
-`
+```
 where each section of bits represents a single characteristic:\
-`OscPeriod|MaxEnergy|SightDistance|Responsiveness|MutationRate|ReproductionType|NeuronCount|BrainLength|...NeuralGenes
-`
+```
+OscPeriod|MaxEnergy|SightDistance|Responsiveness|MutationRate|ReproductionType|NeuronCount|BrainLength|...NeuralGenes
+```
 with neural genes representing a neural pathway:
 ```
 SourceType|SourceID|SinkType|SinkID  |Weight
