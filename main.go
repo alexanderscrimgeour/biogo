@@ -1,9 +1,9 @@
 package main
 
 import (
+	"biogo/v2/simulation"
+	"biogo/v2/ui"
 	"fmt"
-	"gopop/v2/simulation"
-	"gopop/v2/ui"
 	"log"
 	"math/rand"
 	"time"
@@ -13,6 +13,9 @@ import (
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+
+	g := simulation.MakeRandomGenome()
+	fmt.Println(g.BinaryString())
 
 	sim := simulation.New()
 	for i := 0; i < 500*simulation.Params.MaxAge; i++ {

@@ -1,7 +1,7 @@
 package simulation
 
 import (
-	"gopop/v2/grid"
+	"biogo/v2/grid"
 	"math"
 )
 

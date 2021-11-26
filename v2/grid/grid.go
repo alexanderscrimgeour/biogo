@@ -1,8 +1,8 @@
 package grid
 
 import (
+	"biogo/v2/utils"
 	"fmt"
-	"gopop/v2/utils"
 	"math"
 	"math/rand"
 )

@@ -1,9 +1,9 @@
 package simulation
 
 import (
+	"biogo/v2/jaro"
+	"biogo/v2/utils"
 	"fmt"
-	"gopop/v2/jaro"
-	"gopop/v2/utils"
 	"math"
 	"math/rand"
 )
@@ -46,13 +46,24 @@ type Genome struct {
 }
 
 func (g Gene) String() string {
-	return fmt.Sprintf("%b%08b%b%08b%08b", g.SourceID, g.SourceType, g.SinkID, g.SinkType, g.Weight)
+	return fmt.Sprintf("%b%08b%b%08b%08b", g.SourceType, g.SourceID, g.SinkType, g.SinkID, g.Weight)
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%b%08b", g.OscPeriod, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%b%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
 	for _, gene := range g.Brain {
 		str += gene.String()
+	}
+	return str
+}
+
+func (g Gene) BinaryString() string {
+	return fmt.Sprintf("|%b|%08b|%b|%08b|%08b", g.SourceType, g.SourceID, g.SinkType, g.SinkID, g.Weight)
+}
+func (g Genome) BinaryString() string {
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
+	for _, gene := range g.Brain {
+		str += gene.BinaryString()
 	}
 	return str
 }

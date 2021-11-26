@@ -1,9 +1,9 @@
 package simulation
 
 import (
+	"biogo/v2/grid"
+	"biogo/v2/utils"
 	"fmt"
-	"gopop/v2/grid"
-	"gopop/v2/utils"
 	"math"
 	"math/rand"
 )

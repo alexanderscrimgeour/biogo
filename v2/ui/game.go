@@ -1,8 +1,8 @@
 package ui
 
 import (
+	"biogo/v2/simulation"
 	"fmt"
-	"gopop/v2/simulation"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"

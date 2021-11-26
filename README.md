@@ -5,15 +5,42 @@ This is a simple genetic simulator written in Go.
 Heavily inspired by https://github.com/davidrmiller/biosim4/tree/main/src
 
 
+![Generation 508](./images/generation-508.gif)
+
 #### About
 
-The simulation creates Creatures with random genomes, and gives them a challenge to solve.
+This project simulates natural selection and genetic inheritence. 
 
-Currently the challenges are very simple, e.g. Creatures on the left 10% of the map at the end of one generation survive.
+To start, we represent behaviour via a genome, which is a collection of bytes that determine general characteristics, as well as a slice of genes responsible for generating a neural network.
 
-Those that survive go on to populate the next generation. Eventually, the creatures learn to overcome the challenge and survive:
+E.g. A genome may look something like this:\
 
-![Generation 508](./images/generation-508.gif)
+`
+00101011|01001010|00000111|11110110|01010000|1|00000010|0|00000110|1|10110110|10000111|1|10110110|0|01110001|10101110
+`
+where each section of bits represents a single characteristic:\
+`OscPeriod|MaxEnergy|SightDistance|Responsiveness|MutationRate|ReproductionType|NeuronCount|BrainLength|...NeuralGenes
+`
+with neural genes representing a neural pathway:
+```
+SourceType|SourceID|SinkType|SinkID  |Weight
+----------|--------|--------|--------|--------
+         0|00000110|       1|10110110|10000111
+         1|10110110|       0|01110001|10101110
+```
+
+In the simple case above, we create a simple neural network with three neurons:
+```
+    |--------|    weight   |--------|   weight    |--------|
+    | Sensor |---10000111->| Neuron |--10101110-->| Action |
+    |--------|             |--------|             |--------|
+```
+
+At the start of the simulation a number of creatures are created with random genomes. The creatures must solve a challenge, e.g. reach the left 10% of the map, before the "generation" is over. Those that achieve this go on to populate the next generation.
+
+A creature's offspring has a chance of genetic mutation when inheriting the parent's genome.
+
+In the example presented above, by the 500th generation 99.6% of creatures managed to survive the challenge and reach the left hand side.
 
 ### Install
 `
