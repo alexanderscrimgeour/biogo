@@ -1,5 +1,9 @@
 package genome
 
+import (
+	"math"
+)
+
 const (
 	OSC_PERIOD = iota
 	MAX_ENERGY
@@ -56,7 +60,7 @@ func (g Genome) ToByteArray() []byte {
 	return arr
 }
 
-// byteAsFloat converts from a byte to a float64 range 0...1
+// byteAsFloat converts from a byte to a float32 range 0...1
 func byteAsFloat(val byte) float32 {
 	return 2*(float32(val)/math.MaxUint8) - 1
 }
