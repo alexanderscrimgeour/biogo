@@ -3,7 +3,6 @@ package main
 import (
 	"biogo/v2/simulation"
 	"biogo/v2/ui"
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -14,19 +13,12 @@ import (
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	sim := simulation.New()
-	for i := 0; i < 50*simulation.Params.MaxAge; i++ {
-		start := time.Now()
-		sim.Update()
-		end := time.Now()
-		if sim.Tick != 0 && sim.Tick%simulation.Params.MaxAge == 0 {
-			fmt.Printf("\tStep took : %s\n", end.Sub(start))
-		}
-	}
+	params := simulation.DefaultParams()
+	sim := simulation.New(params)
 
 	game := ui.NewGame(sim)
 
-	ebiten.SetWindowSize(simulation.Params.GridWidth*2, simulation.Params.GridHeight*2)
+	ebiten.SetWindowSize(params.GridWidth*2, params.GridHeight*2)
 	ebiten.SetWindowTitle("Genetic Simulation")
 
 	if err := ebiten.RunGame(game); err != nil {
