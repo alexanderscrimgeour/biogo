@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm \"d:/projects/biogo/v2/simulation/food.go\" \"d:/projects/biogo/v2/grid/wall.go\" \"d:/projects/biogo/v2/ui/statline.go\")",
+      "Bash(go build *)",
+      "Bash(go test *)",
+      "Bash(go vet *)"
+    ],
+    "additionalDirectories": [
+      "d:\\projects\\biogo\\v2\\simulation"
+    ]
+  }
+}

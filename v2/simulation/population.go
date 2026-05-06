@@ -7,7 +7,7 @@ import (
 )
 
 type Population struct {
-	Creatures         []*Creature
+	Creatures         map[int]*Creature
 	DeathQueue        []DeathInstruction
 	MoveQueue         []MoveInstruction
 	ReproductionQueue []ReproductionInstruction
@@ -26,10 +26,9 @@ type MoveInstruction struct {
 	Loc      grid.Coord
 }
 
-func NewPopulation() *Population {
-	creatures := make([]*Creature, Params.StartingPopulation)
+func NewPopulation(p *Parameters) *Population {
 	return &Population{
-		Creatures:         creatures,
+		Creatures:         make(map[int]*Creature, p.StartingPopulation),
 		DeathQueue:        []DeathInstruction{},
 		MoveQueue:         []MoveInstruction{},
 		ReproductionQueue: []ReproductionInstruction{},
@@ -53,25 +52,28 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid) {
 	p.MoveQueue = []MoveInstruction{}
 }
 
-// Random sample of population and compare genetics
+// GeneticDiversity samples the population and returns average pairwise genome dissimilarity.
 func (p *Population) GeneticDiversity() float32 {
 	if len(p.Creatures) < 2 {
 		return 0
 	}
 
-	sampleSize := utils.Min(200, len(p.Creatures))
-	count := sampleSize
-	genomeSimilarityTotal := float32(0)
-	for count > 0 {
-		i1 := rand.Intn(len(p.Creatures))
-		i2 := rand.Intn(len(p.Creatures))
-		for i2 == i1 {
-			i2 = rand.Intn(len(p.Creatures))
-		}
-		c1 := p.Creatures[i1]
-		c2 := p.Creatures[i2]
-		genomeSimilarityTotal += 1 - GenomeSimilarity(*c1.Genome, *c2.Genome)
-		sampleSize--
+	keys := make([]int, 0, len(p.Creatures))
+	for k := range p.Creatures {
+		keys = append(keys, k)
 	}
-	return genomeSimilarityTotal / float32(sampleSize)
+
+	sampleSize := utils.Min(200, len(keys))
+	total := float32(0)
+	for i := 0; i < sampleSize; i++ {
+		i1 := rand.Intn(len(keys))
+		i2 := rand.Intn(len(keys))
+		for i2 == i1 {
+			i2 = rand.Intn(len(keys))
+		}
+		c1 := p.Creatures[keys[i1]]
+		c2 := p.Creatures[keys[i2]]
+		total += 1 - GenomeSimilarity(*c1.Genome, *c2.Genome)
+	}
+	return total / float32(sampleSize)
 }

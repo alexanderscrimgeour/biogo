@@ -6,16 +6,13 @@ import (
 	"math"
 )
 
-// The "Brains"
-
-func (c *Creature) FeedForward(g *grid.Grid, p *Population, step int) []float32 {
+func (c *Creature) FeedForward(g *grid.Grid, p *Population, step int, params *Parameters) []float32 {
 	actionLevels := make([]float32, ACTION_COUNT)
 	neuronAccumulators := map[byte]float32{}
 	neuronOutputsEvaluated := false
 
 	for _, gene := range c.Nnet.Edges {
 
-		// First we evaluate the outputs to ACTIONS
 		if gene.SinkType == ACTION && !neuronOutputsEvaluated {
 			for key, neuron := range c.Nnet.HiddenNeurons {
 				if neuron.Driven {
@@ -27,7 +24,7 @@ func (c *Creature) FeedForward(g *grid.Grid, p *Population, step int) []float32 
 
 		var inputVal float32
 		if gene.SourceType == SENSOR {
-			inputVal = c.GetSensor(gene.SourceID, g, p, step)
+			inputVal = c.GetSensor(gene.SourceID, g, p, step, params)
 		} else {
 			if _, ok := c.Nnet.HiddenNeurons[gene.SourceID]; !ok {
 				fmt.Printf("\n\nNot okay, trying to see %d of type %d, %s", gene.SourceID, gene.SourceType, c.Nnet.String())
