@@ -25,6 +25,7 @@ const (
 	SIGHT_POPULATION_FORWARD
 	GENETIC_SIM_FORWARD
 	RANDOM
+	SIGHT_FOOD_FORWARD
 
 	SENSOR_COUNT
 )
@@ -33,7 +34,7 @@ func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep 
 	var output float32
 	switch sensorID {
 	case AGE:
-		output = float32(c.Age / params.MaxAge)
+		output = float32(c.Age) / float32(params.MaxExpectedAge)
 
 	case ENERGY:
 		output = float32(c.Energy / float32(c.Genome.MaxEnergy))
@@ -116,6 +117,9 @@ func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep 
 			}
 		}
 
+	case SIGHT_FOOD_FORWARD:
+		output = calculateSightFoodFwd(c, g)
+
 	case RANDOM:
 		fallthrough
 	default:
@@ -125,6 +129,27 @@ func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep 
 		output = utils.RestrictFloat32(0, 1, output)
 	}
 	return output
+}
+
+// calculateSightFoodFwd returns 1.0 if food is immediately ahead, scaling down to ~0
+// for food at max sight distance, and 0 if no food is visible in the sight line.
+// The scan stops at walls or creatures.
+func calculateSightFoodFwd(c Creature, g *grid.Grid) float32 {
+	loc := grid.Coord{X: c.Loc.X + c.LastMoveDir.X, Y: c.Loc.Y + c.LastMoveDir.Y}
+	dist := c.Genome.SightDistance
+	for d := byte(1); d <= dist; d++ {
+		if !g.IsInBounds(loc) {
+			break
+		}
+		if g.IsFood(loc) {
+			return 1.0 - float32(d-1)/float32(dist)
+		}
+		if !g.IsEmptyAt(loc) {
+			break
+		}
+		loc = grid.Coord{X: loc.X + c.LastMoveDir.X, Y: loc.Y + c.LastMoveDir.Y}
+	}
+	return 0
 }
 
 func calculateSightPopFwd(c Creature, g *grid.Grid) float32 {

@@ -4,7 +4,6 @@ import (
 	"biogo/v2/grid"
 	"biogo/v2/utils"
 	"fmt"
-	"math"
 )
 
 type Creature struct {
@@ -24,7 +23,7 @@ type Creature struct {
 func NewCreature(id int, loc grid.Coord, g *Genome) *Creature {
 	c := Creature{
 		Id:             id,
-		Energy:         float32(g.MaxEnergy / math.MaxUint8),
+		Energy:         float32(g.MaxEnergy),
 		Age:            0,
 		Alive:          true,
 		Clock:          int(g.OscPeriod), // TODO() Maybe fix this?

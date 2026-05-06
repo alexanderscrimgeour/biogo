@@ -117,7 +117,10 @@ func TestDrawBox(t *testing.T) {
 
 func TestFindEmptyLocation(t *testing.T) {
 	g := grid.NewGrid(20, 20, 0)
-	loc := g.FindEmptyLocation()
+	loc, ok := g.FindEmptyLocation()
+	if !ok {
+		t.Fatal("FindEmptyLocation returned false on an empty grid")
+	}
 	if !g.IsInBounds(loc) {
 		t.Errorf("FindEmptyLocation returned out-of-bounds coord %v", loc)
 	}
@@ -165,5 +168,68 @@ func TestDensityNeighbours(t *testing.T) {
 	})
 	if density != 0 {
 		t.Errorf("empty grid density should be 0, got %f", density)
+	}
+}
+
+func TestSpawnFood(t *testing.T) {
+	g := grid.NewGrid(20, 20, 0)
+	g.ZeroFill()
+	g.SpawnFood(5)
+
+	if len(g.FoodLocations) != 5 {
+		t.Errorf("expected 5 food locations, got %d", len(g.FoodLocations))
+	}
+	for _, loc := range g.FoodLocations {
+		if !g.IsFood(loc) {
+			t.Errorf("expected food at %v", loc)
+		}
+	}
+}
+
+func TestIsFoodNotOccupied(t *testing.T) {
+	g := grid.NewGrid(20, 20, 0)
+	g.ZeroFill()
+	loc := grid.Coord{X: 5, Y: 5}
+	g.Set(loc, grid.FOOD)
+
+	if !g.IsFood(loc) {
+		t.Error("IsFood should return true for FOOD cell")
+	}
+	if g.IsOccupiedAt(loc) {
+		t.Error("IsOccupiedAt should return false for FOOD cell (food is not a creature)")
+	}
+	if g.IsEmptyAt(loc) {
+		t.Error("IsEmptyAt should return false for FOOD cell")
+	}
+}
+
+func TestRemoveFood(t *testing.T) {
+	g := grid.NewGrid(20, 20, 0)
+	g.ZeroFill()
+	g.SpawnFood(3)
+	initial := len(g.FoodLocations)
+
+	loc := g.FoodLocations[0]
+	g.RemoveFood(loc)
+
+	if len(g.FoodLocations) != initial-1 {
+		t.Errorf("expected %d food locations after removal, got %d", initial-1, len(g.FoodLocations))
+	}
+	if g.IsFood(loc) {
+		t.Error("cell should no longer be food after RemoveFood")
+	}
+	if !g.IsEmptyAt(loc) {
+		t.Error("cell should be empty after RemoveFood")
+	}
+}
+
+func TestZeroFillClearsFoodLocations(t *testing.T) {
+	g := grid.NewGrid(20, 20, 0)
+	g.ZeroFill()
+	g.SpawnFood(5)
+	g.ZeroFill()
+
+	if len(g.FoodLocations) != 0 {
+		t.Errorf("ZeroFill should clear FoodLocations, got %d", len(g.FoodLocations))
 	}
 }
