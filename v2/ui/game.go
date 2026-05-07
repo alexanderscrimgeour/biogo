@@ -4,10 +4,14 @@ import (
 	"biogo/v2/simulation"
 	"fmt"
 	"image/color"
+	"math"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/examples/resources/fonts"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 )
@@ -24,17 +28,42 @@ type SimulationState interface {
 	PopulationCount() int
 	FoodCount() int
 	AverageAge() float64
+	CreatureMinSize() byte
+	CreatureMaxSize() byte
 }
 
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
 
+const (
+	fovBtnX = 10
+	fovBtnY = 10
+	fovBtnW = 70
+	fovBtnH = 24
+)
+
+// creatureAnim holds the screen-space state of a creature across one
+// simulation tick so Draw() can lerp positions and render triangles.
+type creatureAnim struct {
+	prevX, prevY float64 // position before the last sim step (pixels)
+	curX, curY   float64 // position after the last sim step (pixels)
+	r, g, b, a   uint8
+	dirX, dirY   int
+	size         byte
+}
+
 type Game struct {
 	sim             SimulationState
 	renderGrid      *RenderGrid
-	blobsByID       map[int]*Blob
 	foodBlobsByKey  map[string]*Blob
 	corpseBlobsByID map[int]*Blob
 	statFont        font.Face
+	showFOV         bool
+	whiteImage      *ebiten.Image
+	animByID        map[int]*creatureAnim
+	lastTickTime    time.Time
+	tickDuration    time.Duration
+	minCreatureSize byte
+	maxCreatureSize byte
 }
 
 var BlockSize int = 2
@@ -47,13 +76,19 @@ func NewGame(sim SimulationState) *Game {
 		Hinting: font.HintingFull,
 	})
 
+	wImg := ebiten.NewImage(1, 1)
+	wImg.Fill(color.White)
+
 	g := &Game{
 		sim:             sim,
 		renderGrid:      NewRenderGrid(0, 0, BlockSize),
-		blobsByID:       make(map[int]*Blob),
 		foodBlobsByKey:  make(map[string]*Blob),
 		corpseBlobsByID: make(map[int]*Blob),
 		statFont:        statFont,
+		whiteImage:      wImg,
+		animByID:        make(map[int]*creatureAnim),
+		minCreatureSize: sim.CreatureMinSize(),
+		maxCreatureSize: sim.CreatureMaxSize(),
 	}
 
 	// Dirty fix, fix with rendering from sim.walls
@@ -78,26 +113,46 @@ func NewGame(sim SimulationState) *Game {
 }
 
 func (g *Game) Update() error {
+	// Snapshot the target positions from last tick as the interpolation start
+	// for this tick. Done before sim.Update() so we capture where creatures were.
+	prevByID := make(map[int][2]float64, len(g.animByID))
+	for id, anim := range g.animByID {
+		prevByID[id] = [2]float64{anim.curX, anim.curY}
+	}
+
 	g.sim.Update()
 
-	// Reconcile creature blobs with current simulation state.
+	// Reconcile creature anims with current simulation state.
 	views := g.sim.CreatureViews()
 	currentIDs := make(map[int]bool, len(views))
 	for _, cv := range views {
 		currentIDs[cv.ID] = true
-		if blob, ok := g.blobsByID[cv.ID]; ok {
-			blob.Move(float64(cv.X*BlockSize), float64(cv.Y*BlockSize))
+		screenX := float64(cv.X * BlockSize)
+		screenY := float64(cv.Y * BlockSize)
+
+		if anim, ok := g.animByID[cv.ID]; ok {
+			if prev, ok := prevByID[cv.ID]; ok {
+				anim.prevX, anim.prevY = prev[0], prev[1]
+			} else {
+				anim.prevX, anim.prevY = screenX, screenY
+			}
+			anim.curX, anim.curY = screenX, screenY
+			anim.r, anim.g, anim.b, anim.a = cv.R, cv.G, cv.B, cv.A
+			anim.dirX, anim.dirY = cv.DirX, cv.DirY
+			anim.size = cv.Size
 		} else {
-			c := color.RGBA{R: cv.R, G: cv.G, B: cv.B, A: cv.A}
-			blob := g.renderGrid.AddBlob(BlockSize, c)
-			blob.Translate(float64(cv.X*BlockSize), float64(cv.Y*BlockSize))
-			g.blobsByID[cv.ID] = blob
+			g.animByID[cv.ID] = &creatureAnim{
+				prevX: screenX, prevY: screenY,
+				curX: screenX, curY: screenY,
+				r: cv.R, g: cv.G, b: cv.B, a: cv.A,
+				dirX: cv.DirX, dirY: cv.DirY,
+				size: cv.Size,
+			}
 		}
 	}
-	for id, blob := range g.blobsByID {
+	for id := range g.animByID {
 		if !currentIDs[id] {
-			g.renderGrid.RemoveBlob(blob)
-			delete(g.blobsByID, id)
+			delete(g.animByID, id)
 		}
 	}
 
@@ -143,15 +198,183 @@ func (g *Game) Update() error {
 		}
 	}
 
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		mx, my := ebiten.CursorPosition()
+		if mx >= fovBtnX && mx < fovBtnX+fovBtnW && my >= fovBtnY && my < fovBtnY+fovBtnH {
+			g.showFOV = !g.showFOV
+		}
+	}
+
+	// Record time at the very end so Draw() can compute how far into this
+	// tick we are. tickDuration measures end-to-end time between ticks.
+	now := time.Now()
+	if !g.lastTickTime.IsZero() {
+		g.tickDuration = now.Sub(g.lastTickTime)
+	}
+	g.lastTickTime = now
+
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{15, 15, 15, 255})
-	g.renderGrid.DrawGrid(screen)
+
+	// Static world elements (walls, food).
+	g.renderGrid.DrawBackground(screen)
+
+	// How far through the current simulation tick are we?
+	// t=0 → just started the tick (draw at prev position)
+	// t=1 → tick is complete   (draw at current position)
+	t := 1.0
+	if g.tickDuration > 0 {
+		elapsed := time.Since(g.lastTickTime)
+		t = float64(elapsed) / float64(g.tickDuration)
+		if t > 1 {
+			t = 1
+		}
+	}
+
+	// Corpses sit still; draw them at their blob's stored position.
+	for _, blob := range g.corpseBlobsByID {
+		blob.Draw(screen)
+	}
+
+	// Creatures are triangles pointing in their travel direction.
+	// Circumradius scales linearly from BlockSize (MinSize) to 3*BlockSize (MaxSize).
+	var creatureVs []ebiten.Vertex
+	var creatureIs []uint16
+	sizeRange := float64(g.maxCreatureSize) - float64(g.minCreatureSize)
+	half := float64(BlockSize) / 2
+	for _, anim := range g.animByID {
+		lerpX := anim.prevX + (anim.curX-anim.prevX)*t
+		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
+		cx := float32(lerpX + half)
+		cy := float32(lerpY + half)
+
+		var r float64
+		if sizeRange > 0 {
+			sizeT := (float64(anim.size) - float64(g.minCreatureSize)) / sizeRange
+			if sizeT < 0 {
+				sizeT = 0
+			} else if sizeT > 1 {
+				sizeT = 1
+			}
+			r = float64(BlockSize) + sizeT*float64(2*BlockSize)
+		} else {
+			r = float64(BlockSize)
+		}
+
+		var angle float64
+		if anim.dirX == 0 && anim.dirY == 0 {
+			angle = -math.Pi / 2
+		} else {
+			angle = math.Atan2(float64(anim.dirY), float64(anim.dirX))
+		}
+
+		cr := float32(anim.r) / 255
+		cg := float32(anim.g) / 255
+		cb := float32(anim.b) / 255
+		ca := float32(anim.a) / 255
+
+		baseIdx := uint16(len(creatureVs))
+		for _, offset := range [3]float64{0, 2 * math.Pi / 3, -2 * math.Pi / 3} {
+			creatureVs = append(creatureVs, ebiten.Vertex{
+				DstX:   cx + float32(r)*float32(math.Cos(angle+offset)),
+				DstY:   cy + float32(r)*float32(math.Sin(angle+offset)),
+				SrcX:   0, SrcY: 0,
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			})
+		}
+		creatureIs = append(creatureIs, baseIdx, baseIdx+1, baseIdx+2)
+	}
+	if len(creatureVs) > 0 {
+		screen.DrawTriangles(creatureVs, creatureIs, g.whiteImage, &ebiten.DrawTrianglesOptions{
+			FillRule: ebiten.FillAll,
+		})
+	}
+
+	if g.showFOV {
+		g.drawFOVCones(screen, g.sim.CreatureViews(), t)
+	}
+	g.drawFOVButton(screen)
 	g.addStatLine(screen, "Population", fmt.Sprintf("%d", g.sim.PopulationCount()), 1)
 	g.addStatLine(screen, "Food", fmt.Sprintf("%d", g.sim.FoodCount()), 2)
 	g.addStatLine(screen, "Avg Age", fmt.Sprintf("%.0f", g.sim.AverageAge()), 3)
+}
+
+func (g *Game) drawFOVButton(screen *ebiten.Image) {
+	var bg color.RGBA
+	if g.showFOV {
+		bg = color.RGBA{R: 80, G: 120, B: 200, A: 220}
+	} else {
+		bg = color.RGBA{R: 50, G: 50, B: 70, A: 220}
+	}
+	vector.DrawFilledRect(screen, fovBtnX, fovBtnY, fovBtnW, fovBtnH, bg, false)
+	text.Draw(screen, "FOV", g.statFont, fovBtnX+8, fovBtnY+17, color.White)
+}
+
+func (g *Game) drawFOVCones(screen *ebiten.Image, views []simulation.CreatureView, t float64) {
+	var allVs []ebiten.Vertex
+	var allIs []uint16
+
+	flush := func() {
+		if len(allVs) == 0 {
+			return
+		}
+		screen.DrawTriangles(allVs, allIs, g.whiteImage, &ebiten.DrawTrianglesOptions{
+			FillRule: ebiten.FillAll,
+		})
+		allVs = allVs[:0]
+		allIs = allIs[:0]
+	}
+
+	half := float32(BlockSize) / 2
+	for _, cv := range views {
+		if cv.SightDistance == 0 || cv.FieldOfView == 0 || (cv.DirX == 0 && cv.DirY == 0) {
+			continue
+		}
+
+		// Default apex at the grid position; override with interpolated position
+		// when available so the cone tracks the creature body exactly.
+		cx := float32(cv.X*BlockSize) + half
+		cy := float32(cv.Y*BlockSize) + half
+		if anim, ok := g.animByID[cv.ID]; ok {
+			cx = float32(anim.prevX+(anim.curX-anim.prevX)*t) + half
+			cy = float32(anim.prevY+(anim.curY-anim.prevY)*t) + half
+		}
+		r := float32(cv.SightDistance) * float32(BlockSize)
+		halfFOV := float64(cv.FieldOfView) / 2.0 * math.Pi / 180.0
+		dirAngle := math.Atan2(float64(cv.DirY), float64(cv.DirX))
+		startAngle := float32(dirAngle - halfFOV)
+		endAngle := float32(dirAngle + halfFOV)
+
+		var path vector.Path
+		path.MoveTo(cx, cy)
+		path.Arc(cx, cy, r, startAngle, endAngle, vector.Clockwise)
+		path.Close()
+
+		vs, is := path.AppendVerticesAndIndicesForFilling(nil, nil)
+		cr := float32(cv.R) / 255
+		cg := float32(cv.G) / 255
+		cb := float32(cv.B) / 255
+		for i := range vs {
+			vs[i].ColorR = cr
+			vs[i].ColorG = cg
+			vs[i].ColorB = cb
+			vs[i].ColorA = 0.15
+		}
+
+		if len(allVs)+len(vs) > 65535 {
+			flush()
+		}
+		offset := uint16(len(allVs))
+		for _, idx := range is {
+			allIs = append(allIs, idx+offset)
+		}
+		allVs = append(allVs, vs...)
+	}
+
+	flush()
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {

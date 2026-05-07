@@ -25,6 +25,7 @@ type Grid struct {
 	Data          [][]int
 	WallLocations []Coord
 	FoodLocations []Coord
+	Torodial      bool
 	Type          MapType
 }
 
@@ -124,15 +125,38 @@ func (grid Grid) IsOccupiedAt(loc Coord) bool {
 func (grid Grid) IsFood(loc Coord) bool {
 	return grid.Data[loc.X][loc.Y] == FOOD
 }
-
 func (g *Grid) SpawnFood(n int) {
-	for i := 0; i < n; i++ {
-		loc, ok := g.FindEmptyLocation()
+	totalSpawned := 0
+	patchSize := 25
+	radius := 10
+
+	for totalSpawned < n {
+		// 1. Pick a new seed for this patch
+		seed, ok := g.FindEmptyLocation()
 		if !ok {
 			break
 		}
-		g.Data[loc.X][loc.Y] = FOOD
-		g.FoodLocations = append(g.FoodLocations, loc)
+
+		for i := 0; i < patchSize && totalSpawned < n; i++ {
+			placed := false
+			for attempts := 0; attempts < 20; attempts++ {
+				offsetX := rand.Intn(radius*2+1) - radius
+				offsetY := rand.Intn(radius*2+1) - radius
+				loc := Coord{X: seed.X + offsetX, Y: seed.Y + offsetY}
+
+				if g.IsInBounds(loc) && g.At(loc) == EMPTY {
+					g.Data[loc.X][loc.Y] = FOOD
+					g.FoodLocations = append(g.FoodLocations, loc)
+					totalSpawned++
+					placed = true
+					break
+				}
+			}
+
+			if !placed {
+				break
+			}
+		}
 	}
 }
 
