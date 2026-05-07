@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"runtime"
+	"sync"
 )
 
 type Simulation struct {
@@ -28,7 +30,7 @@ func New(params *Parameters) *Simulation {
 
 func (s *Simulation) initializeWorld() {
 	s.World = grid.NewWorld(float64(s.Params.GridWidth), float64(s.Params.GridHeight), 1)
-	s.World.SpawnFood(s.Params.MaxFood)
+	s.World.SpawnFood(s.Params.MaxFood, s.Params.FoodPatchRadius, s.Params.FoodPatchSize)
 }
 
 func (s *Simulation) initializePopulation() {
@@ -96,17 +98,40 @@ func (s *Simulation) step() {
 			toSpawn = available
 		}
 		if toSpawn > 0 {
-			s.World.SpawnFood(toSpawn)
+			s.World.SpawnFood(toSpawn, s.Params.FoodPatchRadius, s.Params.FoodPatchSize)
 		}
 	}
 
-	for _, creature := range s.Population.Creatures {
-		if creature.Alive {
-			s.stepCreature(creature)
-		}
+	// Collect alive IDs before spawning goroutines so the map is not modified
+	// while goroutines are reading it.
+	ids := s.Population.AliveIDs()
+	n := runtime.GOMAXPROCS(0)
+	batches := partitionIDs(ids, n)
+
+	// Each goroutine writes to its own pendingInstructions; no shared mutation.
+	results := make([]pendingInstructions, n)
+	var wg sync.WaitGroup
+	for i, batch := range batches {
+		wg.Add(1)
+		go func(idx int, b []int) {
+			defer wg.Done()
+			for _, id := range b {
+				s.stepCreatureLocal(s.Population.Creatures[id], &results[idx])
+			}
+		}(i, batch)
+	}
+	wg.Wait()
+
+	// Merge per-goroutine command buffers into the shared queues.
+	for i := range results {
+		s.Population.DeathQueue = append(s.Population.DeathQueue, results[i].death...)
+		s.Population.MoveQueue = append(s.Population.MoveQueue, results[i].move...)
+		s.Population.EatQueue = append(s.Population.EatQueue, results[i].eat...)
+		s.Population.ReproductionQueue = append(s.Population.ReproductionQueue, results[i].reproduction...)
 	}
 
 	s.Population.ProcessMoveQueue(s.World, s.Params)
+	s.Population.ProcessEatQueue(s.World, s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
 	s.Population.ProcessCorpseDecay(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params, s.allocateID)
@@ -135,36 +160,37 @@ func (s *Simulation) step() {
 	s.Tick++
 }
 
-func (s *Simulation) stepCreature(c *Creature) {
+func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions) {
 	c.Age++
-	c.LastAction = "Idle"
+	c.GrowMass(s.Params)
+	c.LastAction = ""
 	c.Energy -= c.MetabolicRate(s.Params)
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
-		s.Population.QueueForDeath(c)
+		pending.death = append(pending.death, DeathInstruction{c})
 		return
 	}
 
 	juvenilePeriod := s.Params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(s.Params.MaxJuvenilePeriod-s.Params.MinJuvenilePeriod))
 	reproThreshold := s.Params.ReproductionEnergyThreshold * float32(c.Genome.MaxEnergy)
-	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod {
-		s.Population.QueueForReproduction(c)
-		c.LastAction = "Reproducing"
+	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod && c.Mass >= float32(c.Genome.Mass) {
+		pending.reproduction = append(pending.reproduction, ReproductionInstruction{c})
+		c.LastAction = appendActionString(c.LastAction, "Reproducing")
 	}
 
 	actionLevels := c.FeedForward(s.World, s.Population, s.Tick, s.Params)
-	s.executeActions(c, actionLevels)
+	s.executeActionsLocal(c, actionLevels, pending)
 }
 
 func (s *Simulation) Print() {
 	fmt.Printf("Population Size: %d", len(s.Population.Creatures))
 }
 
-func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
+func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pending *pendingInstructions) {
 	if IsActionEnabled(DO_NOTHING) {
 		level := actionLevels[DO_NOTHING]
 		if level > 0 && prob2Bool(float64(level)) == 1 {
 			c.Energy += c.MetabolicRate(s.Params)
-			c.LastAction = "Resting"
+			c.LastAction = appendActionString(c.LastAction, "Resting")
 			return
 		}
 	}
@@ -173,6 +199,16 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 		resp := actionLevels[SET_RESPONSIVENESS]
 		resp = (float32(math.Tanh(float64(resp/float32(utils.ClampByteAsFloat32(0, 1, c.Genome.Responsiveness))))) + 1) / 2
 		c.Responsiveness = resp
+	}
+
+	if IsActionEnabled(EAT) {
+		level := actionLevels[EAT]
+		if level > 0 && prob2Bool(float64(level)) == 1 {
+			if targetID := findNearestInFOV(c, s.World, s.Params.PredationRadius); targetID != -1 {
+				pending.eat = append(pending.eat, EatInstruction{c, targetID})
+				c.LastAction = appendActionString(c.LastAction, "Eating")
+			}
+		}
 	}
 
 	responseAdjust := responseCurve(c.Responsiveness, s.Params.ResponseCurveKFactor)
@@ -196,6 +232,11 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 		rotateRight = float64(actionLevels[ROTATE_RIGHT])
 	}
 	rotateAmount := math.Tanh(rotateLeft-rotateRight) * float64(responseAdjust) * s.Params.MaxRotationPerStep
+	if rotateAmount != 0 {
+		rotationCostFactor := 0.5
+		c.Energy -= s.Params.MoveCost * float32(math.Abs(rotateAmount)) * float32(rotationCostFactor)
+		c.LastAction = appendActionString(c.LastAction, "Rotating")
+	}
 	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
 
 	// Forward/backward movement.
@@ -227,8 +268,8 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 
 	if !s.World.IsWall(newPos) {
 		c.Energy -= s.Params.MoveCost * float32(massFactor)
-		c.LastAction = "Moving"
-		s.Population.QueueForMove(c, newPos)
+		c.LastAction = appendActionString(c.LastAction, "Moving")
+		pending.move = append(pending.move, MoveInstruction{c, newPos})
 	}
 }
 
@@ -270,4 +311,52 @@ func prob2Bool(val float64) int {
 func responseCurve(resp float32, kFactor float32) float32 {
 	k := float64(kFactor)
 	return float32(math.Pow(float64(resp)-2.0, -2*k)) - float32(math.Pow(2.0, -2.0*k))*(1-resp)
+}
+
+// findNearestInFOV returns the ID of the closest creature within the FOV cone
+// and the given radius, or -1 if none is found.
+func findNearestInFOV(c *Creature, w *grid.World, radius float64) int {
+	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
+
+	bestID := -1
+	bestDist := math.MaxFloat64
+
+	for _, id := range w.GetCreaturesInRadius(c.Loc, radius) {
+		if id == c.Id {
+			continue
+		}
+		pos, _ := w.GetCreaturePos(id)
+		dx := pos.X - c.Loc.X
+		dy := pos.Y - c.Loc.Y
+		d := math.Sqrt(dx*dx + dy*dy)
+		if d == 0 || d >= radius {
+			continue
+		}
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos && d < bestDist {
+			bestDist = d
+			bestID = id
+		}
+	}
+	return bestID
+}
+
+// partitionIDs splits ids into n roughly equal batches using round-robin assignment.
+func partitionIDs(ids []int, n int) [][]int {
+	if n <= 0 {
+		n = 1
+	}
+	batches := make([][]int, n)
+	for i, id := range ids {
+		batches[i%n] = append(batches[i%n], id)
+	}
+	return batches
+}
+
+func appendActionString(base, new string) string {
+	if base == "" {
+		return new
+	} else {
+		return fmt.Sprintf("%s | %s", base, new)
+	}
 }

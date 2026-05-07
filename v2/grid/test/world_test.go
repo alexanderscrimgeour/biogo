@@ -120,9 +120,18 @@ func TestGetFoodInRadius(t *testing.T) {
 
 func TestSpawnFood(t *testing.T) {
 	w := grid.NewWorld(200, 200, 0)
-	w.SpawnFood(10)
-	if w.FoodCount() == 0 {
-		t.Error("SpawnFood should create food items")
+	w.SpawnFood(10, 20.0, 200)
+	if w.FoodCount() != 10 {
+		t.Errorf("SpawnFood(10) should place exactly 10 items, got %d", w.FoodCount())
+	}
+}
+
+func TestSpawnFoodParameterisedPatch(t *testing.T) {
+	// Small patchSize forces multiple patches to satisfy n.
+	w := grid.NewWorld(500, 500, 0)
+	w.SpawnFood(50, 10.0, 5)
+	if w.FoodCount() != 50 {
+		t.Errorf("SpawnFood(50) with patchSize=5 should place exactly 50 items, got %d", w.FoodCount())
 	}
 }
 

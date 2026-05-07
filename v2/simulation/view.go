@@ -21,6 +21,7 @@ type FoodView struct {
 type CorpseView struct {
 	ID             int
 	X, Y           float64
+	IsCorpse       bool
 	EnergyFraction float32
 }
 
@@ -40,6 +41,9 @@ type CreatureDetailView struct {
 	NeuronCount    byte
 	BrainLength    int
 	MutationPct    float32 // actual per-gene mutation probability as a percentage
+	R, G, B        uint8   // genome-derived display colour
+	MetabolicRate  float32 // energy drained per tick
+	MaxAge         int     // maximum lifespan in ticks
 }
 
 // CreatureDetail returns a detailed view of a living creature by ID.
@@ -49,6 +53,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	if !ok || !c.Alive {
 		return CreatureDetailView{}, false
 	}
+	r, g, b, _ := genomeColor(c.Genome)
 	return CreatureDetailView{
 		ID:             c.Id,
 		Energy:         c.Energy,
@@ -64,6 +69,11 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		NeuronCount:    c.Genome.NeuronCount,
 		BrainLength:    len(c.Genome.Brain),
 		MutationPct:    s.Params.MinMutationRate * float32(c.Genome.MutationRate) * 100,
+		R:              r,
+		G:              g,
+		B:              b,
+		MetabolicRate:  c.MetabolicRate(s.Params),
+		MaxAge:         c.MaxAge(s.Params),
 	}, true
 }
 
