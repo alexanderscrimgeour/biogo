@@ -110,11 +110,26 @@ func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 	p.MaxMass = 50
 	for i := 0; i < 100; i++ {
 		g := simulation.MakeRandomGenome(p)
-		if g.Mass > p.MaxMass {
-			t.Errorf("Mass %d exceeds MaxMass %d", g.Mass, p.MaxMass)
+		if g.Mass < 3 || g.Mass > p.MaxMass {
+			t.Errorf("Mass %d outside [3, %d]", g.Mass, p.MaxMass)
 		}
-		if g.MinMass < 1 || g.MinMass > g.Mass {
-			t.Errorf("MinMass %d outside [1, %d]", g.MinMass, g.Mass)
+		if g.MinMass < 1 {
+			t.Errorf("MinMass %d below 1", g.MinMass)
+		}
+		if float32(g.MinMass)*2 >= float32(g.Mass) {
+			t.Errorf("MinMass constraint violated: MinMass=%d, Mass=%d (need MinMass < Mass/2)", g.MinMass, g.Mass)
+		}
+	}
+}
+
+func TestMutatePreservesMinMassConstraint(t *testing.T) {
+	p := defaultParams()
+	p.MinMutationRate = 1.0 // force mutations on every gene
+	for i := 0; i < 200; i++ {
+		g := simulation.MakeRandomGenome(p)
+		simulation.Mutate(g, p)
+		if float32(g.MinMass)*2 >= float32(g.Mass) {
+			t.Fatalf("Mutate violated MinMass constraint: MinMass=%d, Mass=%d", g.MinMass, g.Mass)
 		}
 	}
 }

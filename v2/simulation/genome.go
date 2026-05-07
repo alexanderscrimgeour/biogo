@@ -149,7 +149,10 @@ func MakeRandomGene() *Gene {
 }
 
 func MakeRandomGenome(p *Parameters) *Genome {
-	mass := utils.ClampByte(1, p.MaxMass, utils.MakeRandomByte())
+	// Mass must be >= 3 to guarantee a valid MinMass (MinMass < Mass/2 requires Mass > 2).
+	mass := utils.ClampByte(3, p.MaxMass, utils.MakeRandomByte())
+	// MaxMinMass = (mass-1)/2 ensures MinMass is strictly less than mass/2.0.
+	maxMinMass := (mass - 1) / 2
 	g := Genome{
 		OscPeriod:        utils.ClampByte(1, math.MaxUint8, utils.MakeRandomByte()),
 		MaxEnergy:        utils.ClampByte(p.MinEnergy, p.MaxEnergy, utils.MakeRandomByte()),
@@ -158,7 +161,7 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		Responsiveness:   utils.MakeRandomByte(),
 		MutationRate:     utils.ClampByte(1, math.MaxUint8, utils.MakeRandomByte()),
 		Mass:             mass,
-		MinMass:          utils.ClampByte(1, mass, utils.MakeRandomByte()),
+		MinMass:          utils.ClampByte(1, maxMinMass, utils.MakeRandomByte()),
 		ReproductionType: makeRandomBool(),
 		NeuronCount:      utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, utils.MakeRandomByte()),
 		BrainLength:      utils.ClampByte(p.MinStartNeuronCount, p.MaxStartNeuronCount, utils.MakeRandomByte()),
@@ -219,11 +222,23 @@ func Mutate(g *Genome, p *Parameters) {
 			case MASS:
 				new := g.Mass
 				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.Mass = utils.ClampByte(g.MinMass, p.MaxMass, new)
+				g.Mass = utils.ClampByte(3, p.MaxMass, new)
+				// Re-enforce MinMass < Mass/2 after mass may have decreased.
+				maxMinMass := (g.Mass - 1) / 2
+				if maxMinMass < 1 {
+					maxMinMass = 1
+				}
+				if g.MinMass > maxMinMass {
+					g.MinMass = maxMinMass
+				}
 			case MIN_MASS:
 				new := g.MinMass
 				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.MinMass = utils.ClampByte(1, g.Mass, new)
+				maxMinMass := (g.Mass - 1) / 2
+				if maxMinMass < 1 {
+					maxMinMass = 1
+				}
+				g.MinMass = utils.ClampByte(1, maxMinMass, new)
 			case REPRODUCTION_TYPE:
 				g.ReproductionType ^= 1
 			case NEURON_COUNT:

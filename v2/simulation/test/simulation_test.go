@@ -171,6 +171,7 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
 		c.Energy = float32(c.Genome.MaxEnergy)
+		c.Age = 0 // reset so the full juvenile phase must elapse before reproduction
 	}
 
 	initialCount := sim.PopulationCount()

@@ -25,12 +25,10 @@ const (
 	GENETIC_SIM_FORWARD
 	RANDOM
 	SIGHT_FOOD_FORWARD
+	POPULATION_FOV
+	SATIATION
 
 	SENSOR_COUNT
-
-	// Unimplemented
-	SATIATION
-	
 )
 
 func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep int, params *Parameters) float32 {
@@ -95,6 +93,16 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 
 	case SIGHT_FOOD_FORWARD:
 		output = calculateSightFoodFwd(c, w)
+
+	case POPULATION_FOV:
+		output = calculatePopulationFOV(c, w)
+
+	case SATIATION:
+		minE := float32(params.MinEnergy)
+		maxE := float32(c.Genome.MaxEnergy)
+		if maxE > minE {
+			output = (c.Energy - minE) / (maxE - minE)
+		}
 
 	case RANDOM:
 		fallthrough
@@ -185,6 +193,37 @@ func calculateGeneticSimFwd(c Creature, w *grid.World, p *Population) float32 {
 		}
 	}
 	return 0
+}
+
+// calculatePopulationFOV returns a distance-weighted signal [0,1] for the
+// nearest creature within the FOV cone and eat radius. Returns 0 when no
+// creature is present.
+func calculatePopulationFOV(c Creature, w *grid.World) float32 {
+	const eatRadius = 2.0
+	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
+
+	best := float32(0)
+	for _, id := range w.GetCreaturesInRadius(c.Loc, eatRadius) {
+		if id == c.Id {
+			continue
+		}
+		pos, _ := w.GetCreaturePos(id)
+		dx := pos.X - c.Loc.X
+		dy := pos.Y - c.Loc.Y
+		d := math.Sqrt(dx*dx + dy*dy)
+		if d == 0 {
+			continue
+		}
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
+			continue
+		}
+		val := float32(1.0 - d/eatRadius)
+		if val > best {
+			best = val
+		}
+	}
+	return best
 }
 
 func getLocalPopulationDensity(loc grid.Position, w *grid.World, params *Parameters) float32 {

@@ -11,6 +11,7 @@ type Population struct {
 	Creatures         map[int]*Creature
 	DeathQueue        []DeathInstruction
 	MoveQueue         []MoveInstruction
+	EatQueue          []EatInstruction
 	ReproductionQueue []ReproductionInstruction
 }
 
@@ -27,11 +28,26 @@ type MoveInstruction struct {
 	Loc      grid.Position
 }
 
+type EatInstruction struct {
+	Predator *Creature
+	TargetID int
+}
+
+// pendingInstructions accumulates instructions produced by a single goroutine's
+// creature batch before they are merged into the shared Population queues.
+type pendingInstructions struct {
+	death        []DeathInstruction
+	move         []MoveInstruction
+	eat          []EatInstruction
+	reproduction []ReproductionInstruction
+}
+
 func NewPopulation(p *Parameters) *Population {
 	return &Population{
 		Creatures:         make(map[int]*Creature, p.StartingPopulation),
 		DeathQueue:        []DeathInstruction{},
 		MoveQueue:         []MoveInstruction{},
+		EatQueue:          []EatInstruction{},
 		ReproductionQueue: []ReproductionInstruction{},
 	}
 }
@@ -48,6 +64,21 @@ func (p *Population) QueueForReproduction(creature *Creature) {
 	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{creature})
 }
 
+func (p *Population) QueueForEat(predator *Creature, targetID int) {
+	p.EatQueue = append(p.EatQueue, EatInstruction{predator, targetID})
+}
+
+// AliveIDs returns the IDs of all currently alive creatures.
+func (p *Population) AliveIDs() []int {
+	ids := make([]int, 0, len(p.Creatures))
+	for id, c := range p.Creatures {
+		if c.Alive {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func (p *Population) AliveCount() int {
 	count := 0
 	for _, c := range p.Creatures {
@@ -58,8 +89,8 @@ func (p *Population) AliveCount() int {
 	return count
 }
 
-// ProcessMoveQueue moves each queued creature to its target position, then checks
-// for food and creatures in proximity to trigger eating and predation.
+// ProcessMoveQueue moves each queued creature to its target position and
+// consumes the nearest food item within interaction radius if one is present.
 func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 	for _, instruction := range p.MoveQueue {
 		c := instruction.Creature
@@ -88,38 +119,33 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 			w.RemoveFood(closestID)
 		}
 
-		// Predate or scavenge the closest creature within predation radius.
-		nearbyIDs := w.GetCreaturesInRadius(newPos, params.PredationRadius)
-		for _, targetID := range nearbyIDs {
-			if targetID == c.Id {
-				continue
-			}
-			target, ok := p.Creatures[targetID]
-			if !ok {
-				continue
-			}
-			maxE := float32(c.Genome.MaxEnergy)
-			targetMass := target.CurrentMass(params)
-			gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
-			c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
-
-			if target.Alive {
-				// Predation: kill prey in place; corpse stays in world.
-				target.Alive = false
-				target.Energy = targetMass
-			} else {
-				// Scavenging: consume and remove the corpse.
-				w.RemoveCreature(target.Id)
-				delete(p.Creatures, target.Id)
-			}
-			break
-		}
-
 		// Move the creature.
 		w.MoveCreature(c.Id, newPos)
 		c.Loc = newPos
 	}
 	p.MoveQueue = []MoveInstruction{}
+}
+
+// ProcessEatQueue resolves EAT-action predation queued during the current tick.
+// Only living targets are consumed.
+func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
+	for _, instruction := range p.EatQueue {
+		predator := instruction.Predator
+		if !predator.Alive {
+			continue
+		}
+		target, ok := p.Creatures[instruction.TargetID]
+		if !ok || !target.Alive {
+			continue
+		}
+		targetMass := target.CurrentMass(params)
+		gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
+		maxE := float32(predator.Genome.MaxEnergy)
+		predator.Energy = utils.MinFloat32(maxE, predator.Energy+gain)
+		target.Alive = false
+		target.Energy = targetMass
+	}
+	p.EatQueue = []EatInstruction{}
 }
 
 // ProcessDeathQueue marks queued creatures as dead and sets their energy to their
@@ -148,6 +174,9 @@ func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 }
 
 // ProcessReproductionQueue spawns offspring near queued parents.
+// Requires the parent to be at full mass and above the energy threshold.
+// On reproduction the parent loses energy and half its body mass; the child
+// is created at that half-mass size and grows back to full mass over time.
 func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters, nextID func() int) {
 	for _, ri := range p.ReproductionQueue {
 		if p.AliveCount() >= params.MaxPopulation {
@@ -157,8 +186,20 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 		if !parent.Alive {
 			continue
 		}
-		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy) * (float32(parent.Genome.Mass) / float32(params.MaxMass))
-		if parent.Energy < cost {
+
+		// Re-check energy threshold (creature may have spent energy since queueing).
+		if parent.Energy < params.ReproductionEnergyThreshold*float32(parent.Genome.MaxEnergy) {
+			continue
+		}
+
+		// Parent must be fully grown before it can split its mass.
+		if parent.Mass < float32(parent.Genome.Mass) {
+			continue
+		}
+
+		// MinMass must be strictly less than half of Mass to guarantee the child
+		// starts above the creature's minimum viable size.
+		if float32(parent.Genome.MinMass)*2 >= float32(parent.Genome.Mass) {
 			continue
 		}
 
@@ -167,10 +208,17 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 			continue
 		}
 
+		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
 		parent.Energy -= cost
+
+		// Halve parent's body mass; the parent must regrow before reproducing again.
+		halfMass := parent.Mass / 2
+		parent.Mass = halfMass
+
 		childGenome := AsexualReproduction(parent.Genome, params)
 		id := nextID()
 		child := NewCreature(id, offspringLoc, childGenome)
+		child.Mass = halfMass
 		child.Energy = cost / 2
 		p.Creatures[id] = child
 		w.AddCreature(id, offspringLoc)

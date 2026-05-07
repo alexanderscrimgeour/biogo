@@ -47,8 +47,7 @@ type Parameters struct {
 	ReproductionEnergyThreshold float32
 	ReproductionEnergyCost      float32
 	// Predation and corpses
-	PreyEnergyFraction float32
-	CorpseDecayRate    float32
+	CorpseDecayRate float32
 	// Continuous-space movement
 	MaxSpeedPerStep    float64 // world units per tick (max)
 	MaxRotationPerStep float64 // radians per tick (max)
@@ -98,7 +97,6 @@ func DefaultParams() *Parameters {
 		MoveCost:                        0.05,
 		ReproductionEnergyThreshold:     0.85,
 		ReproductionEnergyCost:          0.2,
-		PreyEnergyFraction:              0.2,
 		CorpseDecayRate:                 0.05,
 		MaxSpeedPerStep:                 2.0,
 		MaxRotationPerStep:              math.Pi / 4,

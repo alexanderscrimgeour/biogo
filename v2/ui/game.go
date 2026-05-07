@@ -38,6 +38,13 @@ type SimulationState interface {
 
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
 
+const historyLen = 10000
+
+type histSample struct {
+	pop  int
+	food int
+}
+
 const (
 	fovBtnX = 10
 	fovBtnY = 10
@@ -72,13 +79,21 @@ const (
 	spawnMutRateMin = 0.0001
 	spawnMutRateMax = 0.2
 
-	// Creature detail panel
+	// Creature detail panel — sits below the history graph (graphPanelY+graphPanelH+4)
 	detailPanelX   = 10
-	detailPanelY   = 44
+	detailPanelY   = 168
 	detailPanelW   = 210
-	detailPanelH   = 215
+	detailPanelH   = 260
 	detailTpad     = 8
 	detailSaveBtnH = 22
+
+	// History graph panel (top-left, below button bar)
+	graphPanelX = 10
+	graphPanelY = 44
+	graphPanelW = 220
+	graphPanelH = 120
+	graphTextH  = 36
+	graphPad    = 4
 )
 
 type creatureAnim struct {
@@ -109,6 +124,9 @@ type Game struct {
 	paused             bool
 	spawnMutRate       float32
 	spawnMutDragging   bool
+	history            [historyLen]histSample
+	histHead           int
+	histCount          int
 }
 
 var BlockSize int = 2
@@ -160,6 +178,12 @@ func (g *Game) Update() error {
 		}
 
 		g.sim.Update()
+
+		g.history[g.histHead] = histSample{pop: g.sim.PopulationCount(), food: g.sim.FoodCount()}
+		g.histHead = (g.histHead + 1) % historyLen
+		if g.histCount < historyLen {
+			g.histCount++
+		}
 
 		views := g.sim.CreatureViews()
 		currentIDs := make(map[int]bool, len(views))
@@ -285,6 +309,8 @@ func (g *Game) Update() error {
 			g.corpseBlobsByID = make(map[int]*Blob)
 			g.selectedCreatureID = -1
 			g.lastTickTime = time.Time{}
+			g.histHead = 0
+			g.histCount = 0
 			clickedButton = true
 		}
 		if mx >= themeBtnX && mx < themeBtnX+themeBtnW && my >= themeBtnY && my < themeBtnY+themeBtnH {
@@ -367,6 +393,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.showFOV {
 		g.drawFOVCones(screen, g.sim.CreatureViews(), t)
 	}
+	g.drawHistoryGraph(screen)
 	if g.selectedCreatureID != -1 {
 		g.drawSelectionHighlight(screen)
 		if detail, ok := g.sim.CreatureDetail(g.selectedCreatureID); ok {
@@ -547,6 +574,19 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 
 	// Mutation
 	text.Draw(screen, fmt.Sprintf("Mutation  %.2f%%", d.MutationPct), g.statFont, tx, ty, color.White)
+	ty += 20
+
+	// Colour swatch + label
+	text.Draw(screen, "Color", g.statFont, tx, ty, color.White)
+	vector.DrawFilledRect(screen, float32(tx+52), float32(ty-11), 18, 14, color.RGBA{d.R, d.G, d.B, 255}, false)
+	ty += 18
+
+	// Metabolic rate
+	text.Draw(screen, fmt.Sprintf("Metab  %.2f/t", d.MetabolicRate), g.statFont, tx, ty, color.White)
+	ty += 18
+
+	// Max age
+	text.Draw(screen, fmt.Sprintf("Max Age  %d", d.MaxAge), g.statFont, tx, ty, color.White)
 
 	// Save button at the bottom of the panel.
 	saveBtnY := float32(detailPanelY + detailPanelH - detailTpad - detailSaveBtnH)
@@ -587,4 +627,87 @@ func creatureEnergyBarColor(frac float32) color.RGBA {
 		return color.RGBA{190, 175, 45, 255}
 	}
 	return color.RGBA{190, 55, 55, 255}
+}
+
+// drawHistoryGraph renders a semi-transparent line graph of population and food
+// history in the top-left corner. The rightmost point is the current tick.
+func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
+	if g.histCount < 2 {
+		return
+	}
+
+	vector.DrawFilledRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH,
+		color.RGBA{8, 10, 22, 160}, false)
+	vector.StrokeRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH, 1,
+		color.RGBA{50, 60, 90, 180}, false)
+
+	text.Draw(screen, fmt.Sprintf("Pop: %d", g.sim.PopulationCount()), g.statFont,
+		graphPanelX+graphPad, graphPanelY+15, color.RGBA{100, 180, 255, 255})
+	text.Draw(screen, fmt.Sprintf("Food: %d", g.sim.FoodCount()), g.statFont,
+		graphPanelX+graphPad, graphPanelY+31, color.RGBA{80, 210, 100, 255})
+
+	gx := float32(graphPanelX + graphPad)
+	gy := float32(graphPanelY + graphTextH)
+	gw := float32(graphPanelW - graphPad*2)
+	gh := float32(graphPanelH - graphTextH - graphPad)
+
+	maxPop, maxFood := 1, 1
+	for i := 0; i < g.histCount; i++ {
+		idx := ((g.histHead - 1 - i) % historyLen + historyLen) % historyLen
+		s := g.history[idx]
+		if s.pop > maxPop {
+			maxPop = s.pop
+		}
+		if s.food > maxFood {
+			maxFood = s.food
+		}
+	}
+
+	steps := int(gw)
+	if steps > g.histCount {
+		steps = g.histCount
+	}
+
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, maxFood,
+		color.RGBA{80, 210, 100, 200}, func(s histSample) int { return s.food })
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, maxPop,
+		color.RGBA{100, 180, 255, 200}, func(s histSample) int { return s.pop })
+}
+
+// drawGraphLine draws a single series onto the graph area using a batched
+// DrawTriangles call for efficiency.
+func (g *Game) drawGraphLine(screen *ebiten.Image, gx, gy, gw, gh float32, steps, maxVal int, clr color.RGBA, getValue func(histSample) int) {
+	if steps < 2 || maxVal == 0 {
+		return
+	}
+
+	var path vector.Path
+	for i := 0; i < steps; i++ {
+		frac := float64(i) / float64(steps-1)
+		logicalPos := float64(g.histHead-g.histCount) + frac*float64(g.histCount-1)
+		sampleIdx := ((int(math.Round(logicalPos)) % historyLen) + historyLen) % historyLen
+		val := getValue(g.history[sampleIdx])
+
+		x := gx + float32(i)/float32(steps-1)*gw
+		y := gy + gh*(1-float32(val)/float32(maxVal))
+		if y < gy {
+			y = gy
+		}
+		if y > gy+gh {
+			y = gy + gh
+		}
+
+		if i == 0 {
+			path.MoveTo(x, y)
+		} else {
+			path.LineTo(x, y)
+		}
+	}
+
+	vs, is := path.AppendVerticesAndIndicesForStroke(nil, nil, &vector.StrokeOptions{Width: 1.5})
+	cr, cg, cb, ca := float32(clr.R)/255, float32(clr.G)/255, float32(clr.B)/255, float32(clr.A)/255
+	for i := range vs {
+		vs[i].ColorR, vs[i].ColorG, vs[i].ColorB, vs[i].ColorA = cr, cg, cb, ca
+	}
+	screen.DrawTriangles(vs, is, g.whiteImage, nil)
 }
