@@ -41,7 +41,7 @@ type CreatureDetailView struct {
 	NeuronCount    byte
 	BrainLength    int
 	MutationPct    float32 // actual per-gene mutation probability as a percentage
-	R, G, B        uint8   // genome-derived display colour
+	R, G, B, A     uint8   // genome-derived display colour
 	MetabolicRate  float32 // energy drained per tick
 	MaxAge         int     // maximum lifespan in ticks
 }
@@ -53,7 +53,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	if !ok || !c.Alive {
 		return CreatureDetailView{}, false
 	}
-	r, g, b, _ := genomeColor(c.Genome)
+	r, g, b, a := genomeColor(c.Genome, s.Params)
 	return CreatureDetailView{
 		ID:             c.Id,
 		Energy:         c.Energy,
@@ -72,6 +72,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		R:              r,
 		G:              g,
 		B:              b,
+		A:              a,
 		MetabolicRate:  c.MetabolicRate(s.Params),
 		MaxAge:         c.MaxAge(s.Params),
 	}, true
@@ -84,7 +85,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 		if !c.Alive {
 			continue
 		}
-		r, g, b, a := genomeColor(c.Genome)
+		r, g, b, a := genomeColor(c.Genome, s.Params)
 		views = append(views, CreatureView{
 			ID: c.Id,
 			X:  c.Loc.X,
