@@ -48,7 +48,7 @@ type Parameters struct {
 func DefaultParams() *Parameters {
 	return &Parameters{
 		MaxPopulation:                   5000,
-		MinPopulation:                   50,
+		MinPopulation:                   400,
 		StartingPopulation:              500,
 		PopulationSensorRadius:          6,
 		GridWidth:                       600,
@@ -65,7 +65,7 @@ func DefaultParams() *Parameters {
 		MaxHiddenLayerCount:             8,
 		MinSightDistance:                2,
 		MaxSightDistance:                10,
-		BaseMutationRate:                0.0001,
+		BaseMutationRate:                0.001,
 		BaseGenomeMutationRate:          0.001,
 		SexualReproductionSimilarityMin: 0.9,
 		SexualReproductionSimilarityMax: 0.98,
@@ -73,15 +73,15 @@ func DefaultParams() *Parameters {
 		MaxExpectedAge:                  50000,
 		MinJuvenilePeriod:               100,
 		MaxJuvenilePeriod:               500,
-		MaxFood:                         5000,
+		MaxFood:                         6000,
 		FoodSpawnInterval:               100,
-		FoodPerSpawn:                    40,
-		FoodEnergyFraction:              0.3,
+		FoodPerSpawn:                    100,
+		FoodEnergyFraction:              0.1,
 		MetabolicRate:                   0.02,
 		MoveCost:                        0.005,
 		ReproductionEnergyThreshold:     0.85,
 		ReproductionEnergyCost:          0.2,
-		PreyEnergyFraction:              0.1,
-		CorpseDecayRate:                 0.1,
+		PreyEnergyFraction:              0.2,
+		CorpseDecayRate:                 0.05,
 	}
 }

@@ -37,22 +37,20 @@ func RandomDir() Dir {
 func GetDirection(fromLoc, toLoc Coord) Dir {
 	xDir := toLoc.X - fromLoc.X
 	yDir := toLoc.Y - fromLoc.Y
-	if xDir == 0 && yDir == 0 {
-		return Dir{0, 0}
-	}
-	// TODO Make this better, this is inefficient
-	if xDir > 0 {
-		xDir = 1
-	} else {
-		xDir = -1
-	}
-	if yDir > 0 {
-		yDir = 1
-	} else {
-		yDir = -1
-	}
 
-	return Dir{X: xDir, Y: yDir}
+	return Dir{
+		X: sign(xDir),
+		Y: sign(yDir),
+	}
+}
+
+func sign(n int) int {
+	if n > 0 {
+		return 1
+	} else if n < 0 {
+		return -1
+	}
+	return 0
 }
 
 func RaySameness(fromDir, toDir Dir) float32 {

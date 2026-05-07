@@ -73,7 +73,7 @@ func (s *Simulation) step() {
 	}
 
 	s.Population.ProcessMoveQueue(s.Grid, s.Params)
-	s.Population.ProcessDeathQueue(s.Grid)
+	s.Population.ProcessDeathQueue(s.Grid, s.Params)
 	s.Population.ProcessCorpseDecay(s.Grid, s.Params)
 	s.Population.ProcessReproductionQueue(s.Grid, s.Params, s.allocateID)
 
@@ -85,7 +85,7 @@ func (s *Simulation) step() {
 		id := s.allocateID()
 		var genome *Genome
 		if source := s.Population.OldestGenome(); source != nil {
-			genome = AsexualReproduction(source, s.Params)
+			genome = AsexualReproductionArtificial(source, s.Params)
 		} else {
 			genome = MakeRandomGenome(s.Params)
 		}
@@ -211,8 +211,9 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 	moveYBool := prob2Bool(math.Abs(float64(moveY)))
 	movementOffset := grid.Dir{X: moveXBool * moveXSign, Y: moveYBool * moveYSign}
 	newCoord := c.GetNextLoc(movementOffset)
-	if s.Grid.IsInBounds(newCoord) && s.Grid.At(newCoord) != grid.WALL {
-		sizeFactor := 1.0 + float32(c.Genome.Size)/255.0
+	newCoord = s.Grid.WrapCoords(newCoord)
+	if s.Grid.At(newCoord) != grid.WALL {
+		sizeFactor := 1.0 + c.CurrentSize(s.Params)/255.0
 		c.Energy -= s.Params.MoveCost * sizeFactor
 		s.Population.QueueForMove(c, newCoord)
 	}

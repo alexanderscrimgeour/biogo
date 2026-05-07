@@ -256,6 +256,19 @@ func AsexualReproduction(parent *Genome, p *Parameters) *Genome {
 	return child
 }
 
+func AsexualReproductionArtificial(parent *Genome, p *Parameters) *Genome {
+	child := parent.Copy()
+
+	// 1. Temporarily boost the genome's mutation rate byte to max (255)
+	// or significantly higher than its current value.
+	child.MutationRate = 255
+
+	// 2. Mutate normally (it will use the 255 value)
+	Mutate(child, p)
+
+	return child
+}
+
 // GenomeSimilarity compares two genomes using Jaro-Winkler similarity.
 func GenomeSimilarity(g1, g2 Genome) float32 {
 	return jaro.JaroWinklerSimilarity(g1.String(), g2.String())

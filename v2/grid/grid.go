@@ -237,3 +237,13 @@ func (g Grid) DensityAxis(loc Coord, radius float32, lastMoveDir Dir, fn func(g 
 	}
 	return sum / maxSumMag
 }
+
+func (g *Grid) WrapCoords(c Coord) Coord {
+	w := len(g.Data)
+	h := len(g.Data[0])
+
+	return Coord{
+		X: (c.X%w + w) % w,
+		Y: (c.Y%h + h) % h,
+	}
+}

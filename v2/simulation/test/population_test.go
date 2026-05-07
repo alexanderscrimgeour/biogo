@@ -124,7 +124,7 @@ func TestProcessDeathQueue(t *testing.T) {
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[grid.RESERVED_CELL_TYPES] = creature
 	pop.QueueForDeath(creature)
-	pop.ProcessDeathQueue(g)
+	pop.ProcessDeathQueue(g, params)
 
 	if creature.Alive {
 		t.Error("creature should not be alive after ProcessDeathQueue")
@@ -293,11 +293,13 @@ func TestPredationGainBasedOnSize(t *testing.T) {
 	smallPredator.Energy = 1
 	smallPrey := simulation.NewCreature(smallPreyID, smallPreyLoc, smallGenome)
 	smallPrey.Energy = 999
+	smallPrey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
 
 	largePredator := simulation.NewCreature(largePreyID, largePredatorLoc, predatorGenome)
 	largePredator.Energy = 1
 	largePrey := simulation.NewCreature(largePreyID+1, largePreyLoc, largeGenome)
 	largePrey.Energy = 999
+	largePrey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
 
 	g.Set(predatorLoc, predID)
 	g.Set(smallPreyLoc, smallPreyID)
@@ -335,12 +337,13 @@ func TestCorpseEnergySetOnDeath(t *testing.T) {
 	loc := grid.Coord{X: 3, Y: 3}
 	creature := simulation.NewCreature(grid.RESERVED_CELL_TYPES, loc, genome)
 	creature.Energy = 5 // very low — should not affect corpse food value
+	creature.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
 	g.Set(loc, grid.RESERVED_CELL_TYPES)
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[grid.RESERVED_CELL_TYPES] = creature
 	pop.QueueForDeath(creature)
-	pop.ProcessDeathQueue(g)
+	pop.ProcessDeathQueue(g, params)
 
 	if creature.Energy != float32(genome.Size) {
 		t.Errorf("corpse energy should equal genome.Size (%d), got %f", genome.Size, creature.Energy)
@@ -363,6 +366,7 @@ func TestPredationSetsCorpseEnergyFromSize(t *testing.T) {
 	predator := simulation.NewCreature(predID, grid.Coord{X: 5, Y: 5}, simulation.MakeRandomGenome(params))
 	prey := simulation.NewCreature(preyID, grid.Coord{X: 6, Y: 5}, preyGenome)
 	prey.Energy = 999 // high pre-death energy — should not be the corpse value
+	prey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
 
 	g.Set(predator.Loc, predID)
 	g.Set(prey.Loc, preyID)
