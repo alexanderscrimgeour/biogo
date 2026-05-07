@@ -61,14 +61,14 @@ func NewGame(sim SimulationState) *Game {
 	centerX := sim.GridWidth() / 2
 	centerY := sim.GridHeight() / 2 // Added centerY
 
-	// 1. Vertical Bar (The one you already have)
+	// 1. Vertical Bar
 	minX_V := centerX - width/2
 	maxX_V := centerX + width/2
 	minY_V := sim.GridHeight() / 4
 	maxY_V := minY_V + sim.GridHeight()/2
 	g.renderGrid.AddLine(float64(minX_V*BlockSize), float64(minY_V*BlockSize), float64(maxX_V*BlockSize), float64(maxY_V*BlockSize))
 
-	// 2. Horizontal Bar (The missing piece)
+	// 2. Horizontal Bar
 	minX_H := sim.GridWidth() / 4
 	maxX_H := minX_H + sim.GridWidth()/2
 	minY_H := centerY - width/2
