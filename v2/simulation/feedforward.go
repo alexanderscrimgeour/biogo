@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-func (c *Creature) FeedForward(g *grid.Grid, p *Population, step int, params *Parameters) []float32 {
+func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *Parameters) []float32 {
 	actionLevels := make([]float32, ACTION_COUNT)
 	neuronAccumulators := map[byte]float32{}
 	neuronOutputsEvaluated := false
@@ -24,7 +24,7 @@ func (c *Creature) FeedForward(g *grid.Grid, p *Population, step int, params *Pa
 
 		var inputVal float32
 		if gene.SourceType == SENSOR {
-			inputVal = c.GetSensor(gene.SourceID, g, p, step, params)
+			inputVal = c.GetSensor(gene.SourceID, w, p, step, params)
 		} else {
 			if _, ok := c.Nnet.HiddenNeurons[gene.SourceID]; !ok {
 				fmt.Printf("\n\nNot okay, trying to see %d of type %d, %s", gene.SourceID, gene.SourceType, c.Nnet.String())

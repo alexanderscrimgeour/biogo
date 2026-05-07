@@ -9,7 +9,7 @@ import (
 )
 
 type Simulation struct {
-	Grid           *grid.Grid
+	World          *grid.World
 	Population     *Population
 	Tick           int
 	nextCreatureID int
@@ -19,41 +19,33 @@ type Simulation struct {
 func New(params *Parameters) *Simulation {
 	sim := &Simulation{
 		Params:         params,
-		nextCreatureID: grid.RESERVED_CELL_TYPES,
+		nextCreatureID: grid.StartingCreatureID,
 	}
-	sim.initializeGrid()
+	sim.initializeWorld()
 	sim.initializePopulation()
 	return sim
 }
 
-func (s *Simulation) initializeGrid() {
-	s.Grid = grid.NewGrid(s.Params.GridWidth, s.Params.GridHeight, 1)
-	s.Grid.SpawnFood(s.Params.MaxFood)
+func (s *Simulation) initializeWorld() {
+	s.World = grid.NewWorld(float64(s.Params.GridWidth), float64(s.Params.GridHeight), 1)
+	s.World.SpawnFood(s.Params.MaxFood)
 }
 
 func (s *Simulation) initializePopulation() {
-<<<<<<< Updated upstream
-=======
-	savedGenomes, _ := LoadAllCreatureGenomes()
-	maxSeeded := int(float32(s.Params.StartingPopulation) * s.Params.SavedGenomeProportion)
-	seeded := 0
-
->>>>>>> Stashed changes
 	pop := NewPopulation(s.Params)
 	for i := 0; i < s.Params.StartingPopulation; i++ {
-		loc, ok := s.Grid.FindEmptyLocation()
+		loc, ok := s.World.FindEmptyLocation()
 		if !ok {
 			break
 		}
 		id := s.allocateID()
-		pop.Creatures[id] = NewCreature(id, loc, MakeRandomGenome(s.Params))
-		s.Grid.Set(loc, id)
+		c := NewCreature(id, loc, MakeRandomGenome(s.Params))
+		pop.Creatures[id] = c
+		s.World.AddCreature(id, loc)
 	}
 	s.Population = pop
 }
 
-<<<<<<< Updated upstream
-=======
 // SaveCreature saves the genome of the creature with the given id to a unique file in data/creatures/.
 func (s *Simulation) SaveCreature(id int) error {
 	c, ok := s.Population.Creatures[id]
@@ -63,16 +55,14 @@ func (s *Simulation) SaveCreature(id int) error {
 	return SaveCreatureToFile(c.Genome)
 }
 
-// Reset reinitialises the simulation from scratch. A proportion of the starting
-// population is seeded from any previously saved genomes (see SavedGenomeProportion).
+// Reset reinitialises the simulation from scratch.
 func (s *Simulation) Reset() {
 	s.Tick = 0
-	s.nextCreatureID = grid.RESERVED_CELL_TYPES
-	s.initializeGrid()
+	s.nextCreatureID = grid.StartingCreatureID
+	s.initializeWorld()
 	s.initializePopulation()
 }
 
->>>>>>> Stashed changes
 func (s *Simulation) allocateID() int {
 	id := s.nextCreatureID
 	s.nextCreatureID++
@@ -86,11 +76,11 @@ func (s *Simulation) Update() {
 func (s *Simulation) step() {
 	if s.Tick%s.Params.FoodSpawnInterval == 0 {
 		toSpawn := s.Params.FoodPerSpawn
-		if available := s.Params.MaxFood - len(s.Grid.FoodLocations); available < toSpawn {
+		if available := s.Params.MaxFood - s.World.FoodCount(); available < toSpawn {
 			toSpawn = available
 		}
 		if toSpawn > 0 {
-			s.Grid.SpawnFood(toSpawn)
+			s.World.SpawnFood(toSpawn)
 		}
 	}
 
@@ -100,17 +90,17 @@ func (s *Simulation) step() {
 		}
 	}
 
-	s.Population.ProcessMoveQueue(s.Grid, s.Params)
-	s.Population.ProcessDeathQueue(s.Grid, s.Params)
-	s.Population.ProcessCorpseDecay(s.Grid, s.Params)
-	s.Population.ProcessReproductionQueue(s.Grid, s.Params, s.allocateID)
+	s.Population.ProcessMoveQueue(s.World, s.Params)
+	s.Population.ProcessDeathQueue(s.World, s.Params)
+	s.Population.ProcessCorpseDecay(s.World, s.Params)
+	s.Population.ProcessReproductionQueue(s.World, s.Params, s.allocateID)
 
 	spawnParams := *s.Params
 	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
 		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
 	}
 	for s.Population.AliveCount() < s.Params.MinPopulation {
-		loc, ok := s.Grid.FindEmptyLocation()
+		loc, ok := s.World.FindEmptyLocation()
 		if !ok {
 			break
 		}
@@ -123,7 +113,7 @@ func (s *Simulation) step() {
 		}
 		c := NewCreature(id, loc, genome)
 		s.Population.Creatures[id] = c
-		s.Grid.Set(loc, id)
+		s.World.AddCreature(id, loc)
 	}
 
 	s.Tick++
@@ -145,12 +135,11 @@ func (s *Simulation) stepCreature(c *Creature) {
 		c.LastAction = "Reproducing"
 	}
 
-	actionLevels := c.FeedForward(s.Grid, s.Population, s.Tick, s.Params)
+	actionLevels := c.FeedForward(s.World, s.Population, s.Tick, s.Params)
 	s.executeActions(c, actionLevels)
 }
 
 func (s *Simulation) Print() {
-	s.Grid.Print()
 	fmt.Printf("Population Size: %d", len(s.Population.Creatures))
 }
 
@@ -165,9 +154,9 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 	}
 
 	if IsActionEnabled(SET_RESPONSIVENESS) {
-		responsivenessLevel := actionLevels[SET_RESPONSIVENESS]
-		responsivenessLevel = (float32(math.Tanh(float64(responsivenessLevel/float32(utils.ClampByteAsFloat32(0, 1, c.Genome.Responsiveness))))) + 1) / 2
-		c.Responsiveness = responsivenessLevel
+		resp := actionLevels[SET_RESPONSIVENESS]
+		resp = (float32(math.Tanh(float64(resp/float32(utils.ClampByteAsFloat32(0, 1, c.Genome.Responsiveness))))) + 1) / 2
+		c.Responsiveness = resp
 	}
 
 	responseAdjust := responseCurve(c.Responsiveness, s.Params.ResponseCurveKFactor)
@@ -181,106 +170,48 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 		}
 	}
 
-	moveX := float32(0)
-	moveY := float32(0)
-	if IsActionEnabled(MOVE_X) {
-		moveX = actionLevels[MOVE_X]
+	// Rotation: ROTATE_LEFT turns CCW, ROTATE_RIGHT turns CW.
+	rotateLeft := float64(0)
+	rotateRight := float64(0)
+	if IsActionEnabled(ROTATE_LEFT) {
+		rotateLeft = float64(actionLevels[ROTATE_LEFT])
 	}
-	if IsActionEnabled(MOVE_Y) {
-		moveY = actionLevels[MOVE_Y]
+	if IsActionEnabled(ROTATE_RIGHT) {
+		rotateRight = float64(actionLevels[ROTATE_RIGHT])
 	}
-	if IsActionEnabled(MOVE_EAST) {
-		moveX += actionLevels[MOVE_EAST]
+	rotateAmount := math.Tanh(rotateLeft-rotateRight) * float64(responseAdjust) * s.Params.MaxRotationPerStep
+	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
+
+	// Forward/backward movement.
+	fwd := float64(0)
+	bwd := float64(0)
+	if IsActionEnabled(MOVE_FORWARD) {
+		fwd = float64(actionLevels[MOVE_FORWARD])
 	}
-	if IsActionEnabled(MOVE_WEST) {
-		moveX -= actionLevels[MOVE_WEST]
-	}
-	if IsActionEnabled(MOVE_NORTH) {
-		moveY += actionLevels[MOVE_NORTH]
-	}
-	if IsActionEnabled(MOVE_SOUTH) {
-		moveY += actionLevels[MOVE_SOUTH]
-	}
-	if IsActionEnabled(MOVE_FWD) {
-		level := actionLevels[MOVE_FWD]
-		moveX += float32(c.LastMoveDir.X) * level
-		moveY += float32(c.LastMoveDir.Y) * level
-	}
-	if IsActionEnabled(MOVE_LEFT) {
-		level := actionLevels[MOVE_LEFT]
-		offset := c.LastMoveDir.Rotate90CCW()
-		moveX += float32(offset.X) * level
-		moveY += float32(offset.Y) * level
-	}
-	if IsActionEnabled(MOVE_RIGHT) {
-		level := actionLevels[MOVE_RIGHT]
-		offset := c.LastMoveDir.Rotate90CW()
-		moveX += float32(offset.X) * level
-		moveY += float32(offset.Y) * level
-	}
-	if IsActionEnabled(MOVE_RL) {
-		level := actionLevels[MOVE_RL]
-		offset := grid.CENTER
-		if level < 0 {
-			offset = c.LastMoveDir.Rotate90CCW()
-		} else if level > 0 {
-			offset = c.LastMoveDir.Rotate90CW()
-		}
-		moveX += float32(offset.X) * level
-		moveY += float32(offset.Y) * level
+	if IsActionEnabled(MOVE_BACKWARD) {
+		bwd = float64(actionLevels[MOVE_BACKWARD])
 	}
 	if IsActionEnabled(MOVE_RANDOM) {
-		level := actionLevels[MOVE_RANDOM]
-		offset := grid.RandomDir()
-		moveX += float32(offset.X) * level
-		moveY += float32(offset.Y) * level
+		level := float64(actionLevels[MOVE_RANDOM])
+		c.Heading = grid.NormalizeAngle(c.Heading + (rand.Float64()*2-1)*s.Params.MaxRotationPerStep)
+		fwd += level
 	}
 
-<<<<<<< Updated upstream
-=======
-	if IsActionEnabled(EAT) {
-		level := actionLevels[EAT]
-		if level > 0 && prob2Bool(float64(level)) == 1 {
-			fwdLoc := grid.Coord{
-				X: c.Loc.X + c.LastMoveDir.X,
-				Y: c.Loc.Y + c.LastMoveDir.Y,
-			}
-			if s.Grid.IsInBounds(fwdLoc) {
-				s.Population.QueueForEat(c, fwdLoc)
-				if c.LastAction != "Reproducing" {
-					c.LastAction = "Eating"
-				}
-			}
-		}
+	moveAmount := math.Tanh(fwd-bwd) * float64(responseAdjust)
+	massFactor := 1.0 + float64(c.CurrentMass(s.Params))/255.0
+	moveAmount *= s.Params.MaxSpeedPerStep / massFactor
+
+	if math.Abs(moveAmount) < 0.001 {
+		return
 	}
 
->>>>>>> Stashed changes
-	moveX = float32(math.Tanh(float64(moveX)))
-	moveY = float32(math.Tanh(float64(moveY)))
-	moveX *= responseAdjust
-	moveY *= responseAdjust
+	dx := math.Cos(c.Heading) * moveAmount
+	dy := math.Sin(c.Heading) * moveAmount
+	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
-	moveXSign := 1
-	if moveX < 0 {
-		moveXSign = -1
-	}
-	moveYSign := 1
-	if moveY < 0 {
-		moveYSign = -1
-	}
-
-	moveXBool := prob2Bool(math.Abs(float64(moveX)))
-	moveYBool := prob2Bool(math.Abs(float64(moveY)))
-	movementOffset := grid.Dir{X: moveXBool * moveXSign, Y: moveYBool * moveYSign}
-	newCoord := c.GetNextLoc(movementOffset)
-
-	if s.Grid.Torodial {
-		newCoord = s.Grid.WrapCoords(newCoord)
-	}
-	if (s.Grid.Torodial || s.Grid.IsInBounds(newCoord)) && s.Grid.At(newCoord) != grid.WALL {
-		massFactor := 1.0 + c.CurrentMass(s.Params)/255.0
-		c.Energy -= s.Params.MoveCost * massFactor
-		s.Population.QueueForMove(c, newCoord)
+	if !s.World.IsWall(newPos) {
+		c.Energy -= s.Params.MoveCost * float32(massFactor)
+		s.Population.QueueForMove(c, newPos)
 	}
 }
 
@@ -290,27 +221,13 @@ func (s *Simulation) SetSpawnMutationRate(rate float32) {
 	s.Params.SpawnMutationRate = rate
 }
 
-// GridWidth returns the simulation grid width.
-func (s *Simulation) GridWidth() int {
-	return s.Grid.SizeX()
-}
+func (s *Simulation) GridWidth() int  { return s.Params.GridWidth }
+func (s *Simulation) GridHeight() int { return s.Params.GridHeight }
 
-// GridHeight returns the simulation grid height.
-func (s *Simulation) GridHeight() int {
-	return s.Grid.SizeY()
-}
+func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
-// PopulationCount returns the current number of living creatures (excludes corpses).
-func (s *Simulation) PopulationCount() int {
-	return s.Population.AliveCount()
-}
+func (s *Simulation) FoodCount() int { return s.World.FoodCount() }
 
-// FoodCount returns the current number of food items on the grid.
-func (s *Simulation) FoodCount() int {
-	return len(s.Grid.FoodLocations)
-}
-
-// AverageAge returns the mean age of all living creatures, or 0 if none.
 func (s *Simulation) AverageAge() float64 {
 	total := 0
 	count := 0

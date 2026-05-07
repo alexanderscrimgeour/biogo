@@ -9,21 +9,12 @@ import (
 func TestCurrentMassAtBirth(t *testing.T) {
 	params := defaultParams()
 	genome := simulation.MakeRandomGenome(params)
-<<<<<<< Updated upstream
-	genome.Size = 200
-
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
-	// age 0: size should be params.MinSize
-	got := c.CurrentSize(params)
-	want := float32(params.MinSize)
-=======
 	genome.Mass = 200
 	genome.MinMass = 10
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 	got := c.CurrentMass(params)
 	want := float32(genome.MinMass)
->>>>>>> Stashed changes
 	if got != want {
 		t.Errorf("CurrentMass at age 0: got %f, want %f", got, want)
 	}
@@ -35,7 +26,7 @@ func TestCurrentMassAtAdulthood(t *testing.T) {
 	genome.Mass = 200
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 	c.Age = params.MaxJuvenilePeriod + 1
 
 	got := c.CurrentMass(params)
@@ -48,36 +39,23 @@ func TestCurrentMassAtAdulthood(t *testing.T) {
 func TestCurrentMassMidJuvenile(t *testing.T) {
 	params := defaultParams()
 	params.MinJuvenilePeriod = 100
-	params.MaxJuvenilePeriod = 100 // fix juvenile period to exactly 100 ticks
+	params.MaxJuvenilePeriod = 100
 
 	genome := simulation.MakeRandomGenome(params)
-<<<<<<< Updated upstream
-	genome.Size = 100
-=======
 	genome.Mass = 100
 	genome.MinMass = 10
->>>>>>> Stashed changes
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
-	c.Age = 50 // halfway through juvenile period
+	c := simulation.NewCreature(1, grid.Position{}, genome)
+	c.Age = 50
 
-<<<<<<< Updated upstream
-	got := c.CurrentSize(params)
-	// expect midpoint between MinSize and genome.Size
-	want := float32(params.MinSize) + (float32(genome.Size)-float32(params.MinSize))*0.5
-=======
 	got := c.CurrentMass(params)
 	want := float32(genome.MinMass) + (float32(genome.Mass)-float32(genome.MinMass))*0.5
->>>>>>> Stashed changes
 	if got != want {
 		t.Errorf("CurrentMass at mid-juvenile: got %f, want %f", got, want)
 	}
 }
 
-<<<<<<< Updated upstream
-func TestCurrentSizeNeverExceedsGenomeSize(t *testing.T) {
-=======
 func TestIsJuvenileBlocksBeforeAdulthood(t *testing.T) {
 	params := defaultParams()
 	params.MinJuvenilePeriod = 100
@@ -86,7 +64,7 @@ func TestIsJuvenileBlocksBeforeAdulthood(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 
 	c.Age = 99
 	if !c.IsJuvenile(params) {
@@ -104,7 +82,7 @@ func TestIsJuvenileZeroPeriod(t *testing.T) {
 	params.MaxJuvenilePeriod = 0
 
 	genome := simulation.MakeRandomGenome(params)
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 
 	c.Age = 0
 	if c.IsJuvenile(params) {
@@ -113,24 +91,18 @@ func TestIsJuvenileZeroPeriod(t *testing.T) {
 }
 
 func TestCurrentMassNeverExceedsGenomeMass(t *testing.T) {
->>>>>>> Stashed changes
 	params := defaultParams()
 	genome := simulation.MakeRandomGenome(params)
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 	for age := 0; age <= params.MaxJuvenilePeriod+10; age++ {
 		c.Age = age
 		s := c.CurrentMass(params)
 		if s > float32(genome.Mass) {
 			t.Errorf("CurrentMass %f exceeds genome.Mass %d at age %d", s, genome.Mass, age)
 		}
-<<<<<<< Updated upstream
-		if s < float32(params.MinSize) {
-			t.Errorf("CurrentSize %f below MinSize %d at age %d", s, params.MinSize, age)
-=======
 		if s < float32(genome.MinMass) {
 			t.Errorf("CurrentMass %f below genome.MinMass %d at age %d", s, genome.MinMass, age)
->>>>>>> Stashed changes
 		}
 	}
 }

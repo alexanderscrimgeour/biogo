@@ -3,6 +3,7 @@ package simulation
 import (
 	"biogo/v2/grid"
 	"biogo/v2/utils"
+	"math"
 	"math/rand"
 )
 
@@ -23,7 +24,7 @@ type ReproductionInstruction struct {
 
 type MoveInstruction struct {
 	Creature *Creature
-	Loc      grid.Coord
+	Loc      grid.Position
 }
 
 func NewPopulation(p *Parameters) *Population {
@@ -35,7 +36,7 @@ func NewPopulation(p *Parameters) *Population {
 	}
 }
 
-func (p *Population) QueueForMove(creature *Creature, newLoc grid.Coord) {
+func (p *Population) QueueForMove(creature *Creature, newLoc grid.Position) {
 	p.MoveQueue = append(p.MoveQueue, MoveInstruction{creature, newLoc})
 }
 
@@ -47,7 +48,6 @@ func (p *Population) QueueForReproduction(creature *Creature) {
 	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{creature})
 }
 
-// AliveCount returns the number of living (non-corpse) creatures.
 func (p *Population) AliveCount() int {
 	count := 0
 	for _, c := range p.Creatures {
@@ -58,109 +58,73 @@ func (p *Population) AliveCount() int {
 	return count
 }
 
-func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
+// ProcessMoveQueue moves each queued creature to its target position, then checks
+// for food and creatures in proximity to trigger eating and predation.
+func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 	for _, instruction := range p.MoveQueue {
 		c := instruction.Creature
 		if !c.Alive {
 			continue
 		}
-		targetLoc := instruction.Loc
-		cellVal := g.At(targetLoc)
+		newPos := instruction.Loc
 
-		switch {
-		case cellVal == grid.EMPTY:
-			g.Set(c.Loc, grid.EMPTY)
-			g.Set(targetLoc, c.Id)
-			c.LastMoveDir = grid.GetDirection(c.Loc, targetLoc)
-			c.Loc = targetLoc
-
-		case cellVal == grid.FOOD:
+		// Eat the closest food within interaction radius.
+		foodIDs := w.GetFoodInRadius(newPos, params.FoodInteractionRadius)
+		if len(foodIDs) > 0 {
+			closestID := foodIDs[0]
+			closestDist := math.MaxFloat64
+			for _, fid := range foodIDs {
+				fpos := w.GetFoodPos(fid)
+				dx := fpos.X - newPos.X
+				dy := fpos.Y - newPos.Y
+				d := math.Sqrt(dx*dx + dy*dy)
+				if d < closestDist {
+					closestDist = d
+					closestID = fid
+				}
+			}
 			maxE := float32(c.Genome.MaxEnergy)
 			c.Energy = utils.MinFloat32(maxE, c.Energy+params.FoodEnergyFraction*maxE)
-			g.RemoveFood(targetLoc)
-			g.Set(c.Loc, grid.EMPTY)
-			g.Set(targetLoc, c.Id)
-			c.LastMoveDir = grid.GetDirection(c.Loc, targetLoc)
-			c.Loc = targetLoc
+			w.RemoveFood(closestID)
+		}
 
-		case cellVal >= grid.RESERVED_CELL_TYPES:
-			target, ok := p.Creatures[cellVal]
-			if !ok || target == c {
-				break
+		// Predate or scavenge the closest creature within predation radius.
+		nearbyIDs := w.GetCreaturesInRadius(newPos, params.PredationRadius)
+		for _, targetID := range nearbyIDs {
+			if targetID == c.Id {
+				continue
+			}
+			target, ok := p.Creatures[targetID]
+			if !ok {
+				continue
 			}
 			maxE := float32(c.Genome.MaxEnergy)
-<<<<<<< Updated upstream
-			targetSize := target.CurrentSize(params)
-			gain := params.PreyEnergyFraction * targetSize
-=======
 			targetMass := target.CurrentMass(params)
 			gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
->>>>>>> Stashed changes
 			c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
 
-<<<<<<< Updated upstream
 			if target.Alive {
-				// Predation: kill the prey in place; predator does not move.
+				// Predation: kill prey in place; corpse stays in world.
 				target.Alive = false
-				target.Energy = targetSize
+				target.Energy = targetMass
 			} else {
-				// Scavenging: consume the corpse, move into its cell.
+				// Scavenging: consume and remove the corpse.
+				w.RemoveCreature(target.Id)
 				delete(p.Creatures, target.Id)
-=======
-// ProcessEatQueue handles explicit eat actions. A creature eats the target at the
-// given location if one exists. Live prey is killed in place; corpses are consumed
-// in place without the eater moving.
-func (p *Population) ProcessEatQueue(g *grid.Grid, params *Parameters) {
-	for _, instruction := range p.EatQueue {
-		c := instruction.Creature
-		if !c.Alive {
-			continue
-		}
-		targetLoc := instruction.TargetLoc
-		cellVal := g.At(targetLoc)
-		if cellVal < grid.RESERVED_CELL_TYPES {
-			continue
-		}
-		target, ok := p.Creatures[cellVal]
-		if !ok || target == c {
-			continue
-		}
-		maxE := float32(c.Genome.MaxEnergy)
-		currentMass := c.CurrentMass(params)
-		targetMass := target.CurrentMass(params)
-		gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
-		c.Energy = utils.MinFloat32(maxE, (c.Energy+gain)*0.8)
-		// Test logic to dissuade eating larger creatures
-		if targetMass > currentMass {
-			massRatio := targetMass / currentMass
-			deathChance := (massRatio - 1.0) * 0.2
-			if rand.Float32() < deathChance {
-				c.Alive = false
->>>>>>> Stashed changes
-				g.Set(c.Loc, grid.EMPTY)
-				g.Set(targetLoc, c.Id)
-				c.LastMoveDir = grid.GetDirection(c.Loc, targetLoc)
-				c.Loc = targetLoc
 			}
+			break
 		}
-<<<<<<< Updated upstream
-=======
 
-		if target.Alive {
-			target.Alive = false
-			target.Energy = targetMass
-		} else {
-			delete(p.Creatures, target.Id)
-			g.Set(targetLoc, grid.EMPTY)
-		}
->>>>>>> Stashed changes
+		// Move the creature.
+		w.MoveCreature(c.Id, newPos)
+		c.Loc = newPos
 	}
 	p.MoveQueue = []MoveInstruction{}
 }
 
-// ProcessDeathQueue marks queued creatures as dead and resets their energy to their
-// current size-based food value. Corpses remain on the grid and decay over time via ProcessCorpseDecay.
-func (p *Population) ProcessDeathQueue(g *grid.Grid, params *Parameters) {
+// ProcessDeathQueue marks queued creatures as dead and sets their energy to their
+// mass-based food value. Corpses remain in the world and decay over time.
+func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 	for _, di := range p.DeathQueue {
 		di.Creature.Alive = false
 		di.Creature.Energy = di.Creature.CurrentMass(params)
@@ -168,25 +132,23 @@ func (p *Population) ProcessDeathQueue(g *grid.Grid, params *Parameters) {
 	p.DeathQueue = []DeathInstruction{}
 }
 
-// ProcessCorpseDecay drains energy from every dead creature. Corpses that reach
-// zero energy are removed from the grid and population map.
-func (p *Population) ProcessCorpseDecay(g *grid.Grid, params *Parameters) {
+// ProcessCorpseDecay drains energy from every dead creature. Fully decayed
+// corpses are removed from both the world and the population map.
+func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 	for id, c := range p.Creatures {
 		if c.Alive {
 			continue
 		}
 		c.Energy -= params.CorpseDecayRate
 		if c.Energy <= 0 {
-			g.Set(c.Loc, grid.EMPTY)
+			w.RemoveCreature(id)
 			delete(p.Creatures, id)
 		}
 	}
 }
 
-// ProcessReproductionQueue spawns offspring from queued parents. nextID is called to
-// allocate a fresh creature ID. Reproduction is skipped if the population is at capacity
-// or the parent no longer has enough energy.
-func (p *Population) ProcessReproductionQueue(g *grid.Grid, params *Parameters, nextID func() int) {
+// ProcessReproductionQueue spawns offspring near queued parents.
+func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters, nextID func() int) {
 	for _, ri := range p.ReproductionQueue {
 		if p.AliveCount() >= params.MaxPopulation {
 			break
@@ -195,58 +157,51 @@ func (p *Population) ProcessReproductionQueue(g *grid.Grid, params *Parameters, 
 		if !parent.Alive {
 			continue
 		}
-<<<<<<< Updated upstream
-		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
-=======
 		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy) * (float32(parent.Genome.Mass) / float32(params.MaxMass))
->>>>>>> Stashed changes
 		if parent.Energy < cost {
 			continue
 		}
 
-		offspringLoc, ok := findOffspringLocation(g, parent)
+		offspringLoc, ok := findOffspringLocation(w, parent)
 		if !ok {
 			continue
 		}
 
 		parent.Energy -= cost
-
 		childGenome := AsexualReproduction(parent.Genome, params)
 		id := nextID()
 		child := NewCreature(id, offspringLoc, childGenome)
 		child.Energy = cost / 2
 		p.Creatures[id] = child
-		g.Set(offspringLoc, id)
+		w.AddCreature(id, offspringLoc)
 	}
 	p.ReproductionQueue = []ReproductionInstruction{}
 }
 
-// findOffspringLocation returns an empty cell for the offspring. It prefers the cell
-// 2 steps behind the parent (opposite of LastMoveDir), falling back to any adjacent empty cell.
-func findOffspringLocation(g *grid.Grid, parent *Creature) (grid.Coord, bool) {
-	d := parent.LastMoveDir
-	if d.X != 0 || d.Y != 0 {
-		behind := grid.Coord{X: parent.Loc.X - 2*d.X, Y: parent.Loc.Y - 2*d.Y}
-		if g.IsInBounds(behind) && g.IsEmptyAt(behind) {
-			return behind, true
+// findOffspringLocation returns a free position for an offspring, preferring a
+// spot 5 units behind the parent and falling back to random nearby positions.
+func findOffspringLocation(w *grid.World, parent *Creature) (grid.Position, bool) {
+	backX := -math.Cos(parent.Heading) * 5.0
+	backY := -math.Sin(parent.Heading) * 5.0
+	behind := grid.Position{X: parent.Loc.X + backX, Y: parent.Loc.Y + backY}
+	if w.IsInBounds(behind) && !w.IsWall(behind) {
+		return behind, true
+	}
+	for i := 0; i < 20; i++ {
+		angle := rand.Float64() * 2 * math.Pi
+		dist := rand.Float64()*8.0 + 2.0
+		pos := grid.Position{
+			X: parent.Loc.X + math.Cos(angle)*dist,
+			Y: parent.Loc.Y + math.Sin(angle)*dist,
+		}
+		if w.IsInBounds(pos) && !w.IsWall(pos) {
+			return pos, true
 		}
 	}
-
-	dirs := []grid.Dir{
-		{X: 1, Y: 0}, {X: -1, Y: 0}, {X: 0, Y: 1}, {X: 0, Y: -1},
-		{X: 1, Y: 1}, {X: -1, Y: 1}, {X: 1, Y: -1}, {X: -1, Y: -1},
-	}
-	for _, dir := range dirs {
-		loc := grid.Coord{X: parent.Loc.X + dir.X, Y: parent.Loc.Y + dir.Y}
-		if g.IsInBounds(loc) && g.IsEmptyAt(loc) {
-			return loc, true
-		}
-	}
-	return grid.Coord{}, false
+	return grid.Position{}, false
 }
 
-// OldestGenome returns the genome of the oldest living creature, or nil if there are none.
-// The oldest survivor is used as a fitness proxy when replenishing a depleted population.
+// OldestGenome returns the genome of the oldest living creature, or nil if none.
 func (p *Population) OldestGenome() *Genome {
 	var oldest *Creature
 	for _, c := range p.Creatures {
@@ -263,17 +218,15 @@ func (p *Population) OldestGenome() *Genome {
 	return oldest.Genome
 }
 
-// GeneticDiversity samples the population and returns average pairwise genome dissimilarity.
+// GeneticDiversity samples the population and returns average pairwise dissimilarity.
 func (p *Population) GeneticDiversity() float32 {
 	if len(p.Creatures) < 2 {
 		return 0
 	}
-
 	keys := make([]int, 0, len(p.Creatures))
 	for k := range p.Creatures {
 		keys = append(keys, k)
 	}
-
 	sampleSize := utils.Min(200, len(keys))
 	total := float32(0)
 	for i := 0; i < sampleSize; i++ {

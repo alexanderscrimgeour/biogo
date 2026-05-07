@@ -1,12 +1,11 @@
 package simulation
 
 // CreatureView is a read-only snapshot of a creature's display state.
-// It contains only what the rendering layer needs, keeping simulation internals private.
 type CreatureView struct {
 	ID            int
-	X, Y          int
+	X, Y          float64
 	R, G, B, A    uint8
-	DirX, DirY    int
+	Heading       float64 // radians
 	SightDistance byte
 	FieldOfView   byte
 	Mass          byte
@@ -14,14 +13,14 @@ type CreatureView struct {
 
 // FoodView is a read-only snapshot of a food item's position for rendering.
 type FoodView struct {
-	X, Y int
+	ID   int
+	X, Y float64
 }
 
 // CorpseView is a read-only snapshot of a dead creature for rendering.
-// EnergyFraction is the ratio of remaining energy to MaxEnergy (0..1), used for alpha.
 type CorpseView struct {
 	ID             int
-	X, Y           int
+	X, Y           float64
 	EnergyFraction float32
 }
 
@@ -77,12 +76,11 @@ func (s *Simulation) CreatureViews() []CreatureView {
 		}
 		r, g, b, a := genomeColor(c.Genome)
 		views = append(views, CreatureView{
-			ID:            c.Id,
-			X:             c.Loc.X,
-			Y:             c.Loc.Y,
-			R:             r, G: g, B: b, A: a,
-			DirX:          c.LastMoveDir.X,
-			DirY:          c.LastMoveDir.Y,
+			ID: c.Id,
+			X:  c.Loc.X,
+			Y:  c.Loc.Y,
+			R:  r, G: g, B: b, A: a,
+			Heading:       c.Heading,
 			SightDistance: c.Genome.SightDistance,
 			FieldOfView:   c.Genome.FieldOfView,
 			Mass:          c.Genome.Mass,
@@ -91,19 +89,15 @@ func (s *Simulation) CreatureViews() []CreatureView {
 	return views
 }
 
-<<<<<<< Updated upstream
-func (s *Simulation) CreatureMinSize() byte { return s.Params.MinSize }
-func (s *Simulation) CreatureMaxSize() byte { return s.Params.MaxSize }
-=======
 func (s *Simulation) CreatureMinMass() byte { return 1 }
 func (s *Simulation) CreatureMaxMass() byte { return s.Params.MaxMass }
->>>>>>> Stashed changes
 
 // FoodViews returns a snapshot of all current food locations for rendering.
 func (s *Simulation) FoodViews() []FoodView {
-	views := make([]FoodView, len(s.Grid.FoodLocations))
-	for i, loc := range s.Grid.FoodLocations {
-		views[i] = FoodView{X: loc.X, Y: loc.Y}
+	food := s.World.FoodPositions()
+	views := make([]FoodView, 0, len(food))
+	for id, pos := range food {
+		views = append(views, FoodView{ID: id, X: pos.X, Y: pos.Y})
 	}
 	return views
 }

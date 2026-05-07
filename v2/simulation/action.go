@@ -1,29 +1,16 @@
 package simulation
 
 const (
-	MOVE_X byte = iota
-	MOVE_Y
-	MOVE_FWD
-	MOVE_RL
-	MOVE_LEFT
-	MOVE_RIGHT
+	MOVE_FORWARD byte = iota
+	MOVE_BACKWARD
+	ROTATE_LEFT
+	ROTATE_RIGHT
 	MOVE_RANDOM
 	SET_OSCILLATOR_PERIOD
 	SET_RESPONSIVENESS
-	MOVE_EAST
-	MOVE_WEST
-	MOVE_NORTH
-	MOVE_SOUTH
-<<<<<<< Updated upstream
-=======
-	EAT
 	DO_NOTHING
->>>>>>> Stashed changes
 
 	ACTION_COUNT
-	// Disabled for now
-	REPRODUCE
-	EAT
 )
 
 func IsActionEnabled(a byte) bool {

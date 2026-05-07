@@ -1,5 +1,7 @@
 package simulation
 
+import "math"
+
 type Parameters struct {
 	MaxPopulation                   int
 	MinPopulation                   int
@@ -9,12 +11,7 @@ type Parameters struct {
 	PopulationSensorRadius          int
 	MinEnergy                       byte
 	MaxEnergy                       byte
-<<<<<<< Updated upstream
-	MinSize                         byte
-	MaxSize                         byte
-=======
 	MaxMass                         byte
->>>>>>> Stashed changes
 	MinStartNeuronCount             byte
 	MaxStartNeuronCount             byte
 	MinNeuronCount                  byte
@@ -47,11 +44,17 @@ type Parameters struct {
 	MaxMetabolicRate float32 // energy drained per tick when genome MetabolicRate byte = 255
 	MoveCost         float32 // energy drained per move attempt
 	// Reproduction
-	ReproductionEnergyThreshold float32 // fraction of MaxEnergy required to reproduce
-	ReproductionEnergyCost      float32 // fraction of MaxEnergy deducted from parent on reproduction
+	ReproductionEnergyThreshold float32
+	ReproductionEnergyCost      float32
 	// Predation and corpses
-	PreyEnergyFraction float32 // fraction of prey's energy the predator gains
-	CorpseDecayRate    float32 // energy drained per tick from a dead creature's corpse
+	PreyEnergyFraction float32
+	CorpseDecayRate    float32
+	// Continuous-space movement
+	MaxSpeedPerStep    float64 // world units per tick (max)
+	MaxRotationPerStep float64 // radians per tick (max)
+	// Interaction radii (world units)
+	FoodInteractionRadius float64
+	PredationRadius       float64
 }
 
 func DefaultParams() *Parameters {
@@ -64,20 +67,15 @@ func DefaultParams() *Parameters {
 		GridHeight:                      600,
 		MinEnergy:                       2,
 		MaxEnergy:                       255,
-<<<<<<< Updated upstream
-		MinSize:                         1,
-		MaxSize:                         200,
-=======
 		MaxMass:                         255,
->>>>>>> Stashed changes
-		MinStartNeuronCount:             2,
-		MaxStartNeuronCount:             20,
+		MinStartNeuronCount:             10,
+		MaxStartNeuronCount:             26,
 		MinNeuronCount:                  1,
-		MaxNeuronCount:                  20,
-		MinHiddenLayerCount:             2,
+		MaxNeuronCount:                  26,
+		MinHiddenLayerCount:             3,
 		MaxHiddenLayerCount:             8,
 		MinSightDistance:                2,
-		MaxSightDistance:                50,
+		MaxSightDistance:                100,
 		MinFieldOfView:                  10,
 		MaxFieldOfView:                  180,
 		MinMutationRate:                 0.0001,
@@ -87,34 +85,23 @@ func DefaultParams() *Parameters {
 		SexualReproductionSimilarityMax: 0.98,
 		ResponseCurveKFactor:            2,
 		MaxExpectedAge:                  50000,
-<<<<<<< Updated upstream
-		MinJuvenilePeriod:               100,
-		MaxJuvenilePeriod:               500,
-		MaxFood:                         15000,
-		FoodSpawnInterval:               100,
-		FoodPerSpawn:                    100,
-		FoodEnergyFraction:              0.1,
-		MetabolicRate:                   0.02,
-		MoveCost:                        0.005,
-=======
 		BaseMaxAge:                      30000,
 		MinJuvenilePeriod:               500,
 		MaxJuvenilePeriod:               3000,
 		MaxFood:                         15000,
-		FoodSpawnInterval:               100,
-		FoodPerSpawn:                    100,
-		FoodEnergyAmount:                25.0,
+		FoodSpawnInterval:               1000,
+		FoodPerSpawn:                    1000,
+		FoodEnergyFraction:              0.1,
 		MinMetabolicRate:                0.01,
 		MaxMetabolicRate:                0.1,
 		MoveCost:                        0.05,
->>>>>>> Stashed changes
 		ReproductionEnergyThreshold:     0.85,
 		ReproductionEnergyCost:          0.2,
 		PreyEnergyFraction:              0.2,
 		CorpseDecayRate:                 0.05,
-<<<<<<< Updated upstream
-=======
-		SavedGenomeProportion:           0.3,
->>>>>>> Stashed changes
+		MaxSpeedPerStep:                 2.0,
+		MaxRotationPerStep:              math.Pi / 4,
+		FoodInteractionRadius:           3.0,
+		PredationRadius:                 4.0,
 	}
 }

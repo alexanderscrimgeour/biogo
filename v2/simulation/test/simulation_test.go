@@ -14,7 +14,7 @@ func smallParams() *simulation.Parameters {
 	p.MinPopulation = 5
 	p.FoodSpawnInterval = 10
 	p.FoodPerSpawn = 5
-	p.MaxFood = 500 // grid is 50x50=2500 cells; keep food well under cell count
+	p.MaxFood = 200
 	return p
 }
 
@@ -24,8 +24,8 @@ func TestNewSimulation(t *testing.T) {
 	if sim == nil {
 		t.Fatal("New returned nil")
 	}
-	if sim.Grid == nil {
-		t.Error("simulation Grid should be initialized")
+	if sim.World == nil {
+		t.Error("simulation World should be initialized")
 	}
 	if sim.Population == nil {
 		t.Error("simulation Population should be initialized")
@@ -60,11 +60,11 @@ func TestSimulationCreatureViews(t *testing.T) {
 		t.Errorf("CreatureViews returned %d views, want %d", len(views), p.StartingPopulation)
 	}
 	for _, v := range views {
-		if v.X < 0 || v.X >= p.GridWidth {
-			t.Errorf("creature X=%d out of grid bounds [0,%d)", v.X, p.GridWidth)
+		if v.X < 0 || v.X >= float64(p.GridWidth) {
+			t.Errorf("creature X=%f out of world bounds [0,%d)", v.X, p.GridWidth)
 		}
-		if v.Y < 0 || v.Y >= p.GridHeight {
-			t.Errorf("creature Y=%d out of grid bounds [0,%d)", v.Y, p.GridHeight)
+		if v.Y < 0 || v.Y >= float64(p.GridHeight) {
+			t.Errorf("creature Y=%f out of world bounds [0,%d)", v.Y, p.GridHeight)
 		}
 	}
 }
@@ -90,7 +90,6 @@ func TestSimulationFoodSpawns(t *testing.T) {
 	p.FoodPerSpawn = 3
 	sim := simulation.New(p)
 
-	// Tick 0 spawns food during the first step
 	sim.Update()
 	if sim.FoodCount() == 0 {
 		t.Error("expected food to spawn after first update with FoodSpawnInterval=1")
@@ -109,8 +108,8 @@ func TestSimulationFoodViews(t *testing.T) {
 		t.Errorf("FoodViews len %d != FoodCount %d", len(views), sim.FoodCount())
 	}
 	for _, v := range views {
-		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
-			t.Errorf("food at (%d,%d) is out of grid bounds", v.X, v.Y)
+		if v.X < 0 || v.X >= float64(p.GridWidth) || v.Y < 0 || v.Y >= float64(p.GridHeight) {
+			t.Errorf("food at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 	}
 }
@@ -121,15 +120,15 @@ func TestSimulationCorpseViews(t *testing.T) {
 	p.MinMetabolicRate = 10000
 	p.MaxMetabolicRate = 10000
 	p.FoodSpawnInterval = 999999
-	p.CorpseDecayRate = 0.001 // decay very slowly so corpses persist
+	p.CorpseDecayRate = 0.001
 	sim := simulation.New(p)
 
 	sim.Update()
 
 	views := sim.CorpseViews()
 	for _, v := range views {
-		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
-			t.Errorf("corpse at (%d,%d) is out of grid bounds", v.X, v.Y)
+		if v.X < 0 || v.X >= float64(p.GridWidth) || v.Y < 0 || v.Y >= float64(p.GridHeight) {
+			t.Errorf("corpse at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 		if v.EnergyFraction < 0 || v.EnergyFraction > 1 {
 			t.Errorf("corpse EnergyFraction %f out of [0,1]", v.EnergyFraction)
@@ -164,14 +163,13 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 	p.MaxMetabolicRate = 0
 	p.MoveCost = 0
 	p.ReproductionEnergyThreshold = 0.1
-	p.MinPopulation = 0 // prevent auto-spawning from inflating count
+	p.MinPopulation = 0
 	p.MaxFood = 0
 
 	sim := simulation.New(p)
 
-	// Force all creatures to maximum juvenile period and full energy
 	for _, c := range sim.Population.Creatures {
-		c.Genome.JuvenilePeriod = 255 // effective period = 10000 ticks
+		c.Genome.JuvenilePeriod = 255
 		c.Energy = float32(c.Genome.MaxEnergy)
 	}
 
@@ -182,7 +180,8 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 	}
 
 	if sim.PopulationCount() > initialCount {
-		t.Errorf("juvenile creatures should not reproduce: started with %d, now have %d", initialCount, sim.PopulationCount())
+		t.Errorf("juvenile creatures should not reproduce: started with %d, now have %d",
+			initialCount, sim.PopulationCount())
 	}
 }
 
@@ -201,9 +200,8 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 
 	sim := simulation.New(p)
 
-	// Fill energy so reproduction threshold is met immediately
 	for _, c := range sim.Population.Creatures {
-		c.Genome.JuvenilePeriod = 255 // byte value doesn't matter when MaxJuvenilePeriod = 0
+		c.Genome.JuvenilePeriod = 255
 		c.Energy = float32(c.Genome.MaxEnergy)
 	}
 
@@ -214,6 +212,7 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 	}
 
 	if sim.PopulationCount() <= initialCount {
-		t.Errorf("adults with sufficient energy should reproduce: started with %d, still have %d", initialCount, sim.PopulationCount())
+		t.Errorf("adults with sufficient energy should reproduce: started with %d, still have %d",
+			initialCount, sim.PopulationCount())
 	}
 }
