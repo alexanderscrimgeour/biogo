@@ -118,7 +118,8 @@ func TestSimulationFoodViews(t *testing.T) {
 func TestSimulationCorpseViews(t *testing.T) {
 	p := smallParams()
 	// High metabolic rate to kill a creature immediately, no food
-	p.MetabolicRate = 10000
+	p.MinMetabolicRate = 10000
+	p.MaxMetabolicRate = 10000
 	p.FoodSpawnInterval = 999999
 	p.CorpseDecayRate = 0.001 // decay very slowly so corpses persist
 	sim := simulation.New(p)
@@ -142,7 +143,8 @@ func TestSimulationMinPopulationMaintained(t *testing.T) {
 	p.MaxPopulation = 10
 	p.MinPopulation = 5
 	// High metabolic rate to kill creatures quickly
-	p.MetabolicRate = 1000
+	p.MinMetabolicRate = 1000
+	p.MaxMetabolicRate = 1000
 	p.FoodSpawnInterval = 999999
 	sim := simulation.New(p)
 
@@ -158,7 +160,8 @@ func TestSimulationMinPopulationMaintained(t *testing.T) {
 func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 	p := smallParams()
 	p.MaxJuvenilePeriod = 10000 // very long juvenile phase
-	p.MetabolicRate = 0
+	p.MinMetabolicRate = 0
+	p.MaxMetabolicRate = 0
 	p.MoveCost = 0
 	p.ReproductionEnergyThreshold = 0.1
 	p.MinPopulation = 0 // prevent auto-spawning from inflating count
@@ -186,7 +189,8 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 func TestAdultCreaturesCanReproduce(t *testing.T) {
 	p := smallParams()
 	p.MaxJuvenilePeriod = 0 // no juvenile phase — all creatures are immediately adults
-	p.MetabolicRate = 0
+	p.MinMetabolicRate = 0
+	p.MaxMetabolicRate = 0
 	p.MoveCost = 0
 	p.ReproductionEnergyThreshold = 0.1
 	p.ReproductionEnergyCost = 0.05

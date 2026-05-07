@@ -14,6 +14,11 @@ const (
 	MOVE_WEST
 	MOVE_NORTH
 	MOVE_SOUTH
+<<<<<<< Updated upstream
+=======
+	EAT
+	DO_NOTHING
+>>>>>>> Stashed changes
 
 	ACTION_COUNT
 	// Disabled for now

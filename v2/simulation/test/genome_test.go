@@ -67,7 +67,7 @@ func TestGeneCopy(t *testing.T) {
 func TestMutateChangesGenome(t *testing.T) {
 	rand.Seed(42)
 	p := defaultParams()
-	p.BaseMutationRate = 1.0 // force mutation on every gene
+	p.MinMutationRate = 1.0 // force mutation on every gene
 	g := simulation.MakeRandomGenome(p)
 	original := g.String()
 	simulation.Mutate(g, p)
@@ -105,14 +105,25 @@ func TestGenomeSimilarity(t *testing.T) {
 	}
 }
 
-func TestMakeRandomGenomeSizeInBounds(t *testing.T) {
+func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 	p := defaultParams()
+<<<<<<< Updated upstream
 	p.MinSize = 10
 	p.MaxSize = 50
 	for i := 0; i < 100; i++ {
 		g := simulation.MakeRandomGenome(p)
 		if g.Size < p.MinSize || g.Size > p.MaxSize {
 			t.Errorf("Size %d outside [%d, %d]", g.Size, p.MinSize, p.MaxSize)
+=======
+	p.MaxMass = 50
+	for i := 0; i < 100; i++ {
+		g := simulation.MakeRandomGenome(p)
+		if g.Mass > p.MaxMass {
+			t.Errorf("Mass %d exceeds MaxMass %d", g.Mass, p.MaxMass)
+		}
+		if g.MinMass < 1 || g.MinMass > g.Mass {
+			t.Errorf("MinMass %d outside [1, %d]", g.MinMass, g.Mass)
+>>>>>>> Stashed changes
 		}
 	}
 }
@@ -132,6 +143,28 @@ func TestGenomeString(t *testing.T) {
 	s := g.String()
 	if len(s) == 0 {
 		t.Error("Genome.String() should not be empty")
+	}
+}
+
+func TestMakeRandomGenomeMutationRateNonZero(t *testing.T) {
+	p := defaultParams()
+	for i := 0; i < 1000; i++ {
+		g := simulation.MakeRandomGenome(p)
+		if g.MutationRate == 0 {
+			t.Fatalf("MakeRandomGenome produced MutationRate=0 on iteration %d", i)
+		}
+	}
+}
+
+func TestMutateNeverZeroMutationRate(t *testing.T) {
+	p := defaultParams()
+	p.MinMutationRate = 1.0
+	for i := 0; i < 1000; i++ {
+		g := simulation.MakeRandomGenome(p)
+		simulation.Mutate(g, p)
+		if g.MutationRate == 0 {
+			t.Fatalf("Mutate produced MutationRate=0 on iteration %d", i)
+		}
 	}
 }
 

@@ -32,6 +32,13 @@ func (s *Simulation) initializeGrid() {
 }
 
 func (s *Simulation) initializePopulation() {
+<<<<<<< Updated upstream
+=======
+	savedGenomes, _ := LoadAllCreatureGenomes()
+	maxSeeded := int(float32(s.Params.StartingPopulation) * s.Params.SavedGenomeProportion)
+	seeded := 0
+
+>>>>>>> Stashed changes
 	pop := NewPopulation(s.Params)
 	for i := 0; i < s.Params.StartingPopulation; i++ {
 		loc, ok := s.Grid.FindEmptyLocation()
@@ -45,6 +52,27 @@ func (s *Simulation) initializePopulation() {
 	s.Population = pop
 }
 
+<<<<<<< Updated upstream
+=======
+// SaveCreature saves the genome of the creature with the given id to a unique file in data/creatures/.
+func (s *Simulation) SaveCreature(id int) error {
+	c, ok := s.Population.Creatures[id]
+	if !ok || !c.Alive {
+		return nil
+	}
+	return SaveCreatureToFile(c.Genome)
+}
+
+// Reset reinitialises the simulation from scratch. A proportion of the starting
+// population is seeded from any previously saved genomes (see SavedGenomeProportion).
+func (s *Simulation) Reset() {
+	s.Tick = 0
+	s.nextCreatureID = grid.RESERVED_CELL_TYPES
+	s.initializeGrid()
+	s.initializePopulation()
+}
+
+>>>>>>> Stashed changes
 func (s *Simulation) allocateID() int {
 	id := s.nextCreatureID
 	s.nextCreatureID++
@@ -77,6 +105,10 @@ func (s *Simulation) step() {
 	s.Population.ProcessCorpseDecay(s.Grid, s.Params)
 	s.Population.ProcessReproductionQueue(s.Grid, s.Params, s.allocateID)
 
+	spawnParams := *s.Params
+	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
+		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
+	}
 	for s.Population.AliveCount() < s.Params.MinPopulation {
 		loc, ok := s.Grid.FindEmptyLocation()
 		if !ok {
@@ -85,9 +117,9 @@ func (s *Simulation) step() {
 		id := s.allocateID()
 		var genome *Genome
 		if source := s.Population.OldestGenome(); source != nil {
-			genome = AsexualReproductionArtificial(source, s.Params)
+			genome = AsexualReproduction(source, &spawnParams)
 		} else {
-			genome = MakeRandomGenome(s.Params)
+			genome = MakeRandomGenome(&spawnParams)
 		}
 		c := NewCreature(id, loc, genome)
 		s.Population.Creatures[id] = c
@@ -99,8 +131,9 @@ func (s *Simulation) step() {
 
 func (s *Simulation) stepCreature(c *Creature) {
 	c.Age++
-	c.Energy -= s.Params.MetabolicRate
-	if c.Energy <= 0 {
+	c.LastAction = "Idle"
+	c.Energy -= c.MetabolicRate(s.Params)
+	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
 		s.Population.QueueForDeath(c)
 		return
 	}
@@ -109,6 +142,7 @@ func (s *Simulation) stepCreature(c *Creature) {
 	reproThreshold := s.Params.ReproductionEnergyThreshold * float32(c.Genome.MaxEnergy)
 	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod {
 		s.Population.QueueForReproduction(c)
+		c.LastAction = "Reproducing"
 	}
 
 	actionLevels := c.FeedForward(s.Grid, s.Population, s.Tick, s.Params)
@@ -121,6 +155,15 @@ func (s *Simulation) Print() {
 }
 
 func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
+	if IsActionEnabled(DO_NOTHING) {
+		level := actionLevels[DO_NOTHING]
+		if level > 0 && prob2Bool(float64(level)) == 1 {
+			c.Energy += c.MetabolicRate(s.Params)
+			c.LastAction = "Resting"
+			return
+		}
+	}
+
 	if IsActionEnabled(SET_RESPONSIVENESS) {
 		responsivenessLevel := actionLevels[SET_RESPONSIVENESS]
 		responsivenessLevel = (float32(math.Tanh(float64(responsivenessLevel/float32(utils.ClampByteAsFloat32(0, 1, c.Genome.Responsiveness))))) + 1) / 2
@@ -193,6 +236,25 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 		moveY += float32(offset.Y) * level
 	}
 
+<<<<<<< Updated upstream
+=======
+	if IsActionEnabled(EAT) {
+		level := actionLevels[EAT]
+		if level > 0 && prob2Bool(float64(level)) == 1 {
+			fwdLoc := grid.Coord{
+				X: c.Loc.X + c.LastMoveDir.X,
+				Y: c.Loc.Y + c.LastMoveDir.Y,
+			}
+			if s.Grid.IsInBounds(fwdLoc) {
+				s.Population.QueueForEat(c, fwdLoc)
+				if c.LastAction != "Reproducing" {
+					c.LastAction = "Eating"
+				}
+			}
+		}
+	}
+
+>>>>>>> Stashed changes
 	moveX = float32(math.Tanh(float64(moveX)))
 	moveY = float32(math.Tanh(float64(moveY)))
 	moveX *= responseAdjust
@@ -216,10 +278,16 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 		newCoord = s.Grid.WrapCoords(newCoord)
 	}
 	if (s.Grid.Torodial || s.Grid.IsInBounds(newCoord)) && s.Grid.At(newCoord) != grid.WALL {
-		sizeFactor := 1.0 + c.CurrentSize(s.Params)/255.0
-		c.Energy -= s.Params.MoveCost * sizeFactor
+		massFactor := 1.0 + c.CurrentMass(s.Params)/255.0
+		c.Energy -= s.Params.MoveCost * massFactor
 		s.Population.QueueForMove(c, newCoord)
 	}
+}
+
+// SetSpawnMutationRate sets the minimum mutation rate applied when artificially
+// spawning creatures to maintain the minimum population.
+func (s *Simulation) SetSpawnMutationRate(rate float32) {
+	s.Params.SpawnMutationRate = rate
 }
 
 // GridWidth returns the simulation grid width.
