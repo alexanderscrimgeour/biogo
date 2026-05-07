@@ -34,16 +34,15 @@ In the simple case above, we create a simple neural network with three neurons:
     |--------|             |--------|             |--------|
 ```
 
-At the start of the simulation a number of creatures are created with random genomes. The creatures must solve a challenge, e.g. reach the left 10% of the map, before the "generation" is over. 
-At first, the creatures are terrible at solving the problem:
-![Generation 1](./images/generation-1.gif)
+By encoding the neural network in the genome itself, we are able to mutate the neural network through evolution - including changing the size of the neural network or rewiring connections. 
 
-However, those that succeed go on to populate the next generation. Eventually, those that are most able to move left are able to dominate the genetic makeup of the population. However, some of these creatures are still blocked by the wall, and as such the survival rate stabilises at around 70%.
-![Generation 51](./images/generation-51.gif)
+The simulation runs by generating a continuous stream of food sources that creatures can feed to replenish energy levels. If a creature exhausts it's energy, it dies. Creatures may also eat each other as energy sources.
 
-The final piece of the puzzle is that there is a chance of genetic mutation when children inherit their parent's genome. This means that a more optimal strategy emerges and this new genome flourishes. In this example, a mutation occured that allowed the children to first travel down to below the wall before heading left.
-By the 500th generation 99.6% of creatures managed to survive the challenge and reach the left hand side:
-![Generation 508](./images/generation-508.gif)
+When creatures reach a certain limit of energy, it may reproduce. Reproduction is currently asexual, creating a cloned child with a chance of mutation (the rate of which is genetic). This ensures that creatures evolve to environmental pressures. 
+
+If the population dips below a minimum value, the simulation spawns new mutant variants of the best performing creature in order to give evolution a helping hand. 
+
+Simply debug tools exist at the moment that should enable saving the 5 best creatures (done via greedy sampling of genetically similar clusters).
 
 ### Install
 `
@@ -62,6 +61,6 @@ Dependencies:
 
 #### TODO
 - Concurrent execution of neural FFward steps to improve performance
-- Continuous environment rather than "Generations"
+- Consider ECS redesign if performance becomes an issue
+- Visualise neural networks, creature splits, etc. 
 - Redo the hastily made test UI
-- Output data to file for analysis
