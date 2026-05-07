@@ -243,6 +243,13 @@ func (s *Simulation) AverageAge() float64 {
 	return float64(total) / float64(count)
 }
 
+func prob2Bool(val float64) int {
+	if rand.Float64() < val {
+		return 1
+	}
+	return 0
+}
+
 func responseCurve(resp float32, kFactor float32) float32 {
 	k := float64(kFactor)
 	return float32(math.Pow(float64(resp)-2.0, -2*k)) - float32(math.Pow(2.0, -2.0*k))*(1-resp)

@@ -14,7 +14,7 @@ func TestCurrentMassAtBirth(t *testing.T) {
 
 	c := simulation.NewCreature(1, grid.Position{}, genome)
 	got := c.CurrentMass(params)
-	want := float32(params.MinMass)
+	want := float32(genome.MinMass)
 	if got != want {
 		t.Errorf("CurrentMass at age 0: got %f, want %f", got, want)
 	}
@@ -64,7 +64,7 @@ func TestIsJuvenileBlocksBeforeAdulthood(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 
 	c.Age = 99
 	if !c.IsJuvenile(params) {
@@ -82,7 +82,7 @@ func TestIsJuvenileZeroPeriod(t *testing.T) {
 	params.MaxJuvenilePeriod = 0
 
 	genome := simulation.MakeRandomGenome(params)
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 
 	c.Age = 0
 	if c.IsJuvenile(params) {

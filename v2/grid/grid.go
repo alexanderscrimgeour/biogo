@@ -266,7 +266,7 @@ func (w *World) FindEmptyLocation() (Position, bool) {
 
 func (w *World) SpawnFood(n int) {
 	const patchRadius = 20.0
-	const patchSize = 25
+	const patchSize = 200
 	totalSpawned := 0
 	for totalSpawned < n {
 		seed, ok := w.FindEmptyLocation()

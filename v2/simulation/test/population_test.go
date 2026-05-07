@@ -217,15 +217,12 @@ func TestPredationGainBasedOnMass(t *testing.T) {
 	params.PredationRadius = 3.0
 	params.FoodInteractionRadius = 0.1
 
+	smallGenome := simulation.MakeRandomGenome(params)
 	smallGenome.Mass = 10
 	smallGenome.MaxEnergy = 100
 	largeGenome := simulation.MakeRandomGenome(params)
 	largeGenome.Mass = 50
 	largeGenome.MaxEnergy = 100
-
-	predID := grid.RESERVED_CELL_TYPES
-	smallPreyID := grid.RESERVED_CELL_TYPES + 1
-	largePreyID := grid.RESERVED_CELL_TYPES + 2
 
 	predatorGenome := simulation.MakeRandomGenome(params)
 	predatorGenome.MaxEnergy = 255
@@ -282,7 +279,7 @@ func TestCorpseEnergySetOnDeath(t *testing.T) {
 	creature := simulation.NewCreature(1, loc, genome)
 	creature.Energy = 5                         // very low — should not affect corpse food value
 	creature.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
-	g.AddCreature(creature.Id, loc)
+	w.AddCreature(creature.Id, loc)
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[1] = creature
@@ -298,32 +295,31 @@ func TestCorpseEnergySetOnDeath(t *testing.T) {
 // has its corpse energy set to its genome Mass.
 func TestPredationSetsCorpseEnergyFromMass(t *testing.T) {
 	params := defaultParams()
-	g := grid.NewGrid(20, 20, 0)
-	g.ZeroFill()
+	w := grid.NewWorld(20, 20, 0)
 
 	preyGenome := simulation.MakeRandomGenome(params)
 	preyGenome.Mass = 80
 
-	predID := grid.RESERVED_CELL_TYPES
-	preyID := grid.RESERVED_CELL_TYPES + 1
+	predID := 1
+	preyID := 2
 
 	predatorGenome2 := simulation.MakeRandomGenome(params)
 	predatorGenome2.Mass = params.MaxMass // guarantee predator is always larger than prey
-	predator := simulation.NewCreature(predID, grid.Coord{X: 5, Y: 5}, predatorGenome2)
+	predator := simulation.NewCreature(predID, grid.Position{X: 5, Y: 5}, predatorGenome2)
 	predator.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
-	prey := simulation.NewCreature(preyID, grid.Coord{X: 6, Y: 5}, preyGenome)
+	prey := simulation.NewCreature(preyID, grid.Position{X: 6, Y: 5}, preyGenome)
 	prey.Energy = 999                       // high pre-death energy — should not be the corpse value
 	prey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 
-	g.Set(predator.Loc, predID)
-	g.Set(prey.Loc, preyID)
+	w.AddCreature(predID, predator.Loc)
+	w.AddCreature(preyID, prey.Loc)
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[predID] = predator
 	pop.Creatures[preyID] = prey
 
 	pop.QueueForMove(predator, prey.Loc)
-	pop.ProcessMoveQueue(g, params)
+	pop.ProcessMoveQueue(w, params)
 
 	if prey.Energy != float32(preyGenome.Mass) {
 		t.Errorf("corpse energy after predation should equal genome.Mass (%d), got %f", preyGenome.Mass, prey.Energy)

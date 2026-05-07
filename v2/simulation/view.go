@@ -76,10 +76,10 @@ func (s *Simulation) CreatureViews() []CreatureView {
 		}
 		r, g, b, a := genomeColor(c.Genome)
 		views = append(views, CreatureView{
-			ID:            c.Id,
-			X:             c.Loc.X,
-			Y:             c.Loc.Y,
-			R:             r, G: g, B: b, A: a,
+			ID: c.Id,
+			X:  c.Loc.X,
+			Y:  c.Loc.Y,
+			R:  r, G: g, B: b, A: a,
 			Heading:       c.Heading,
 			SightDistance: c.Genome.SightDistance,
 			FieldOfView:   c.Genome.FieldOfView,
@@ -89,13 +89,8 @@ func (s *Simulation) CreatureViews() []CreatureView {
 	return views
 }
 
-<<<<<<< Updated upstream
-func (s *Simulation) CreatureMinSize() byte { return s.Params.MinSize }
-func (s *Simulation) CreatureMaxSize() byte { return s.Params.MaxSize }
-=======
 func (s *Simulation) CreatureMinMass() byte { return 1 }
 func (s *Simulation) CreatureMaxMass() byte { return s.Params.MaxMass }
->>>>>>> Stashed changes
 
 // FoodViews returns a snapshot of all current food locations for rendering.
 func (s *Simulation) FoodViews() []FoodView {

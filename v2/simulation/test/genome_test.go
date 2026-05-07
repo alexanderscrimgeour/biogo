@@ -107,14 +107,6 @@ func TestGenomeSimilarity(t *testing.T) {
 
 func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 	p := defaultParams()
-<<<<<<< Updated upstream
-	p.MinSize = 10
-	p.MaxSize = 50
-	for i := 0; i < 100; i++ {
-		g := simulation.MakeRandomGenome(p)
-		if g.Size < p.MinSize || g.Size > p.MaxSize {
-			t.Errorf("Size %d outside [%d, %d]", g.Size, p.MinSize, p.MaxSize)
-=======
 	p.MaxMass = 50
 	for i := 0; i < 100; i++ {
 		g := simulation.MakeRandomGenome(p)
@@ -123,7 +115,6 @@ func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 		}
 		if g.MinMass < 1 || g.MinMass > g.Mass {
 			t.Errorf("MinMass %d outside [1, %d]", g.MinMass, g.Mass)
->>>>>>> Stashed changes
 		}
 	}
 }

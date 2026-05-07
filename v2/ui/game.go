@@ -167,8 +167,8 @@ func (g *Game) Update() error {
 
 		for _, cv := range views {
 			currentIDs[cv.ID] = true
-			screenX := float64(cv.X * BlockSize)
-			screenY := float64(cv.Y * BlockSize)
+			screenX := float64(cv.X * bs)
+			screenY := float64(cv.Y * bs)
 
 			if anim, ok := g.animByID[cv.ID]; ok {
 				if prev, ok := prevByID[cv.ID]; ok {
@@ -204,7 +204,7 @@ func (g *Game) Update() error {
 			currentFood[key] = true
 			if _, ok := g.foodBlobsByKey[key]; !ok {
 				blob := g.renderGrid.AddFoodBlob(BlockSize, foodColor)
-				blob.Translate(float64(fv.X*BlockSize), float64(fv.Y*BlockSize))
+				blob.Translate(float64(fv.X*bs), float64(fv.Y*bs))
 				g.foodBlobsByKey[key] = blob
 			}
 		}
@@ -223,11 +223,11 @@ func (g *Game) Update() error {
 			alpha := uint8(cv.EnergyFraction * 220)
 			corpseColor := color.RGBA{R: 120, G: 60, B: 20, A: alpha}
 			if blob, ok := g.corpseBlobsByID[cv.ID]; ok {
-				blob.Move(float64(cv.X*BlockSize), float64(cv.Y*BlockSize))
+				blob.Move(float64(cv.X*bs), float64(cv.Y*bs))
 				blob.SetColor(corpseColor)
 			} else {
 				blob := g.renderGrid.AddBlob(BlockSize, corpseColor)
-				blob.Translate(float64(cv.X*BlockSize), float64(cv.Y*BlockSize))
+				blob.Translate(float64(cv.X*bs), float64(cv.Y*bs))
 				if g.corpseBlobsByID == nil {
 					g.corpseBlobsByID = make(map[int]*Blob)
 				}
@@ -385,6 +385,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.addStatLine(screen, "Population", fmt.Sprintf("%d", g.sim.PopulationCount()), 1)
 	g.addStatLine(screen, "Food", fmt.Sprintf("%d", g.sim.FoodCount()), 2)
 	g.addStatLine(screen, "Avg Age", fmt.Sprintf("%.0f", g.sim.AverageAge()), 3)
+	if g.tickDuration > 0 {
+		tickRate := 1.0 / g.tickDuration.Seconds()
+		g.addStatLine(screen, "Tick Rate", fmt.Sprintf("%.0f/s", tickRate), 4)
+	}
 }
 
 func (g *Game) drawPauseButton(screen *ebiten.Image) {
@@ -455,7 +459,7 @@ func (g *Game) addStatLine(img *ebiten.Image, desc string, val string, row int) 
 	text.Draw(img, fmt.Sprintf("%s: %s", desc, val), g.statFont, x, 20*row+3, color.White)
 }
 
-func foodKey(x, y int) string { return fmt.Sprintf("%d,%d", x, y) }
+func foodKey(x, y float64) string { return fmt.Sprintf("%f,%f", x, y) }
 
 func (g *Game) trySelectCreature(mx, my int) {
 	clickX, clickY := float64(mx), float64(my)
@@ -481,24 +485,79 @@ func (g *Game) drawSelectionHighlight(screen *ebiten.Image) {
 	}
 }
 
+// drawCreatureDetail renders the inspector panel for the selected creature.
 func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDetailView) {
-	px, py, pw, ph := float32(detailPanelX), float32(detailPanelY), float32(detailPanelW), float32(detailPanelH)
+	const tpad = detailTpad
+	px := float32(detailPanelX)
+	py := float32(detailPanelY)
+	pw := float32(detailPanelW)
+	ph := float32(detailPanelH)
+
 	vector.DrawFilledRect(screen, px, py, pw, ph, color.RGBA{8, 10, 22, 215}, false)
 	vector.StrokeRect(screen, px, py, pw, ph, 1, color.RGBA{90, 90, 150, 255}, false)
-	tx, ty := int(px)+detailTpad, int(py)+16
-	text.Draw(screen, fmt.Sprintf("Creature #%d", d.ID), g.statFont, tx, ty, color.RGBA{255, 220, 80, 255})
+
+	tx := int(px) + tpad
+	ty := int(py) + 16
+
+	// Header
+	text.Draw(screen, fmt.Sprintf("Creature #%d", d.ID), g.statFont, tx, ty, color.RGBA{R: 255, G: 220, B: 80, A: 255})
 	ty += 22
+
+	// Energy label then bar
 	frac := d.Energy / float32(d.MaxEnergy)
-	text.Draw(screen, fmt.Sprintf("Energy %.0f/%.0f", d.Energy, float32(d.MaxEnergy)), g.statFont, tx, ty, color.White)
-	vector.DrawFilledRect(screen, px+detailTpad, float32(ty+2), pw-detailTpad*2, 6, color.RGBA{35, 35, 35, 255}, false)
-	vector.DrawFilledRect(screen, px+detailTpad, float32(ty+2), (pw-detailTpad*2)*frac, 6, creatureEnergyBarColor(frac), false)
-	ty += 44
-	text.Draw(screen, fmt.Sprintf("Mass: %.1f", d.CurrentMass), g.statFont, tx, ty, color.White)
+	if frac < 0 {
+		frac = 0
+	} else if frac > 1 {
+		frac = 1
+	}
+	text.Draw(screen, fmt.Sprintf("Energy  %.0f / %.0f", d.Energy, float32(d.MaxEnergy)), g.statFont, tx, ty, color.White)
+	barX := px + float32(tpad)
+	barW := pw - float32(tpad)*2
+	barY := float32(ty + 2)
+	vector.DrawFilledRect(screen, barX, barY, barW, 6, color.RGBA{35, 35, 35, 255}, false)
+	vector.DrawFilledRect(screen, barX, barY, barW*frac, 6, creatureEnergyBarColor(frac), false)
+	ty += 26
+
+	// Age
+	ageStatus := "Adult"
+	if d.IsJuvenile {
+		ageStatus = fmt.Sprintf("Juv (%d left)", d.JuvenilePeriod-d.Age)
+	}
+	text.Draw(screen, fmt.Sprintf("Age  %d  %s", d.Age, ageStatus), g.statFont, tx, ty, color.White)
+	ty += 18
+
+	// Action
+	text.Draw(screen, fmt.Sprintf("Action  %s", d.LastAction), g.statFont, tx, ty, color.RGBA{R: 160, G: 220, B: 160, A: 255})
 	ty += 20
-	text.Draw(screen, fmt.Sprintf("Action: %s", d.LastAction), g.statFont, tx, ty, color.RGBA{160, 220, 160, 255})
+
+	// Divider
+	vector.DrawFilledRect(screen, px+4, float32(ty)-6, pw-8, 1, color.RGBA{70, 70, 100, 255}, false)
+
+	// Mass
+	text.Draw(screen, fmt.Sprintf("Mass  %.0f / %d", d.CurrentMass, d.AdultMass), g.statFont, tx, ty, color.White)
+	ty += 18
+
+	// Sight + FOV
+	text.Draw(screen, fmt.Sprintf("Sight %d  FOV %d°", d.SightDistance, d.FieldOfView), g.statFont, tx, ty, color.White)
+	ty += 18
+
+	// Brain
+	text.Draw(screen, fmt.Sprintf("Layers %d  Genes %d", d.NeuronCount, d.BrainLength), g.statFont, tx, ty, color.White)
+	ty += 18
+
+	// Mutation
+	text.Draw(screen, fmt.Sprintf("Mutation  %.2f%%", d.MutationPct), g.statFont, tx, ty, color.White)
+
+	// Save button at the bottom of the panel.
 	saveBtnY := float32(detailPanelY + detailPanelH - detailTpad - detailSaveBtnH)
-	vector.DrawFilledRect(screen, px+detailTpad, saveBtnY, pw-detailTpad*2, float32(detailSaveBtnH), color.RGBA{40, 100, 60, 220}, false)
-	text.Draw(screen, "Save", g.statFont, tx+int(pw/2)-20, int(saveBtnY)+17, color.White)
+	vector.DrawFilledRect(screen, px+float32(tpad), saveBtnY, pw-float32(tpad)*2, float32(detailSaveBtnH),
+		color.RGBA{R: 40, G: 100, B: 60, A: 220}, false)
+	text.Draw(screen, "Save", g.statFont, tx+int(pw/2)-16, int(saveBtnY)+17, color.White)
+
+	// Feedback from the last save attempt.
+	if !g.saveFeedbackAt.IsZero() && time.Since(g.saveFeedbackAt) < 3*time.Second {
+		text.Draw(screen, g.saveFeedback, g.statFont, tx, int(saveBtnY)+detailSaveBtnH+14, color.White)
+	}
 }
 
 func (g *Game) applySpawnMutSlider(mx int) {
