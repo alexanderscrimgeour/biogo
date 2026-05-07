@@ -89,13 +89,14 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
 				break
 			}
 			maxE := float32(c.Genome.MaxEnergy)
-			gain := params.PreyEnergyFraction * float32(target.Genome.Size)
+			targetSize := target.CurrentSize(params)
+			gain := params.PreyEnergyFraction * targetSize
 			c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
 
 			if target.Alive {
 				// Predation: kill the prey in place; predator does not move.
 				target.Alive = false
-				target.Energy = float32(target.Genome.Size)
+				target.Energy = targetSize
 			} else {
 				// Scavenging: consume the corpse, move into its cell.
 				delete(p.Creatures, target.Id)
@@ -110,11 +111,11 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
 }
 
 // ProcessDeathQueue marks queued creatures as dead and resets their energy to their
-// size-based food value. Corpses remain on the grid and decay over time via ProcessCorpseDecay.
-func (p *Population) ProcessDeathQueue(g *grid.Grid) {
+// current size-based food value. Corpses remain on the grid and decay over time via ProcessCorpseDecay.
+func (p *Population) ProcessDeathQueue(g *grid.Grid, params *Parameters) {
 	for _, di := range p.DeathQueue {
 		di.Creature.Alive = false
-		di.Creature.Energy = float32(di.Creature.Genome.Size)
+		di.Creature.Energy = di.Creature.CurrentSize(params)
 	}
 	p.DeathQueue = []DeathInstruction{}
 }
@@ -172,7 +173,7 @@ func (p *Population) ProcessReproductionQueue(g *grid.Grid, params *Parameters, 
 // 2 steps behind the parent (opposite of LastMoveDir), falling back to any adjacent empty cell.
 func findOffspringLocation(g *grid.Grid, parent *Creature) (grid.Coord, bool) {
 	d := parent.LastMoveDir
-	if (d.X != 0 || d.Y != 0) {
+	if d.X != 0 || d.Y != 0 {
 		behind := grid.Coord{X: parent.Loc.X - 2*d.X, Y: parent.Loc.Y - 2*d.Y}
 		if g.IsInBounds(behind) && g.IsEmptyAt(behind) {
 			return behind, true

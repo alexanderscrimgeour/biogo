@@ -57,6 +57,17 @@ func (c Creature) String() string {
 		c.LastMoveDir)
 }
 
+// CurrentSize returns the creature's effective size, scaling linearly from params.MinSize
+// at birth to genome.Size at the end of the juvenile period.
+func (c Creature) CurrentSize(params *Parameters) float32 {
+	juvenilePeriod := params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(params.MaxJuvenilePeriod-params.MinJuvenilePeriod))
+	if juvenilePeriod == 0 || c.Age >= juvenilePeriod {
+		return float32(c.Genome.Size)
+	}
+	t := float32(c.Age) / float32(juvenilePeriod)
+	return float32(params.MinSize) + (float32(c.Genome.Size)-float32(params.MinSize))*t
+}
+
 func (c Creature) GetNextLoc(d grid.Dir) grid.Coord {
 	x := c.Loc.X + d.X
 	y := c.Loc.Y + d.Y
