@@ -137,9 +137,20 @@ func (p *Population) ProcessEatQueue(g *grid.Grid, params *Parameters) {
 			continue
 		}
 		maxE := float32(c.Genome.MaxEnergy)
+		currentSize := c.CurrentSize(params)
 		targetSize := target.CurrentSize(params)
 		gain := targetSize * float32(target.Genome.MaxEnergy) / float32(params.MaxSize)
 		c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
+		// Test logic to dissuade eating larger creatures
+		if targetSize > currentSize {
+			sizeRatio := targetSize / currentSize
+			deathChance := (sizeRatio - 1.0) * 0.2
+			if rand.Float32() < deathChance {
+				c.Alive = false
+				g.Set(c.Loc, grid.EMPTY)
+				continue
+			}
+		}
 
 		if target.Alive {
 			target.Alive = false

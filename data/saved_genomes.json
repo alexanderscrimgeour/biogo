@@ -1,30 +1,30 @@
 [
   {
-    "osc_period": 131,
-    "max_energy": 240,
-    "sight_distance": 5,
-    "field_of_view": 118,
-    "responsiveness": 37,
-    "mutation_rate": 124,
+    "osc_period": 159,
+    "max_energy": 72,
+    "sight_distance": 14,
+    "field_of_view": 22,
+    "responsiveness": 6,
+    "mutation_rate": 24,
     "size": 108,
-    "min_size": 31,
-    "reproduction_type": 1,
+    "min_size": 37,
+    "reproduction_type": 0,
     "neuron_count": 7,
-    "brain_length": 13,
-    "juvenile_period": 186,
+    "brain_length": 11,
+    "juvenile_period": 11,
     "brain": [
       {
-        "source_type": 1,
-        "source_id": 180,
-        "sink_type": 1,
-        "sink_id": 61,
-        "weight": 16
+        "source_type": 0,
+        "source_id": 148,
+        "sink_type": 0,
+        "sink_id": 57,
+        "weight": 0
       },
       {
-        "source_type": 1,
-        "source_id": 8,
+        "source_type": 0,
+        "source_id": 11,
         "sink_type": 0,
-        "sink_id": 96,
+        "sink_id": 240,
         "weight": 92
       },
       {
@@ -32,17 +32,17 @@
         "source_id": 40,
         "sink_type": 1,
         "sink_id": 30,
-        "weight": 61
+        "weight": 57
       },
       {
-        "source_type": 0,
-        "source_id": 114,
+        "source_type": 1,
+        "source_id": 98,
         "sink_type": 1,
-        "sink_id": 76,
-        "weight": 196
+        "sink_id": 72,
+        "weight": 229
       },
       {
-        "source_type": 0,
+        "source_type": 1,
         "source_id": 21,
         "sink_type": 0,
         "sink_id": 81,
@@ -50,256 +50,105 @@
       },
       {
         "source_type": 1,
-        "source_id": 65,
-        "sink_type": 0,
-        "sink_id": 177,
-        "weight": 223
+        "source_id": 64,
+        "sink_type": 1,
+        "sink_id": 181,
+        "weight": 254
       },
       {
         "source_type": 1,
         "source_id": 201,
-        "sink_type": 1,
+        "sink_type": 0,
         "sink_id": 180,
-        "weight": 245
+        "weight": 247
       },
       {
         "source_type": 0,
-        "source_id": 21,
-        "sink_type": 0,
-        "sink_id": 3,
-        "weight": 152
-      },
-      {
-        "source_type": 1,
         "source_id": 100,
         "sink_type": 1,
-        "sink_id": 72,
-        "weight": 194
+        "sink_id": 64,
+        "weight": 203
       },
       {
-        "source_type": 1,
-        "source_id": 60,
+        "source_type": 0,
+        "source_id": 184,
         "sink_type": 0,
-        "sink_id": 209,
-        "weight": 98
+        "sink_id": 208,
+        "weight": 70
       },
       {
-        "source_type": 1,
+        "source_type": 0,
         "source_id": 34,
-        "sink_type": 0,
+        "sink_type": 1,
         "sink_id": 6,
-        "weight": 48
+        "weight": 0
       },
       {
-        "source_type": 1,
-        "source_id": 54,
+        "source_type": 0,
+        "source_id": 52,
         "sink_type": 1,
         "sink_id": 64,
-        "weight": 199
-      },
-      {
-        "source_type": 0,
-        "source_id": 118,
-        "sink_type": 0,
-        "sink_id": 67,
-        "weight": 154
-      }
-    ]
-  },
-  {
-    "osc_period": 77,
-    "max_energy": 157,
-    "sight_distance": 9,
-    "field_of_view": 20,
-    "responsiveness": 45,
-    "mutation_rate": 216,
-    "size": 4,
-    "min_size": 1,
-    "reproduction_type": 1,
-    "neuron_count": 7,
-    "brain_length": 2,
-    "juvenile_period": 57,
-    "brain": [
-      {
-        "source_type": 1,
-        "source_id": 7,
-        "sink_type": 1,
-        "sink_id": 118,
-        "weight": 216
-      },
-      {
-        "source_type": 0,
-        "source_id": 242,
-        "sink_type": 1,
-        "sink_id": 246,
-        "weight": 248
-      }
-    ]
-  },
-  {
-    "osc_period": 89,
-    "max_energy": 218,
-    "sight_distance": 10,
-    "field_of_view": 110,
-    "responsiveness": 52,
-    "mutation_rate": 253,
-    "size": 29,
-    "min_size": 16,
-    "reproduction_type": 1,
-    "neuron_count": 7,
-    "brain_length": 10,
-    "juvenile_period": 57,
-    "brain": [
-      {
-        "source_type": 1,
-        "source_id": 44,
-        "sink_type": 0,
-        "sink_id": 61,
-        "weight": 107
-      },
-      {
-        "source_type": 0,
-        "source_id": 13,
-        "sink_type": 1,
-        "sink_id": 97,
-        "weight": 4
-      },
-      {
-        "source_type": 0,
-        "source_id": 108,
-        "sink_type": 0,
-        "sink_id": 239,
-        "weight": 126
-      },
-      {
-        "source_type": 0,
-        "source_id": 223,
-        "sink_type": 1,
-        "sink_id": 243,
-        "weight": 101
-      },
-      {
-        "source_type": 0,
-        "source_id": 202,
-        "sink_type": 1,
-        "sink_id": 20,
-        "weight": 6
-      },
-      {
-        "source_type": 0,
-        "source_id": 136,
-        "sink_type": 0,
-        "sink_id": 161,
-        "weight": 83
-      },
-      {
-        "source_type": 1,
-        "source_id": 7,
-        "sink_type": 1,
-        "sink_id": 86,
-        "weight": 220
-      },
-      {
-        "source_type": 1,
-        "source_id": 8,
-        "sink_type": 1,
-        "sink_id": 102,
-        "weight": 153
-      },
-      {
-        "source_type": 0,
-        "source_id": 106,
-        "sink_type": 1,
-        "sink_id": 73,
-        "weight": 128
-      },
-      {
-        "source_type": 0,
-        "source_id": 242,
-        "sink_type": 0,
-        "sink_id": 119,
-        "weight": 238
+        "weight": 207
       }
     ]
   },
   {
     "osc_period": 151,
-    "max_energy": 244,
+    "max_energy": 200,
     "sight_distance": 14,
-    "field_of_view": 76,
-    "responsiveness": 65,
-    "mutation_rate": 125,
-    "size": 93,
-    "min_size": 40,
+    "field_of_view": 49,
+    "responsiveness": 4,
+    "mutation_rate": 8,
+    "size": 99,
+    "min_size": 24,
     "reproduction_type": 1,
     "neuron_count": 7,
-    "brain_length": 6,
-    "juvenile_period": 27,
+    "brain_length": 1,
+    "juvenile_period": 1,
     "brain": [
       {
         "source_type": 0,
-        "source_id": 65,
+        "source_id": 40,
         "sink_type": 1,
-        "sink_id": 181,
-        "weight": 223
-      },
-      {
-        "source_type": 1,
-        "source_id": 201,
-        "sink_type": 1,
-        "sink_id": 180,
-        "weight": 245
-      },
-      {
-        "source_type": 0,
-        "source_id": 100,
-        "sink_type": 1,
-        "sink_id": 72,
-        "weight": 195
-      },
-      {
-        "source_type": 0,
-        "source_id": 56,
-        "sink_type": 0,
-        "sink_id": 208,
-        "weight": 98
-      },
-      {
-        "source_type": 0,
-        "source_id": 34,
-        "sink_type": 1,
-        "sink_id": 6,
-        "weight": 16
-      },
-      {
-        "source_type": 1,
-        "source_id": 118,
-        "sink_type": 0,
-        "sink_id": 87,
-        "weight": 154
+        "sink_id": 28,
+        "weight": 61
       }
     ]
   },
   {
-    "osc_period": 155,
-    "max_energy": 244,
-    "sight_distance": 12,
-    "field_of_view": 161,
-    "responsiveness": 37,
-    "mutation_rate": 124,
-    "size": 19,
-    "min_size": 1,
-    "reproduction_type": 0,
+    "osc_period": 23,
+    "max_energy": 75,
+    "sight_distance": 11,
+    "field_of_view": 32,
+    "responsiveness": 5,
+    "mutation_rate": 16,
+    "size": 116,
+    "min_size": 22,
+    "reproduction_type": 1,
     "neuron_count": 7,
-    "brain_length": 1,
-    "juvenile_period": 110,
+    "brain_length": 3,
+    "juvenile_period": 1,
     "brain": [
       {
+        "source_type": 1,
+        "source_id": 64,
+        "sink_type": 1,
+        "sink_id": 181,
+        "weight": 254
+      },
+      {
         "source_type": 0,
-        "source_id": 184,
-        "sink_type": 0,
-        "sink_id": 241,
-        "weight": 98
+        "source_id": 201,
+        "sink_type": 1,
+        "sink_id": 164,
+        "weight": 247
+      },
+      {
+        "source_type": 1,
+        "source_id": 52,
+        "sink_type": 1,
+        "sink_id": 64,
+        "weight": 207
       }
     ]
   }

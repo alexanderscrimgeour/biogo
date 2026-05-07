@@ -51,6 +51,11 @@ const (
 	newGameBtnY = 10
 	newGameBtnW = 90
 	newGameBtnH = 24
+
+	themeBtnX = 295
+	themeBtnY = 10
+	themeBtnW = 100
+	themeBtnH = 24
 )
 
 // creatureAnim holds the screen-space state of a creature across one
@@ -64,20 +69,21 @@ type creatureAnim struct {
 }
 
 type Game struct {
-	sim             SimulationState
-	renderGrid      *RenderGrid
-	foodBlobsByKey  map[string]*Blob
-	corpseBlobsByID map[int]*Blob
-	statFont        font.Face
-	showFOV         bool
-	whiteImage      *ebiten.Image
-	animByID        map[int]*creatureAnim
-	lastTickTime    time.Time
-	tickDuration    time.Duration
-	minCreatureSize byte
-	maxCreatureSize byte
-	saveFeedback    string
-	saveFeedbackAt  time.Time
+	sim              SimulationState
+	renderGrid       *RenderGrid
+	foodBlobsByKey   map[string]*Blob
+	corpseBlobsByID  map[int]*Blob
+	statFont         font.Face
+	showFOV          bool
+	whiteImage       *ebiten.Image
+	animByID         map[int]*creatureAnim
+	lastTickTime     time.Time
+	tickDuration     time.Duration
+	minCreatureSize  byte
+	maxCreatureSize  byte
+	saveFeedback     string
+	saveFeedbackAt   time.Time
+	isDarkBackground bool
 }
 
 var BlockSize int = 2
@@ -238,6 +244,9 @@ func (g *Game) Update() error {
 			g.animByID = make(map[int]*creatureAnim)
 			g.lastTickTime = time.Time{}
 		}
+		if mx >= themeBtnX && mx < themeBtnX+fovBtnW && my >= themeBtnY && my < themeBtnY+themeBtnH {
+			g.isDarkBackground = !g.isDarkBackground
+		}
 	}
 
 	// Record time at the very end so Draw() can compute how far into this
@@ -252,8 +261,11 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{15, 15, 15, 255})
-
+	if g.isDarkBackground {
+		screen.Fill(color.RGBA{15, 15, 15, 255}) // Deep Black/Grey
+	} else {
+		screen.Fill(color.RGBA{220, 220, 220, 255}) // Clean Light Grey
+	}
 	// Static world elements (walls, food).
 	g.renderGrid.DrawBackground(screen)
 
@@ -314,9 +326,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		baseIdx := uint16(len(creatureVs))
 		for _, offset := range [3]float64{0, 2 * math.Pi / 3, -2 * math.Pi / 3} {
 			creatureVs = append(creatureVs, ebiten.Vertex{
-				DstX:   cx + float32(r)*float32(math.Cos(angle+offset)),
-				DstY:   cy + float32(r)*float32(math.Sin(angle+offset)),
-				SrcX:   0, SrcY: 0,
+				DstX: cx + float32(r)*float32(math.Cos(angle+offset)),
+				DstY: cy + float32(r)*float32(math.Sin(angle+offset)),
+				SrcX: 0, SrcY: 0,
 				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 			})
 		}
@@ -334,6 +346,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.drawFOVButton(screen)
 	g.drawSaveBestButton(screen)
 	g.drawNewGameButton(screen)
+	g.drawThemeButton(screen)
 	if !g.saveFeedbackAt.IsZero() && time.Since(g.saveFeedbackAt) < 3*time.Second {
 		text.Draw(screen, g.saveFeedback, g.statFont, saveBestBtnX+5, saveBestBtnY+saveBestBtnH+14, color.White)
 	}
@@ -367,6 +380,17 @@ func (g *Game) drawFOVButton(screen *ebiten.Image) {
 	}
 	vector.DrawFilledRect(screen, fovBtnX, fovBtnY, fovBtnW, fovBtnH, bg, false)
 	text.Draw(screen, "FOV", g.statFont, fovBtnX+8, fovBtnY+17, color.White)
+}
+
+func (g *Game) drawThemeButton(screen *ebiten.Image) {
+	var bg color.RGBA
+	if g.isDarkBackground {
+		bg = color.RGBA{R: 80, G: 120, B: 200, A: 220}
+	} else {
+		bg = color.RGBA{R: 50, G: 50, B: 70, A: 220}
+	}
+	vector.DrawFilledRect(screen, themeBtnX, themeBtnY, themeBtnW, themeBtnH, bg, false)
+	text.Draw(screen, "Theme", g.statFont, themeBtnX+8, themeBtnY+17, color.White)
 }
 
 func (g *Game) drawFOVCones(screen *ebiten.Image, views []simulation.CreatureView, t float64) {

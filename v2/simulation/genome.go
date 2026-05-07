@@ -110,16 +110,24 @@ func (g Genome) PrettyString() string {
 	return str
 }
 
-// genomeColor derives display RGB values from gene structure bytes.
-// The color encodes genetic diversity visually without involving rendering concerns in Genome.
 func genomeColor(g *Genome) (uint8, uint8, uint8, uint8) {
+	if len(g.Brain) == 0 {
+		return 200, 200, 200, 255
+	}
+
 	first := g.Brain[0]
 	mid := g.Brain[len(g.Brain)/2]
 	last := g.Brain[len(g.Brain)-1]
-	firstAsByte := (first.SourceID&3)<<6 | (first.SourceType&3)<<4 | (first.SinkID&3)<<2 | (first.SinkType & 3)
-	midAsByte := (mid.SourceID&3)<<6 | (mid.SourceType&3)<<4 | (mid.SinkID&3)<<2 | (mid.SinkType & 3)
-	lastAsByte := (last.SourceID&3)<<6 | (last.SourceType&3)<<4 | (last.SinkID&3)<<2 | (last.SinkType & 3)
-	return firstAsByte, midAsByte, lastAsByte, 255
+
+	fRaw := (first.SourceID&3)<<6 | (first.SourceType&3)<<4 | (first.SinkID&3)<<2 | (first.SinkType & 3)
+	mRaw := (mid.SourceID&3)<<6 | (mid.SourceType&3)<<4 | (mid.SinkID&3)<<2 | (mid.SinkType & 3)
+	lRaw := (last.SourceID&3)<<6 | (last.SourceType&3)<<4 | (last.SinkID&3)<<2 | (last.SinkType & 3)
+
+	r := 128 + (fRaw / 2)
+	g_val := 128 + (mRaw / 2)
+	b := 128 + (lRaw / 2)
+
+	return r, g_val, b, 255
 }
 
 // WeightAsFloat converts from a byte to a float64 range 0...1
