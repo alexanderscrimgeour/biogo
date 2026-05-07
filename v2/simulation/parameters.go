@@ -55,13 +55,14 @@ type Parameters struct {
 	// Interaction radii (world units)
 	FoodInteractionRadius float64
 	PredationRadius       float64
+	SavedGenomeProportion float64
 }
 
 func DefaultParams() *Parameters {
 	return &Parameters{
 		MaxPopulation:                   5000,
 		MinPopulation:                   400,
-		StartingPopulation:              500,
+		StartingPopulation:              1000,
 		PopulationSensorRadius:          6,
 		GridWidth:                       1000,
 		GridHeight:                      600,
@@ -89,7 +90,7 @@ func DefaultParams() *Parameters {
 		MinJuvenilePeriod:               500,
 		MaxJuvenilePeriod:               3000,
 		MaxFood:                         15000,
-		FoodSpawnInterval:               1000,
+		FoodSpawnInterval:               20,
 		FoodPerSpawn:                    1000,
 		FoodEnergyFraction:              0.1,
 		MinMetabolicRate:                0.01,
@@ -102,6 +103,7 @@ func DefaultParams() *Parameters {
 		MaxSpeedPerStep:                 2.0,
 		MaxRotationPerStep:              math.Pi / 4,
 		FoodInteractionRadius:           3.0,
-		PredationRadius:                 4.0,
+		PredationRadius:                 2.0,
+		SavedGenomeProportion:           0.3,
 	}
 }

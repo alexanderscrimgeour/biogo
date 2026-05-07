@@ -41,6 +41,25 @@ func NewCreature(id int, loc grid.Position, g *Genome) *Creature {
 	return &c
 }
 
+func NewAdultCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
+	c := Creature{
+		Id:             id,
+		Energy:         float32(g.MaxEnergy),
+		Age:            0,
+		Alive:          true,
+		Clock:          int(g.OscPeriod),
+		Nnet:           NeuralNet{},
+		Loc:            loc,
+		BirthLoc:       loc,
+		Responsiveness: float32(utils.ClampByteAsFloat32(0, 1, g.Responsiveness)) / 2,
+		Heading:        rand.Float64()*2*math.Pi - math.Pi,
+		Genome:         g,
+	}
+	c.CreateNeuralNet()
+	c.Age = c.JuvenilePeriod(p)
+	return &c
+}
+
 func (c *Creature) CreateNeuralNet() {
 	c.Nnet = *CreateNeuralNetworkFromGenome(c.Genome.Brain, c.Genome.NeuronCount)
 }

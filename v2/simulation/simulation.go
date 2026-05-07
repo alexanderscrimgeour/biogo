@@ -33,13 +33,29 @@ func (s *Simulation) initializeWorld() {
 
 func (s *Simulation) initializePopulation() {
 	pop := NewPopulation(s.Params)
+	savedGenomes, _ := LoadAllCreatureGenomes()
+
+	maxSeeded := int(float64(s.Params.StartingPopulation) * s.Params.SavedGenomeProportion)
+	numSaved := len(savedGenomes)
+
 	for i := 0; i < s.Params.StartingPopulation; i++ {
 		loc, ok := s.World.FindEmptyLocation()
 		if !ok {
 			break
 		}
+
 		id := s.allocateID()
-		c := NewCreature(id, loc, MakeRandomGenome(s.Params))
+		var genome *Genome
+
+		// If we have saved genomes and haven't hit the seeding limit,
+		// cycle through savedGenomes to ensure equal distribution.
+		if numSaved > 0 && i < maxSeeded {
+			genome = savedGenomes[i%numSaved]
+		} else {
+			genome = MakeRandomGenome(s.Params)
+		}
+
+		c := NewAdultCreature(id, loc, genome, s.Params)
 		pop.Creatures[id] = c
 		s.World.AddCreature(id, loc)
 	}
@@ -111,7 +127,7 @@ func (s *Simulation) step() {
 		} else {
 			genome = MakeRandomGenome(&spawnParams)
 		}
-		c := NewCreature(id, loc, genome)
+		c := NewAdultCreature(id, loc, genome, s.Params)
 		s.Population.Creatures[id] = c
 		s.World.AddCreature(id, loc)
 	}
@@ -211,6 +227,7 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 
 	if !s.World.IsWall(newPos) {
 		c.Energy -= s.Params.MoveCost * float32(massFactor)
+		c.LastAction = "Moving"
 		s.Population.QueueForMove(c, newPos)
 	}
 }

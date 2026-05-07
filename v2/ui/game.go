@@ -70,7 +70,7 @@ const (
 	spawnMutTrackH  = 6
 
 	spawnMutRateMin = 0.0001
-	spawnMutRateMax = 0.05
+	spawnMutRateMax = 0.2
 
 	// Creature detail panel
 	detailPanelX   = 10
