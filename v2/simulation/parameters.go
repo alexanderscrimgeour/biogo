@@ -1,5 +1,7 @@
 package simulation
 
+import "math"
+
 type Parameters struct {
 	MaxPopulation                   int
 	MinPopulation                   int
@@ -26,25 +28,29 @@ type Parameters struct {
 	SexualReproductionSimilarityMin float32
 	SexualReproductionSimilarityMax float32
 	ResponseCurveKFactor            float32
-	// Age sensor reference point — creatures older than this saturate the AGE sensor at 1.0
-	MaxExpectedAge int
-	// Juvenile phase length in ticks. Genome JuvenilePeriod byte scales linearly into [MinJuvenilePeriod, MaxJuvenilePeriod].
-	MinJuvenilePeriod int
-	MaxJuvenilePeriod int
+	MaxExpectedAge                  int
+	MinJuvenilePeriod               int
+	MaxJuvenilePeriod               int
 	// Food system
-	MaxFood            int     // maximum food items on the grid at any time
-	FoodSpawnInterval  int     // ticks between food spawns
-	FoodPerSpawn       int     // food items placed per spawn event
-	FoodEnergyFraction float32 // food restores this fraction of MaxEnergy
-	// Energy costs (absolute units, relative to creature MaxEnergy range)
-	MetabolicRate float32 // energy drained per tick
-	MoveCost      float32 // energy drained per move attempt
+	MaxFood           int
+	FoodSpawnInterval int
+	FoodPerSpawn      int
+	FoodEnergyFraction float32
+	// Energy costs
+	MetabolicRate float32
+	MoveCost      float32
 	// Reproduction
-	ReproductionEnergyThreshold float32 // fraction of MaxEnergy required to reproduce
-	ReproductionEnergyCost      float32 // fraction of MaxEnergy deducted from parent on reproduction
+	ReproductionEnergyThreshold float32
+	ReproductionEnergyCost      float32
 	// Predation and corpses
-	PreyEnergyFraction float32 // fraction of prey's energy the predator gains
-	CorpseDecayRate    float32 // energy drained per tick from a dead creature's corpse
+	PreyEnergyFraction float32
+	CorpseDecayRate    float32
+	// Continuous-space movement
+	MaxSpeedPerStep      float64 // world units per tick (max)
+	MaxRotationPerStep   float64 // radians per tick (max)
+	// Interaction radii (world units)
+	FoodInteractionRadius float64
+	PredationRadius       float64
 }
 
 func DefaultParams() *Parameters {
@@ -87,5 +93,9 @@ func DefaultParams() *Parameters {
 		ReproductionEnergyCost:          0.2,
 		PreyEnergyFraction:              0.2,
 		CorpseDecayRate:                 0.05,
+		MaxSpeedPerStep:                 2.0,
+		MaxRotationPerStep:              math.Pi / 4,
+		FoodInteractionRadius:           3.0,
+		PredationRadius:                 4.0,
 	}
 }

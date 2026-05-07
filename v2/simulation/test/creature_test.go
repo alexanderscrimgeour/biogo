@@ -11,8 +11,7 @@ func TestCurrentSizeAtBirth(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 	genome.Size = 200
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
-	// age 0: size should be params.MinSize
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 	got := c.CurrentSize(params)
 	want := float32(params.MinSize)
 	if got != want {
@@ -24,9 +23,9 @@ func TestCurrentSizeAtAdulthood(t *testing.T) {
 	params := defaultParams()
 	genome := simulation.MakeRandomGenome(params)
 	genome.Size = 200
-	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod
+	genome.JuvenilePeriod = 0
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 	c.Age = params.MaxJuvenilePeriod + 1
 
 	got := c.CurrentSize(params)
@@ -39,17 +38,16 @@ func TestCurrentSizeAtAdulthood(t *testing.T) {
 func TestCurrentSizeMidJuvenile(t *testing.T) {
 	params := defaultParams()
 	params.MinJuvenilePeriod = 100
-	params.MaxJuvenilePeriod = 100 // fix juvenile period to exactly 100 ticks
+	params.MaxJuvenilePeriod = 100
 
 	genome := simulation.MakeRandomGenome(params)
 	genome.Size = 100
-	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
+	genome.JuvenilePeriod = 0
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
-	c.Age = 50 // halfway through juvenile period
+	c := simulation.NewCreature(1, grid.Position{}, genome)
+	c.Age = 50
 
 	got := c.CurrentSize(params)
-	// expect midpoint between MinSize and genome.Size
 	want := float32(params.MinSize) + (float32(genome.Size)-float32(params.MinSize))*0.5
 	if got != want {
 		t.Errorf("CurrentSize at mid-juvenile: got %f, want %f", got, want)
@@ -60,7 +58,7 @@ func TestCurrentSizeNeverExceedsGenomeSize(t *testing.T) {
 	params := defaultParams()
 	genome := simulation.MakeRandomGenome(params)
 
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, grid.Coord{}, genome)
+	c := simulation.NewCreature(1, grid.Position{}, genome)
 	for age := 0; age <= params.MaxJuvenilePeriod+10; age++ {
 		c.Age = age
 		s := c.CurrentSize(params)

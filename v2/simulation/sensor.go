@@ -3,7 +3,6 @@ package simulation
 import (
 	"biogo/v2/grid"
 	"biogo/v2/utils"
-	"fmt"
 	"math"
 	"math/rand"
 )
@@ -30,200 +29,195 @@ const (
 	SENSOR_COUNT
 )
 
-func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep int, params *Parameters) float32 {
+func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep int, params *Parameters) float32 {
 	var output float32
 	switch sensorID {
 	case AGE:
 		output = float32(c.Age) / float32(params.MaxExpectedAge)
 
 	case ENERGY:
-		output = float32(c.Energy / float32(c.Genome.MaxEnergy))
+		output = c.Energy / float32(c.Genome.MaxEnergy)
 
 	case BOUNDARY_DIST:
-		distX := utils.Min(c.Loc.X, params.GridWidth-c.Loc.X-1)
-		distY := utils.Min(c.Loc.Y, params.GridHeight-c.Loc.Y-1)
-		closest := utils.Min(distX, distY)
-		maxPossible := utils.Max(params.GridWidth/2-1, params.GridHeight/2-1)
+		distX := math.Min(c.Loc.X, float64(params.GridWidth)-c.Loc.X)
+		distY := math.Min(c.Loc.Y, float64(params.GridHeight)-c.Loc.Y)
+		closest := math.Min(distX, distY)
+		maxPossible := math.Max(float64(params.GridWidth)/2, float64(params.GridHeight)/2)
 		output = float32(closest / maxPossible)
 
 	case BOUNDARY_DIST_X:
-		distX := utils.Min(c.Loc.X, params.GridWidth-c.Loc.X-1)
-		output = float32(distX) / float32(params.GridWidth/2)
+		distX := math.Min(c.Loc.X, float64(params.GridWidth)-c.Loc.X)
+		output = float32(distX / (float64(params.GridWidth) / 2))
 
 	case BOUNDARY_DIST_Y:
-		distY := utils.Min(c.Loc.Y, params.GridHeight-c.Loc.Y-1)
-		output = float32(distY) / float32(params.GridHeight/2)
+		distY := math.Min(c.Loc.Y, float64(params.GridHeight)-c.Loc.Y)
+		output = float32(distY / (float64(params.GridHeight) / 2))
 
 	case LAST_MOVE_DIR_X:
-		if c.LastMoveDir.X == 0 {
-			output = 0.5
-		} else if c.LastMoveDir.X == -1 {
-			output = 0
-		} else {
-			output = 1
-		}
+		output = float32(math.Cos(c.Heading))/2 + 0.5
 
 	case LAST_MOVE_DIR_Y:
-		if c.LastMoveDir.Y == 0 {
-			output = 0.5
-		} else if c.LastMoveDir.Y == -1 {
-			output = 0
-		} else {
-			output = 1
-		}
+		output = float32(math.Sin(c.Heading))/2 + 0.5
 
 	case LOC_X:
-		output = float32(c.Loc.X) / float32(params.GridWidth-1)
+		output = float32(c.Loc.X / float64(params.GridWidth))
 
 	case LOC_Y:
-		output = float32(c.Loc.Y) / float32(params.GridHeight-1)
+		output = float32(c.Loc.Y / float64(params.GridHeight))
 
 	case OSC1:
 		val := int(c.Genome.OscPeriod)
 		if val == 0 {
-			val += 1
+			val = 1
 		}
-		phase := float64(simStep % val / val)
-		factor := math.Cos(phase * 2 * math.Pi)
-		factor += 1
-		factor /= 2
+		phase := float64(simStep%val) / float64(val)
+		factor := (math.Cos(phase*2*math.Pi) + 1) / 2
 		output = utils.RestrictFloat32(0, 1, float32(factor))
 
 	case POPULATION_LOCAL_DENSITY:
-		output = getLocalPopulationDensity(c.Loc, g, params)
+		output = getLocalPopulationDensity(c.Loc, w, params)
 
 	case POPULATION_FORWARD:
-		output = getPopulationDensityAlongAxis(c.Loc, g, c.LastMoveDir, params)
+		output = getPopulationDensityAlongAxis(c.Loc, c.Id, w, c.Heading, params)
 
 	case POPULATION_LR:
-		output = getPopulationDensityAlongAxis(c.Loc, g, c.LastMoveDir.Rotate90CW(), params)
+		output = getPopulationDensityAlongAxis(c.Loc, c.Id, w, c.Heading+math.Pi/2, params)
 
 	case SIGHT_POPULATION_FORWARD:
-		output = calculateSightPopFwd(c, g)
+		output = calculateSightPopFwd(c, w)
 
 	case GENETIC_SIM_FORWARD:
-		newLoc := grid.Coord{
-			X: c.Loc.X + c.LastMoveDir.X,
-			Y: c.Loc.Y + c.LastMoveDir.Y,
-		}
-		if g.IsInBounds(newLoc) && g.IsOccupiedAt(newLoc) {
-			otherCreatureId := g.Data[newLoc.X][newLoc.Y]
-			if otherCreature, ok := p.Creatures[otherCreatureId]; ok {
-				if otherCreature.Alive {
-					output = GenomeSimilarity(*c.Genome, *otherCreature.Genome)
-				}
-			} else {
-				fmt.Printf("\nError: creature id %d not found in population\n", otherCreatureId)
-			}
-		}
+		output = calculateGeneticSimFwd(c, w, p)
 
 	case SIGHT_FOOD_FORWARD:
-		output = calculateSightFoodFwd(c, g)
+		output = calculateSightFoodFwd(c, w)
 
 	case RANDOM:
 		fallthrough
 	default:
 		output = rand.Float32()
 	}
-	if output < 0 || output > 1 {
-		output = utils.RestrictFloat32(0, 1, output)
-	}
-	return output
+	return utils.RestrictFloat32(0, 1, output)
 }
 
-// calculateSightFoodFwd returns a score for the nearest food within the creature's
-// FOV cone. 1.0 = food at distance 1, scaling toward 0 at max SightDistance.
-// The cone is defined by FieldOfView degrees centred on LastMoveDir.
-func calculateSightFoodFwd(c Creature, g *grid.Grid) float32 {
-	dist := int(c.Genome.SightDistance)
+func calculateSightFoodFwd(c Creature, w *grid.World) float32 {
+	dist := float64(c.Genome.SightDistance)
 	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	best := float32(0)
-	for dx := -dist; dx <= dist; dx++ {
-		for dy := -dist; dy <= dist; dy++ {
-			if dx == 0 && dy == 0 {
-				continue
-			}
-			distSq := dx*dx + dy*dy
-			if distSq > dist*dist {
-				continue
-			}
-			if float64(grid.RaySameness(c.LastMoveDir, grid.Dir{X: dx, Y: dy})) < halfFOVCos {
-				continue
-			}
-			loc := grid.Coord{X: c.Loc.X + dx, Y: c.Loc.Y + dy}
-			if !g.IsInBounds(loc) || !g.IsFood(loc) {
-				continue
-			}
-			d := math.Sqrt(float64(distSq))
-			val := 1.0 - float32(d-1)/float32(dist)
-			if val < 0 {
-				val = 0
-			}
-			if val > best {
-				best = val
-			}
+	for _, id := range w.GetFoodInRadius(c.Loc, dist) {
+		pos := w.GetFoodPos(id)
+		dx := pos.X - c.Loc.X
+		dy := pos.Y - c.Loc.Y
+		d := math.Sqrt(dx*dx + dy*dy)
+		if d == 0 {
+			continue
+		}
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
+			continue
+		}
+		val := float32(1.0 - (d-1)/dist)
+		if val < 0 {
+			val = 0
+		}
+		if val > best {
+			best = val
 		}
 	}
 	return best
 }
 
-// calculateSightPopFwd returns the fraction of in-bounds cells within the
-// creature's FOV cone that are empty.
-func calculateSightPopFwd(c Creature, g *grid.Grid) float32 {
-	dist := int(c.Genome.SightDistance)
+func calculateSightPopFwd(c Creature, w *grid.World) float32 {
+	dist := float64(c.Genome.SightDistance)
 	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
-	total, empty := 0, 0
-	for dx := -dist; dx <= dist; dx++ {
-		for dy := -dist; dy <= dist; dy++ {
-			if dx == 0 && dy == 0 {
-				continue
-			}
-			distSq := dx*dx + dy*dy
-			if distSq > dist*dist {
-				continue
-			}
-			if float64(grid.RaySameness(c.LastMoveDir, grid.Dir{X: dx, Y: dy})) < halfFOVCos {
-				continue
-			}
-			loc := grid.Coord{X: c.Loc.X + dx, Y: c.Loc.Y + dy}
-			if !g.IsInBounds(loc) {
-				continue
-			}
-			total++
-			if g.IsEmptyAt(loc) {
-				empty++
-			}
+	count := 0
+	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+		if id == c.Id {
+			continue
+		}
+		pos, _ := w.GetCreaturePos(id)
+		dx := pos.X - c.Loc.X
+		dy := pos.Y - c.Loc.Y
+		d := math.Sqrt(dx*dx + dy*dy)
+		if d == 0 {
+			continue
+		}
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
+			count++
 		}
 	}
-	if total == 0 {
-		return 0
+	// Return 1 (open) when empty, approaching 0 as cone fills with creatures.
+	const maxExpected = 10.0
+	frac := float64(count) / maxExpected
+	if frac > 1 {
+		frac = 1
 	}
-	return float32(empty) / float32(total)
+	return float32(1.0 - frac)
 }
 
-func getLocalPopulationDensity(loc grid.Coord, g *grid.Grid, params *Parameters) float32 {
-	delta := func(g grid.Grid, x, y int) int {
-		if g.IsOccupiedAt(grid.Coord{X: x, Y: y}) {
-			return 1
+func calculateGeneticSimFwd(c Creature, w *grid.World, p *Population) float32 {
+	dist := float64(c.Genome.SightDistance)
+	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
+
+	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+		if id == c.Id {
+			continue
 		}
-		return 0
+		pos, _ := w.GetCreaturePos(id)
+		dx := pos.X - c.Loc.X
+		dy := pos.Y - c.Loc.Y
+		d := math.Sqrt(dx*dx + dy*dy)
+		if d == 0 {
+			continue
+		}
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
+			if other, ok := p.Creatures[id]; ok && other.Alive {
+				return GenomeSimilarity(*c.Genome, *other.Genome)
+			}
+		}
 	}
-	return g.DensityNeighbours(loc, float32(params.PopulationSensorRadius), delta)
+	return 0
 }
 
-func getPopulationDensityAlongAxis(loc grid.Coord, g *grid.Grid, lastMoveDir grid.Dir, params *Parameters) float32 {
-	delta := func(g grid.Grid, x, y int, dir grid.Dir) float32 {
-		tLoc := grid.Coord{X: x, Y: y}
-		if tLoc != loc && g.IsOccupiedAt(tLoc) {
-			offset := grid.GetDirection(loc, tLoc)
-			posCos := grid.RaySameness(offset, dir)
-			dist := float32(math.Sqrt(float64(offset.X*offset.X + offset.Y*offset.Y)))
-			contrib := (1 / dist) * posCos
-			return contrib
-		}
-		return 0
+func getLocalPopulationDensity(loc grid.Position, w *grid.World, params *Parameters) float32 {
+	radius := float64(params.PopulationSensorRadius)
+	ids := w.GetCreaturesInRadius(loc, radius)
+	// Normalize: approximate max density as one creature per 4 sq units in the area.
+	maxExpected := math.Pi * radius * radius / 4.0
+	if maxExpected < 1 {
+		maxExpected = 1
 	}
-	return g.DensityAxis(loc, float32(params.PopulationSensorRadius), lastMoveDir, delta)
+	return float32(float64(len(ids)) / maxExpected)
+}
+
+func getPopulationDensityAlongAxis(loc grid.Position, selfID int, w *grid.World, heading float64, params *Parameters) float32 {
+	fwdX, fwdY := grid.HeadingToVec(heading)
+	radius := float64(params.PopulationSensorRadius)
+	sum := float32(0)
+	for _, id := range w.GetCreaturesInRadius(loc, radius) {
+		if id == selfID {
+			continue
+		}
+		pos, _ := w.GetCreaturePos(id)
+		dx := pos.X - loc.X
+		dy := pos.Y - loc.Y
+		dist := math.Sqrt(dx*dx + dy*dy)
+		if dist == 0 {
+			continue
+		}
+		cos := float32(grid.CosSimilarity(fwdX, fwdY, dx, dy))
+		sum += (1.0 / float32(dist)) * cos
+	}
+	maxSumMag := float32(6 * params.PopulationSensorRadius)
+	if sum > maxSumMag {
+		sum = maxSumMag
+	} else if sum < -maxSumMag {
+		sum = -maxSumMag
+	}
+	// Returns [-1, 1]; the caller's RestrictFloat32 clips to [0, 1].
+	return sum / maxSumMag
 }

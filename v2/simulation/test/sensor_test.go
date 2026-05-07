@@ -3,78 +3,75 @@ package test
 import (
 	"biogo/v2/grid"
 	"biogo/v2/simulation"
+	"math"
 	"testing"
 )
 
-// makeCreatureAt creates a minimal creature at loc facing east (1,0).
-func makeCreatureAt(loc grid.Coord, sightDist, fov byte) *simulation.Creature {
+// makeCreatureAt creates a minimal creature at pos facing east (heading = 0).
+func makeCreatureAt(pos grid.Position, sightDist, fov byte) *simulation.Creature {
 	p := defaultParams()
 	g := simulation.MakeRandomGenome(p)
 	g.SightDistance = sightDist
 	g.FieldOfView = fov
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, loc, g)
-	c.LastMoveDir = grid.Dir{X: 1, Y: 0} // facing east
+	c := simulation.NewCreature(1, pos, g)
+	c.Heading = 0 // facing east
 	return c
 }
 
-func makeGrid(w, h int) *grid.Grid {
-	// gridMap 0 = MIDDLE_WALL; use a large grid so the wall is far away
-	return grid.NewGrid(w, h, 0)
+func makeWorld(w, h float64) *grid.World {
+	return grid.NewWorld(w, h, 0)
 }
 
 func TestSightFoodForward_DetectsFood(t *testing.T) {
-	g := makeGrid(200, 200)
-	loc := grid.Coord{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 5, 90) // 90-degree FOV, facing east
+	w := makeWorld(200, 200)
+	loc := grid.Position{X: 100, Y: 100}
+	c := makeCreatureAt(loc, 5, 90)
+	w.AddCreature(c.Id, loc)
 
 	// Place food directly ahead (east)
-	foodLoc := grid.Coord{X: 103, Y: 100}
-	g.Set(foodLoc, grid.FOOD)
-	g.FoodLocations = append(g.FoodLocations, foodLoc)
+	w.AddFood(grid.Position{X: 103, Y: 100})
 
 	params := defaultParams()
-	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, g, nil, 0, params)
+	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, 0, params)
 	if val <= 0 {
 		t.Errorf("expected food to be detected ahead, got %f", val)
 	}
 }
 
 func TestSightFoodForward_NoFoodBehind(t *testing.T) {
-	g := makeGrid(200, 200)
-	loc := grid.Coord{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 5, 90) // facing east, 90-degree FOV
+	w := makeWorld(200, 200)
+	loc := grid.Position{X: 100, Y: 100}
+	c := makeCreatureAt(loc, 5, 90)
+	w.AddCreature(c.Id, loc)
 
-	// Place food directly behind (west) – outside any forward FOV
-	foodLoc := grid.Coord{X: 97, Y: 100}
-	g.Set(foodLoc, grid.FOOD)
-	g.FoodLocations = append(g.FoodLocations, foodLoc)
+	// Place food directly behind (west)
+	w.AddFood(grid.Position{X: 97, Y: 100})
 
 	params := defaultParams()
-	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, g, nil, 0, params)
+	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, 0, params)
 	if val != 0 {
 		t.Errorf("expected 0 for food behind creature, got %f", val)
 	}
 }
 
 func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
-	// Food placed diagonally ahead-north (NE). A narrow FOV (10°) should miss it;
-	// a wide FOV (180°) should see it.
-	loc := grid.Coord{X: 100, Y: 100}
-	foodLoc := grid.Coord{X: 103, Y: 103} // NE of creature
+	// Food placed diagonally NE (ahead-right). Narrow FOV (10°) misses; wide (180°) sees.
+	loc := grid.Position{X: 100, Y: 100}
+	foodPos := grid.Position{X: 103, Y: 103}
 
-	gNarrow := makeGrid(200, 200)
-	gNarrow.Set(foodLoc, grid.FOOD)
-	gNarrow.FoodLocations = append(gNarrow.FoodLocations, foodLoc)
-	cNarrow := makeCreatureAt(loc, 6, 10) // very narrow FOV facing east
+	wNarrow := makeWorld(200, 200)
+	wNarrow.AddFood(foodPos)
+	cNarrow := makeCreatureAt(loc, 6, 10)
+	wNarrow.AddCreature(cNarrow.Id, loc)
 
-	gWide := makeGrid(200, 200)
-	gWide.Set(foodLoc, grid.FOOD)
-	gWide.FoodLocations = append(gWide.FoodLocations, foodLoc)
-	cWide := makeCreatureAt(loc, 6, 180) // full-hemisphere FOV facing east
+	wWide := makeWorld(200, 200)
+	wWide.AddFood(foodPos)
+	cWide := makeCreatureAt(loc, 6, 180)
+	wWide.AddCreature(cWide.Id, loc)
 
 	params := defaultParams()
-	narrow := cNarrow.GetSensor(simulation.SIGHT_FOOD_FORWARD, gNarrow, nil, 0, params)
-	wide := cWide.GetSensor(simulation.SIGHT_FOOD_FORWARD, gWide, nil, 0, params)
+	narrow := cNarrow.GetSensor(simulation.SIGHT_FOOD_FORWARD, wNarrow, nil, 0, params)
+	wide := cWide.GetSensor(simulation.SIGHT_FOOD_FORWARD, wWide, nil, 0, params)
 
 	if narrow != 0 {
 		t.Errorf("narrow FOV should not see NE food, got %f", narrow)
@@ -84,40 +81,62 @@ func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
 	}
 }
 
-func TestSightPopForward_EmptyGridReturnsOne(t *testing.T) {
-	g := makeGrid(200, 200)
-	loc := grid.Coord{X: 100, Y: 100}
+func TestSightPopForward_EmptyWorldReturnsOne(t *testing.T) {
+	w := makeWorld(200, 200)
+	loc := grid.Position{X: 100, Y: 100}
 	c := makeCreatureAt(loc, 4, 90)
+	w.AddCreature(c.Id, loc)
 
 	params := defaultParams()
-	val := c.GetSensor(simulation.SIGHT_POPULATION_FORWARD, g, nil, 0, params)
-	// All cells in the forward cone of an empty grid (away from walls) should be empty
+	val := c.GetSensor(simulation.SIGHT_POPULATION_FORWARD, w, nil, 0, params)
 	if val <= 0 {
-		t.Errorf("expected positive empty fraction on empty grid, got %f", val)
+		t.Errorf("expected positive value for empty world ahead, got %f", val)
 	}
 }
 
 func TestSightFoodForward_ScalesWithDistance(t *testing.T) {
-	// Close food should score higher than distant food.
-	loc := grid.Coord{X: 100, Y: 100}
+	loc := grid.Position{X: 100, Y: 100}
 
-	gClose := makeGrid(200, 200)
-	close := grid.Coord{X: 102, Y: 100}
-	gClose.Set(close, grid.FOOD)
-	gClose.FoodLocations = append(gClose.FoodLocations, close)
+	wClose := makeWorld(200, 200)
+	wClose.AddFood(grid.Position{X: 102, Y: 100})
 	cClose := makeCreatureAt(loc, 8, 90)
+	wClose.AddCreature(cClose.Id, loc)
 
-	gFar := makeGrid(200, 200)
-	far := grid.Coord{X: 107, Y: 100}
-	gFar.Set(far, grid.FOOD)
-	gFar.FoodLocations = append(gFar.FoodLocations, far)
+	wFar := makeWorld(200, 200)
+	wFar.AddFood(grid.Position{X: 107, Y: 100})
 	cFar := makeCreatureAt(loc, 8, 90)
+	wFar.AddCreature(cFar.Id, loc)
 
 	params := defaultParams()
-	scoreClose := cClose.GetSensor(simulation.SIGHT_FOOD_FORWARD, gClose, nil, 0, params)
-	scoreFar := cFar.GetSensor(simulation.SIGHT_FOOD_FORWARD, gFar, nil, 0, params)
+	scoreClose := cClose.GetSensor(simulation.SIGHT_FOOD_FORWARD, wClose, nil, 0, params)
+	scoreFar := cFar.GetSensor(simulation.SIGHT_FOOD_FORWARD, wFar, nil, 0, params)
 
 	if scoreClose <= scoreFar {
 		t.Errorf("close food (%f) should score higher than far food (%f)", scoreClose, scoreFar)
+	}
+}
+
+func TestHeadingSensor(t *testing.T) {
+	params := defaultParams()
+	loc := grid.Position{X: 50, Y: 50}
+
+	// Facing east: cos(0)=1 → LAST_MOVE_DIR_X should be 1.0 (normalized to 1.0)
+	cEast := makeCreatureAt(loc, 1, 90)
+	cEast.Heading = 0
+	w := makeWorld(200, 200)
+	w.AddCreature(cEast.Id, loc)
+
+	xVal := cEast.GetSensor(simulation.LAST_MOVE_DIR_X, w, nil, 0, params)
+	if math.Abs(float64(xVal)-1.0) > 0.01 {
+		t.Errorf("LAST_MOVE_DIR_X facing east should be ~1.0, got %f", xVal)
+	}
+
+	// Facing west: cos(π)=-1 → normalized to 0.0
+	cWest := makeCreatureAt(loc, 1, 90)
+	cWest.Heading = math.Pi
+	w.AddCreature(cWest.Id, loc)
+	xValW := cWest.GetSensor(simulation.LAST_MOVE_DIR_X, w, nil, 0, params)
+	if math.Abs(float64(xValW)-0.0) > 0.01 {
+		t.Errorf("LAST_MOVE_DIR_X facing west should be ~0.0, got %f", xValW)
 	}
 }

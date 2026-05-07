@@ -5,231 +5,171 @@ import (
 	"testing"
 )
 
-func TestNewGrid(t *testing.T) {
-	g := grid.NewGrid(10, 20, 0)
-	if g.SizeX() != 10 {
-		t.Errorf("expected SizeX 10, got %d", g.SizeX())
+func TestNewWorld(t *testing.T) {
+	w := grid.NewWorld(100, 80, 0)
+	if w.SizeX() != 100 {
+		t.Errorf("expected SizeX 100, got %d", w.SizeX())
 	}
-	if g.SizeY() != 20 {
-		t.Errorf("expected SizeY 20, got %d", g.SizeY())
+	if w.SizeY() != 80 {
+		t.Errorf("expected SizeY 80, got %d", w.SizeY())
 	}
 }
 
 func TestIsInBounds(t *testing.T) {
-	g := grid.NewGrid(10, 10, 0)
+	w := grid.NewWorld(100, 100, 0)
 	cases := []struct {
-		loc      grid.Coord
+		pos      grid.Position
 		expected bool
 	}{
-		{grid.Coord{X: 0, Y: 0}, true},
-		{grid.Coord{X: 9, Y: 9}, true},
-		{grid.Coord{X: 5, Y: 5}, true},
-		{grid.Coord{X: -1, Y: 0}, false},
-		{grid.Coord{X: 0, Y: -1}, false},
-		{grid.Coord{X: 10, Y: 0}, false},
-		{grid.Coord{X: 0, Y: 10}, false},
+		{grid.Position{X: 0, Y: 0}, true},
+		{grid.Position{X: 99, Y: 99}, true},
+		{grid.Position{X: 50, Y: 50}, true},
+		{grid.Position{X: -1, Y: 0}, false},
+		{grid.Position{X: 0, Y: -1}, false},
+		{grid.Position{X: 100, Y: 0}, false},
+		{grid.Position{X: 0, Y: 100}, false},
 	}
 	for _, c := range cases {
-		if got := g.IsInBounds(c.loc); got != c.expected {
-			t.Errorf("IsInBounds(%v) = %v, want %v", c.loc, got, c.expected)
+		if got := w.IsInBounds(c.pos); got != c.expected {
+			t.Errorf("IsInBounds(%v) = %v, want %v", c.pos, got, c.expected)
 		}
 	}
 }
 
-func TestSetAndAt(t *testing.T) {
-	g := grid.NewGrid(10, 10, 0)
-	g.ZeroFill() // clear the auto-generated wall so cells are predictably empty
-	loc := grid.Coord{X: 1, Y: 1}
-	g.Set(loc, 42)
-	if got := g.At(loc); got != 42 {
-		t.Errorf("At after Set: got %d, want 42", got)
-	}
-}
+func TestAddAndGetCreature(t *testing.T) {
+	w := grid.NewWorld(100, 100, 0)
+	pos := grid.Position{X: 50, Y: 50}
+	w.AddCreature(1, pos)
 
-func TestIsEmptyAt(t *testing.T) {
-	g := grid.NewGrid(10, 10, 0)
-	g.ZeroFill()
-	loc := grid.Coord{X: 1, Y: 1}
-	if !g.IsEmptyAt(loc) {
-		t.Error("expected cell to be empty before Set")
-	}
-	g.Set(loc, grid.WALL)
-	if g.IsEmptyAt(loc) {
-		t.Error("expected cell to be non-empty after Set(WALL)")
-	}
-}
-
-func TestIsOccupiedAt(t *testing.T) {
-	g := grid.NewGrid(10, 10, 0)
-	g.ZeroFill()
-	loc := grid.Coord{X: 1, Y: 1}
-	if g.IsOccupiedAt(loc) {
-		t.Error("empty cell should not be occupied")
-	}
-	g.Set(loc, grid.WALL)
-	if g.IsOccupiedAt(loc) {
-		t.Error("WALL cell should not count as occupied creature")
-	}
-	g.Set(loc, grid.RESERVED_CELL_TYPES+1)
-	if !g.IsOccupiedAt(loc) {
-		t.Error("creature cell should be occupied")
-	}
-}
-
-func TestIsBorder(t *testing.T) {
-	g := grid.NewGrid(10, 10, 0)
-	borders := []grid.Coord{
-		{X: 0, Y: 5}, {X: 9, Y: 5},
-		{X: 5, Y: 0}, {X: 5, Y: 9},
-	}
-	for _, b := range borders {
-		if !g.IsBorder(b) {
-			t.Errorf("expected %v to be a border", b)
-		}
-	}
-	inner := grid.Coord{X: 5, Y: 5}
-	if g.IsBorder(inner) {
-		t.Errorf("expected %v to not be a border", inner)
-	}
-}
-
-func TestZeroFill(t *testing.T) {
-	g := grid.NewGrid(10, 10, 0)
-	g.Set(grid.Coord{X: 3, Y: 3}, 99)
-	g.ZeroFill()
-	if g.At(grid.Coord{X: 3, Y: 3}) != 0 {
-		t.Error("ZeroFill should reset all cells to 0")
-	}
-}
-
-func TestDrawBox(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	g.ZeroFill()
-	g.DrawBox(2, 2, 5, 5)
-	for x := 2; x < 5; x++ {
-		for y := 2; y < 5; y++ {
-			if g.At(grid.Coord{X: x, Y: y}) != grid.WALL {
-				t.Errorf("expected WALL at (%d,%d)", x, y)
-			}
-		}
-	}
-}
-
-func TestFindEmptyLocation(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	loc, ok := g.FindEmptyLocation()
+	got, ok := w.GetCreaturePos(1)
 	if !ok {
-		t.Fatal("FindEmptyLocation returned false on an empty grid")
+		t.Fatal("GetCreaturePos should find creature after AddCreature")
 	}
-	if !g.IsInBounds(loc) {
-		t.Errorf("FindEmptyLocation returned out-of-bounds coord %v", loc)
-	}
-	if !g.IsEmptyAt(loc) {
-		t.Errorf("FindEmptyLocation returned occupied coord %v", loc)
+	if got != pos {
+		t.Errorf("GetCreaturePos returned %v, want %v", got, pos)
 	}
 }
 
-func TestGetNeighbours(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	center := grid.Coord{X: 10, Y: 10}
-	neighbours := g.GetNeighbours(center, 1)
-	if len(neighbours) == 0 {
-		t.Error("GetNeighbours should return at least one neighbour")
-	}
-	for _, n := range neighbours {
-		if !g.IsInBounds(n) {
-			t.Errorf("neighbour %v is out of bounds", n)
-		}
+func TestMoveCreature(t *testing.T) {
+	w := grid.NewWorld(100, 100, 0)
+	w.AddCreature(1, grid.Position{X: 10, Y: 10})
+	newPos := grid.Position{X: 20, Y: 30}
+	w.MoveCreature(1, newPos)
+
+	got, ok := w.GetCreaturePos(1)
+	if !ok || got != newPos {
+		t.Errorf("after MoveCreature, got %v, want %v", got, newPos)
 	}
 }
 
-func TestCountNeighbours(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	center := grid.Coord{X: 10, Y: 10}
-	g.Set(grid.Coord{X: 11, Y: 10}, grid.RESERVED_CELL_TYPES+1)
-	g.Set(grid.Coord{X: 9, Y: 10}, grid.RESERVED_CELL_TYPES+2)
-
-	count := g.CountNeighbours(center, 1, func(g grid.Grid, x, y int) int {
-		if g.IsOccupiedAt(grid.Coord{X: x, Y: y}) {
-			return 1
-		}
-		return 0
-	})
-	if count != 2 {
-		t.Errorf("CountNeighbours: expected 2, got %d", count)
+func TestRemoveCreature(t *testing.T) {
+	w := grid.NewWorld(100, 100, 0)
+	w.AddCreature(1, grid.Position{X: 50, Y: 50})
+	w.RemoveCreature(1)
+	if _, ok := w.GetCreaturePos(1); ok {
+		t.Error("creature should not be found after RemoveCreature")
 	}
 }
 
-func TestDensityNeighbours(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	center := grid.Coord{X: 10, Y: 10}
-	density := g.DensityNeighbours(center, 2, func(g grid.Grid, x, y int) int {
-		return 0
-	})
-	if density != 0 {
-		t.Errorf("empty grid density should be 0, got %f", density)
+func TestGetCreaturesInRadius(t *testing.T) {
+	w := grid.NewWorld(200, 200, 0)
+	w.AddCreature(1, grid.Position{X: 100, Y: 100})
+	w.AddCreature(2, grid.Position{X: 102, Y: 100}) // within radius 5
+	w.AddCreature(3, grid.Position{X: 200, Y: 200}) // far away
+
+	ids := w.GetCreaturesInRadius(grid.Position{X: 100, Y: 100}, 5)
+	found := map[int]bool{}
+	for _, id := range ids {
+		found[id] = true
+	}
+	if !found[1] || !found[2] {
+		t.Error("expected creatures 1 and 2 within radius 5")
+	}
+	if found[3] {
+		t.Error("creature 3 should not be within radius 5")
+	}
+}
+
+func TestAddAndRemoveFood(t *testing.T) {
+	w := grid.NewWorld(100, 100, 0)
+	id := w.AddFood(grid.Position{X: 50, Y: 50})
+	if w.FoodCount() != 1 {
+		t.Errorf("expected 1 food, got %d", w.FoodCount())
+	}
+	w.RemoveFood(id)
+	if w.FoodCount() != 0 {
+		t.Errorf("expected 0 food after removal, got %d", w.FoodCount())
+	}
+}
+
+func TestGetFoodInRadius(t *testing.T) {
+	w := grid.NewWorld(200, 200, 0)
+	id1 := w.AddFood(grid.Position{X: 100, Y: 100})
+	id2 := w.AddFood(grid.Position{X: 102, Y: 100}) // within radius 5
+	_ = w.AddFood(grid.Position{X: 150, Y: 150})    // far away
+
+	ids := w.GetFoodInRadius(grid.Position{X: 100, Y: 100}, 5)
+	found := map[int]bool{}
+	for _, id := range ids {
+		found[id] = true
+	}
+	if !found[id1] || !found[id2] {
+		t.Error("expected food items within radius 5")
 	}
 }
 
 func TestSpawnFood(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	g.ZeroFill()
-	g.SpawnFood(5)
-
-	if len(g.FoodLocations) != 5 {
-		t.Errorf("expected 5 food locations, got %d", len(g.FoodLocations))
+	w := grid.NewWorld(200, 200, 0)
+	w.SpawnFood(10)
+	if w.FoodCount() == 0 {
+		t.Error("SpawnFood should create food items")
 	}
-	for _, loc := range g.FoodLocations {
-		if !g.IsFood(loc) {
-			t.Errorf("expected food at %v", loc)
+}
+
+func TestFindEmptyLocation(t *testing.T) {
+	w := grid.NewWorld(200, 200, 0)
+	pos, ok := w.FindEmptyLocation()
+	if !ok {
+		t.Fatal("FindEmptyLocation should succeed on empty world")
+	}
+	if !w.IsInBounds(pos) {
+		t.Errorf("FindEmptyLocation returned out-of-bounds position %v", pos)
+	}
+	if w.IsWall(pos) {
+		t.Errorf("FindEmptyLocation returned wall position %v", pos)
+	}
+}
+
+func TestIsWall_CrossWall(t *testing.T) {
+	w := grid.NewWorld(200, 200, 1)
+	// Center of the world should be inside a wall segment.
+	center := grid.Position{X: 100, Y: 100}
+	if !w.IsWall(center) {
+		t.Error("center of cross-wall world should be a wall")
+	}
+	// Corner should be free.
+	corner := grid.Position{X: 10, Y: 10}
+	if w.IsWall(corner) {
+		t.Error("corner should not be a wall")
+	}
+}
+
+func TestClampToBounds(t *testing.T) {
+	w := grid.NewWorld(100, 100, 0)
+	cases := []struct {
+		in   grid.Position
+		wantInBounds bool
+	}{
+		{grid.Position{X: -5, Y: 50}, true},
+		{grid.Position{X: 50, Y: -5}, true},
+		{grid.Position{X: 200, Y: 50}, true},
+		{grid.Position{X: 50, Y: 200}, true},
+		{grid.Position{X: 50, Y: 50}, true},
+	}
+	for _, c := range cases {
+		clamped := w.ClampToBounds(c.in)
+		if !w.IsInBounds(clamped) {
+			t.Errorf("ClampToBounds(%v) = %v is out of bounds", c.in, clamped)
 		}
-	}
-}
-
-func TestIsFoodNotOccupied(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	g.ZeroFill()
-	loc := grid.Coord{X: 5, Y: 5}
-	g.Set(loc, grid.FOOD)
-
-	if !g.IsFood(loc) {
-		t.Error("IsFood should return true for FOOD cell")
-	}
-	if g.IsOccupiedAt(loc) {
-		t.Error("IsOccupiedAt should return false for FOOD cell (food is not a creature)")
-	}
-	if g.IsEmptyAt(loc) {
-		t.Error("IsEmptyAt should return false for FOOD cell")
-	}
-}
-
-func TestRemoveFood(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	g.ZeroFill()
-	g.SpawnFood(3)
-	initial := len(g.FoodLocations)
-
-	loc := g.FoodLocations[0]
-	g.RemoveFood(loc)
-
-	if len(g.FoodLocations) != initial-1 {
-		t.Errorf("expected %d food locations after removal, got %d", initial-1, len(g.FoodLocations))
-	}
-	if g.IsFood(loc) {
-		t.Error("cell should no longer be food after RemoveFood")
-	}
-	if !g.IsEmptyAt(loc) {
-		t.Error("cell should be empty after RemoveFood")
-	}
-}
-
-func TestZeroFillClearsFoodLocations(t *testing.T) {
-	g := grid.NewGrid(20, 20, 0)
-	g.ZeroFill()
-	g.SpawnFood(5)
-	g.ZeroFill()
-
-	if len(g.FoodLocations) != 0 {
-		t.Errorf("ZeroFill should clear FoodLocations, got %d", len(g.FoodLocations))
 	}
 }

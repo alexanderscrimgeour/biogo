@@ -40,8 +40,8 @@ func TestCreateInitialNeuronOutput(t *testing.T) {
 func TestNewCreature(t *testing.T) {
 	p := defaultParams()
 	genome := simulation.MakeRandomGenome(p)
-	loc := grid.Coord{X: 5, Y: 5}
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, loc, genome)
+	loc := grid.Position{X: 5, Y: 5}
+	c := simulation.NewCreature(1, loc, genome)
 	if c == nil {
 		t.Fatal("NewCreature returned nil")
 	}
@@ -53,22 +53,5 @@ func TestNewCreature(t *testing.T) {
 	}
 	if c.Loc != loc {
 		t.Errorf("creature Loc = %v, want %v", c.Loc, loc)
-	}
-}
-
-func TestGetNextLoc(t *testing.T) {
-	p := defaultParams()
-	genome := simulation.MakeRandomGenome(p)
-	loc := grid.Coord{X: 5, Y: 5}
-	c := simulation.NewCreature(grid.RESERVED_CELL_TYPES, loc, genome)
-
-	next := c.GetNextLoc(grid.E)
-	if next.X != 6 || next.Y != 5 {
-		t.Errorf("GetNextLoc(E) = %v, want {6,5}", next)
-	}
-
-	next = c.GetNextLoc(grid.N)
-	if next.X != 5 || next.Y != 6 {
-		t.Errorf("GetNextLoc(N) = %v, want {5,6}", next)
 	}
 }

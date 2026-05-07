@@ -1,9 +1,6 @@
 package simulation
 
-import (
-	"biogo/v2/grid"
-	"math"
-)
+import "math"
 
 type ChallengeType int
 
@@ -18,46 +15,41 @@ const (
 )
 
 // PassedSurvivalCriteria reports whether a creature satisfies the given challenge.
-// This is retained for analysis and testing; the continuous simulation does not use it.
+// Retained for analysis; the main simulation does not call this.
 func PassedSurvivalCriteria(c *Creature, s *Simulation, challenge ChallengeType) bool {
 	switch challenge {
 	case LeftSurvive:
-		return c.Loc.X < s.Params.GridWidth/2
+		return c.Loc.X < float64(s.Params.GridWidth)/2
 
 	case FarLeftSurvive:
-		return c.Loc.X < s.Params.GridWidth/10
+		return c.Loc.X < float64(s.Params.GridWidth)/10
 
 	case RightSurvive:
-		return c.Loc.X > s.Params.GridWidth/2
+		return c.Loc.X > float64(s.Params.GridWidth)/2
 
 	case Groups:
 		minNeighbours := 4
-		radius := float32(4)
-
-		if s.Grid.IsBorder(c.Loc) {
+		radius := 4.0
+		isBorder := c.Loc.X < 1 || c.Loc.X >= float64(s.Params.GridWidth)-1 ||
+			c.Loc.Y < 1 || c.Loc.Y >= float64(s.Params.GridHeight)-1
+		if isBorder {
 			return false
 		}
-		if c.Loc.X < 5 || c.Loc.X > s.Grid.SizeX()-6 || c.Loc.Y < 5 || c.Loc.Y > s.Grid.SizeY()-6 {
+		nearEdge := c.Loc.X < 5 || c.Loc.X > float64(s.Params.GridWidth)-6 ||
+			c.Loc.Y < 5 || c.Loc.Y > float64(s.Params.GridHeight)-6
+		if nearEdge {
 			return false
 		}
-		n := 0
-		neighbours := s.Grid.GetNeighbours(c.Loc, radius)
-		for _, coord := range neighbours {
-			if s.Grid.IsOccupiedAt(coord) {
-				n++
-			}
-		}
-		return n >= minNeighbours
+		neighbours := s.World.GetCreaturesInRadius(c.Loc, radius)
+		return len(neighbours)-1 >= minNeighbours // -1 to exclude self
 
 	case Center:
-		center := grid.Coord{X: s.Grid.SizeX() / 2, Y: s.Grid.SizeY() / 2}
-		radius := 50
-		offset := grid.Coord{
-			X: int(math.Abs(float64(c.Loc.X - center.X))),
-			Y: int(math.Abs(float64(c.Loc.Y - center.Y))),
-		}
-		dist := math.Sqrt(float64(offset.X*offset.X) + float64(offset.Y*offset.Y))
-		return int(dist) <= radius
+		cx := float64(s.Params.GridWidth) / 2
+		cy := float64(s.Params.GridHeight) / 2
+		radius := 50.0
+		dx := c.Loc.X - cx
+		dy := c.Loc.Y - cy
+		return math.Sqrt(dx*dx+dy*dy) <= radius
 
 	case AllSurvive:
 		fallthrough

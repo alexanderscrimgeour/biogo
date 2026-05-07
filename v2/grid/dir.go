@@ -1,66 +1,43 @@
 package grid
 
-import (
-	"biogo/v2/utils"
-	"math"
-	"math/rand"
-)
+import "math"
 
-type Dir struct {
-	X, Y int
+// HeadingToVec converts a heading angle (radians) to a unit vector (dx, dy).
+// 0 = east (+X), π/2 = south (+Y, screen-down), π = west, -π/2 = north.
+func HeadingToVec(heading float64) (float64, float64) {
+	return math.Cos(heading), math.Sin(heading)
 }
 
-var N = Dir{0, 1}
-var NE = Dir{1, 1}
-var E = Dir{1, 0}
-var SE = Dir{1, -1}
-var S = Dir{0, -1}
-var SW = Dir{-1, -1}
-var W = Dir{-1, 0}
-var NW = Dir{-1, 1}
-var CENTER = Dir{0, 0}
-
-func (d Dir) Rotate90CW() Dir {
-	return Dir{d.Y, -d.X}
+// AngleBetween returns the heading angle (radians) from position `from` to `to`.
+func AngleBetween(from, to Position) float64 {
+	return math.Atan2(to.Y-from.Y, to.X-from.X)
 }
 
-func (d Dir) Rotate90CCW() Dir {
-	return Dir{-d.Y, d.X}
-}
-
-func RandomDir() Dir {
-	x := rand.Intn(3) - 1
-	y := rand.Intn(3) - 1
-	return Dir{X: x, Y: y}
-}
-
-func GetDirection(fromLoc, toLoc Coord) Dir {
-	xDir := toLoc.X - fromLoc.X
-	yDir := toLoc.Y - fromLoc.Y
-
-	return Dir{
-		X: sign(xDir),
-		Y: sign(yDir),
+// NormalizeAngle wraps an angle into [-π, π].
+func NormalizeAngle(a float64) float64 {
+	for a > math.Pi {
+		a -= 2 * math.Pi
 	}
+	for a < -math.Pi {
+		a += 2 * math.Pi
+	}
+	return a
 }
 
-func sign(n int) int {
-	if n > 0 {
+// CosSimilarity returns the cosine of the angle between two direction vectors.
+// Returns 1.0 when either vector is zero-length.
+func CosSimilarity(dx1, dy1, dx2, dy2 float64) float64 {
+	mag1 := math.Sqrt(dx1*dx1 + dy1*dy1)
+	mag2 := math.Sqrt(dx2*dx2 + dy2*dy2)
+	if mag1 == 0 || mag2 == 0 {
 		return 1
-	} else if n < 0 {
+	}
+	cos := (dx1*dx2 + dy1*dy2) / (mag1 * mag2)
+	if cos < -1 {
 		return -1
 	}
-	return 0
-}
-
-func RaySameness(fromDir, toDir Dir) float32 {
-	fromMag := math.Sqrt(float64(fromDir.X*fromDir.X + fromDir.Y*fromDir.Y))
-	toMag := math.Sqrt(float64(toDir.X*toDir.X + toDir.Y*toDir.Y))
-	if fromMag == 0 || toMag == 0 {
+	if cos > 1 {
 		return 1
 	}
-	dot := float64(fromDir.X*toDir.X + fromDir.Y*toDir.Y)
-	cos := float32(dot / (fromMag * toMag))
-	cos = utils.MinFloat32(utils.MaxFloat32(cos, -1), 1)
 	return cos
 }
