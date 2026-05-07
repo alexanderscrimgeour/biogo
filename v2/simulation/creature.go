@@ -19,6 +19,7 @@ type Creature struct {
 	Loc            grid.Position
 	BirthLoc       grid.Position
 	Heading        float64 // radians; 0 = east, π/2 = south (screen-down)
+	LastAction     string
 	Genome         *Genome
 }
 
@@ -50,13 +51,36 @@ func (c Creature) String() string {
 		c.Nnet.String(), c.Loc, c.BirthLoc, c.Heading)
 }
 
-// CurrentSize returns the creature's effective size, scaling linearly from
-// params.MinSize at birth to genome.Size at the end of the juvenile period.
-func (c Creature) CurrentSize(params *Parameters) float32 {
-	juvenilePeriod := params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(params.MaxJuvenilePeriod-params.MinJuvenilePeriod))
-	if juvenilePeriod == 0 || c.Age >= juvenilePeriod {
-		return float32(c.Genome.Size)
+// JuvenilePeriod returns the number of ticks before this creature is considered an adult.
+func (c Creature) JuvenilePeriod(params *Parameters) int {
+	return params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(params.MaxJuvenilePeriod-params.MinJuvenilePeriod))
+}
+
+// IsJuvenile reports whether the creature has not yet completed its juvenile phase.
+func (c Creature) IsJuvenile(params *Parameters) bool {
+	jp := c.JuvenilePeriod(params)
+	return jp > 0 && c.Age < jp
+}
+
+// CurrentMass returns the creature's effective mass, scaling linearly from genome.MinMass
+// at birth to genome.Mass at the end of the juvenile period.
+func (c Creature) CurrentMass(params *Parameters) float32 {
+	jp := c.JuvenilePeriod(params)
+	if jp == 0 || c.Age >= jp {
+		return float32(c.Genome.Mass)
 	}
-	t := float32(c.Age) / float32(juvenilePeriod)
-	return float32(params.MinSize) + (float32(c.Genome.Size)-float32(params.MinSize))*t
+	t := float32(c.Age) / float32(jp)
+	return float32(c.Genome.MinMass) + (float32(c.Genome.Mass)-float32(c.Genome.MinMass))*t
+}
+
+// MetabolicRate returns the energy drained per tick, scaled from the genome byte into [params.MinMetabolicRate, params.MaxMetabolicRate].
+func (c Creature) MetabolicRate(params *Parameters) float32 {
+	return params.MinMetabolicRate + float32(c.Genome.MetabolicRate)/255.0*(params.MaxMetabolicRate-params.MinMetabolicRate)
+}
+
+func (c Creature) MaxAge(params *Parameters) int {
+	baseLife := float32(params.BaseMaxAge)
+	sizeMult := 0.5 + (float32(c.Genome.Mass) / 255.0)
+	metabolicPenalty := 1.0 + (float32(c.Genome.Responsiveness) / 255.0)
+	return int((baseLife * sizeMult) / metabolicPenalty)
 }

@@ -11,8 +11,7 @@ type Parameters struct {
 	PopulationSensorRadius          int
 	MinEnergy                       byte
 	MaxEnergy                       byte
-	MinSize                         byte
-	MaxSize                         byte
+	MaxMass                         byte
 	MinStartNeuronCount             byte
 	MaxStartNeuronCount             byte
 	MinNeuronCount                  byte
@@ -23,22 +22,27 @@ type Parameters struct {
 	MaxSightDistance                byte
 	MinFieldOfView                  byte
 	MaxFieldOfView                  byte
-	BaseMutationRate                float32
+	MinMutationRate                 float32
 	BaseGenomeMutationRate          float32
+	SpawnMutationRate               float32
 	SexualReproductionSimilarityMin float32
 	SexualReproductionSimilarityMax float32
 	ResponseCurveKFactor            float32
-	MaxExpectedAge                  int
-	MinJuvenilePeriod               int
-	MaxJuvenilePeriod               int
+	// Age sensor reference point — creatures older than this saturate the AGE sensor at 1.0
+	MaxExpectedAge int
+	BaseMaxAge     int
+	// Juvenile phase length in ticks. Genome JuvenilePeriod byte scales linearly into [MinJuvenilePeriod, MaxJuvenilePeriod].
+	MinJuvenilePeriod int
+	MaxJuvenilePeriod int
 	// Food system
-	MaxFood           int
-	FoodSpawnInterval int
-	FoodPerSpawn      int
-	FoodEnergyFraction float32
-	// Energy costs
-	MetabolicRate float32
-	MoveCost      float32
+	MaxFood            int     // maximum food items on the grid at any time
+	FoodSpawnInterval  int     // ticks between food spawns
+	FoodPerSpawn       int     // food items placed per spawn event
+	FoodEnergyFraction float32 // food restores this fraction of MaxEnergy
+	// Energy costs (absolute units, relative to creature MaxEnergy range)
+	MinMetabolicRate float32 // energy drained per tick when genome MetabolicRate byte = 0
+	MaxMetabolicRate float32 // energy drained per tick when genome MetabolicRate byte = 255
+	MoveCost         float32 // energy drained per move attempt
 	// Reproduction
 	ReproductionEnergyThreshold float32
 	ReproductionEnergyCost      float32
@@ -46,8 +50,8 @@ type Parameters struct {
 	PreyEnergyFraction float32
 	CorpseDecayRate    float32
 	// Continuous-space movement
-	MaxSpeedPerStep      float64 // world units per tick (max)
-	MaxRotationPerStep   float64 // radians per tick (max)
+	MaxSpeedPerStep    float64 // world units per tick (max)
+	MaxRotationPerStep float64 // radians per tick (max)
 	// Interaction radii (world units)
 	FoodInteractionRadius float64
 	PredationRadius       float64
@@ -63,32 +67,34 @@ func DefaultParams() *Parameters {
 		GridHeight:                      600,
 		MinEnergy:                       2,
 		MaxEnergy:                       255,
-		MinSize:                         1,
-		MaxSize:                         200,
-		MinStartNeuronCount:             2,
-		MaxStartNeuronCount:             20,
+		MaxMass:                         255,
+		MinStartNeuronCount:             10,
+		MaxStartNeuronCount:             26,
 		MinNeuronCount:                  1,
-		MaxNeuronCount:                  20,
-		MinHiddenLayerCount:             2,
+		MaxNeuronCount:                  26,
+		MinHiddenLayerCount:             3,
 		MaxHiddenLayerCount:             8,
 		MinSightDistance:                2,
-		MaxSightDistance:                20,
+		MaxSightDistance:                100,
 		MinFieldOfView:                  10,
 		MaxFieldOfView:                  180,
-		BaseMutationRate:                0.001,
+		MinMutationRate:                 0.0001,
 		BaseGenomeMutationRate:          0.001,
+		SpawnMutationRate:               0.01,
 		SexualReproductionSimilarityMin: 0.9,
 		SexualReproductionSimilarityMax: 0.98,
 		ResponseCurveKFactor:            2,
 		MaxExpectedAge:                  50000,
-		MinJuvenilePeriod:               100,
-		MaxJuvenilePeriod:               500,
+		BaseMaxAge:                      30000,
+		MinJuvenilePeriod:               500,
+		MaxJuvenilePeriod:               3000,
 		MaxFood:                         15000,
 		FoodSpawnInterval:               100,
 		FoodPerSpawn:                    100,
 		FoodEnergyFraction:              0.1,
-		MetabolicRate:                   0.02,
-		MoveCost:                        0.005,
+		MinMetabolicRate:                0.01,
+		MaxMetabolicRate:                0.1,
+		MoveCost:                        0.05,
 		ReproductionEnergyThreshold:     0.85,
 		ReproductionEnergyCost:          0.2,
 		PreyEnergyFraction:              0.2,

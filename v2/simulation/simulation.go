@@ -46,6 +46,23 @@ func (s *Simulation) initializePopulation() {
 	s.Population = pop
 }
 
+// SaveCreature saves the genome of the creature with the given id to a unique file in data/creatures/.
+func (s *Simulation) SaveCreature(id int) error {
+	c, ok := s.Population.Creatures[id]
+	if !ok || !c.Alive {
+		return nil
+	}
+	return SaveCreatureToFile(c.Genome)
+}
+
+// Reset reinitialises the simulation from scratch.
+func (s *Simulation) Reset() {
+	s.Tick = 0
+	s.nextCreatureID = grid.StartingCreatureID
+	s.initializeWorld()
+	s.initializePopulation()
+}
+
 func (s *Simulation) allocateID() int {
 	id := s.nextCreatureID
 	s.nextCreatureID++
@@ -78,6 +95,10 @@ func (s *Simulation) step() {
 	s.Population.ProcessCorpseDecay(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params, s.allocateID)
 
+	spawnParams := *s.Params
+	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
+		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
+	}
 	for s.Population.AliveCount() < s.Params.MinPopulation {
 		loc, ok := s.World.FindEmptyLocation()
 		if !ok {
@@ -86,9 +107,9 @@ func (s *Simulation) step() {
 		id := s.allocateID()
 		var genome *Genome
 		if source := s.Population.OldestGenome(); source != nil {
-			genome = AsexualReproductionArtificial(source, s.Params)
+			genome = AsexualReproduction(source, &spawnParams)
 		} else {
-			genome = MakeRandomGenome(s.Params)
+			genome = MakeRandomGenome(&spawnParams)
 		}
 		c := NewCreature(id, loc, genome)
 		s.Population.Creatures[id] = c
@@ -100,8 +121,9 @@ func (s *Simulation) step() {
 
 func (s *Simulation) stepCreature(c *Creature) {
 	c.Age++
-	c.Energy -= s.Params.MetabolicRate
-	if c.Energy <= 0 {
+	c.LastAction = "Idle"
+	c.Energy -= c.MetabolicRate(s.Params)
+	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
 		s.Population.QueueForDeath(c)
 		return
 	}
@@ -110,6 +132,7 @@ func (s *Simulation) stepCreature(c *Creature) {
 	reproThreshold := s.Params.ReproductionEnergyThreshold * float32(c.Genome.MaxEnergy)
 	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod {
 		s.Population.QueueForReproduction(c)
+		c.LastAction = "Reproducing"
 	}
 
 	actionLevels := c.FeedForward(s.World, s.Population, s.Tick, s.Params)
@@ -121,6 +144,15 @@ func (s *Simulation) Print() {
 }
 
 func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
+	if IsActionEnabled(DO_NOTHING) {
+		level := actionLevels[DO_NOTHING]
+		if level > 0 && prob2Bool(float64(level)) == 1 {
+			c.Energy += c.MetabolicRate(s.Params)
+			c.LastAction = "Resting"
+			return
+		}
+	}
+
 	if IsActionEnabled(SET_RESPONSIVENESS) {
 		resp := actionLevels[SET_RESPONSIVENESS]
 		resp = (float32(math.Tanh(float64(resp/float32(utils.ClampByteAsFloat32(0, 1, c.Genome.Responsiveness))))) + 1) / 2
@@ -166,8 +198,8 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 	}
 
 	moveAmount := math.Tanh(fwd-bwd) * float64(responseAdjust)
-	sizeFactor := 1.0 + float64(c.CurrentSize(s.Params))/255.0
-	moveAmount *= s.Params.MaxSpeedPerStep / sizeFactor
+	massFactor := 1.0 + float64(c.CurrentMass(s.Params))/255.0
+	moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
 	if math.Abs(moveAmount) < 0.001 {
 		return
@@ -178,9 +210,15 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 	if !s.World.IsWall(newPos) {
-		c.Energy -= s.Params.MoveCost * float32(sizeFactor)
+		c.Energy -= s.Params.MoveCost * float32(massFactor)
 		s.Population.QueueForMove(c, newPos)
 	}
+}
+
+// SetSpawnMutationRate sets the minimum mutation rate applied when artificially
+// spawning creatures to maintain the minimum population.
+func (s *Simulation) SetSpawnMutationRate(rate float32) {
+	s.Params.SpawnMutationRate = rate
 }
 
 func (s *Simulation) GridWidth() int  { return s.Params.GridWidth }

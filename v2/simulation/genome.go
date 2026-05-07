@@ -15,11 +15,17 @@ const (
 	FIELD_OF_VIEW
 	RESPONSIVENESS
 	MUTATION_RATE
+<<<<<<< Updated upstream
 	SIZE
+=======
+	MASS
+	MIN_MASS
+>>>>>>> Stashed changes
 	REPRODUCTION_TYPE
 	NEURON_COUNT
 	NEUROLOGY_LENGTH
 	JUVENILE_PERIOD
+	METABOLIC_RATE
 	// NEUROLOGY - not counted
 	GENOME_STRUCTURE_COUNT
 )
@@ -41,11 +47,17 @@ type Genome struct {
 	FieldOfView      byte // total FOV angle in degrees (0–180)
 	Responsiveness   byte
 	MutationRate     byte
+<<<<<<< Updated upstream
 	Size             byte
+=======
+	Mass             byte
+	MinMass          byte // birth mass; scales linearly to Mass over the juvenile period
+>>>>>>> Stashed changes
 	ReproductionType byte
 	NeuronCount      byte
 	BrainLength      byte
 	JuvenilePeriod   byte
+	MetabolicRate    byte
 	Brain            []*Gene
 }
 
@@ -54,7 +66,11 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
+<<<<<<< Updated upstream
 	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Size, g.ReproductionType, g.BrainLength, g.JuvenilePeriod)
+=======
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
+>>>>>>> Stashed changes
 	for _, gene := range g.Brain {
 		str += gene.String()
 	}
@@ -66,7 +82,11 @@ func (g Gene) BinaryString() string {
 }
 
 func (g Genome) BinaryString() string {
+<<<<<<< Updated upstream
 	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Size, g.ReproductionType, g.BrainLength, g.JuvenilePeriod)
+=======
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
+>>>>>>> Stashed changes
 	for _, gene := range g.Brain {
 		str += gene.BinaryString()
 	}
@@ -81,11 +101,17 @@ func (g Genome) ToByteArray() []byte {
 	arr = append(arr, g.FieldOfView)
 	arr = append(arr, g.Responsiveness)
 	arr = append(arr, g.MutationRate)
+<<<<<<< Updated upstream
 	arr = append(arr, g.Size)
+=======
+	arr = append(arr, g.Mass)
+	arr = append(arr, g.MinMass)
+>>>>>>> Stashed changes
 	arr = append(arr, g.ReproductionType)
 	arr = append(arr, g.NeuronCount)
 	arr = append(arr, g.BrainLength)
 	arr = append(arr, g.JuvenilePeriod)
+	arr = append(arr, g.MetabolicRate)
 	for _, n := range g.Brain {
 		arr = append(arr, n.SourceType)
 		arr = append(arr, n.SourceID)
@@ -100,7 +126,11 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
+<<<<<<< Updated upstream
 	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Size, g.ReproductionType, g.BrainLength, g.JuvenilePeriod)
+=======
+	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
+>>>>>>> Stashed changes
 	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
@@ -144,18 +174,29 @@ func MakeRandomGene() *Gene {
 }
 
 func MakeRandomGenome(p *Parameters) *Genome {
+<<<<<<< Updated upstream
+=======
+	mass := utils.ClampByte(1, p.MaxMass, utils.MakeRandomByte())
+>>>>>>> Stashed changes
 	g := Genome{
 		OscPeriod:        utils.ClampByte(1, math.MaxUint8, utils.MakeRandomByte()),
 		MaxEnergy:        utils.ClampByte(p.MinEnergy, p.MaxEnergy, utils.MakeRandomByte()),
 		SightDistance:    utils.ClampByte(p.MinSightDistance, p.MaxSightDistance, utils.MakeRandomByte()),
 		FieldOfView:      utils.ClampByte(p.MinFieldOfView, p.MaxFieldOfView, utils.MakeRandomByte()),
 		Responsiveness:   utils.MakeRandomByte(),
+<<<<<<< Updated upstream
 		MutationRate:     utils.MakeRandomByte(),
 		Size:             utils.ClampByte(p.MinSize, p.MaxSize, utils.MakeRandomByte()),
+=======
+		MutationRate:     utils.ClampByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		Mass:             mass,
+		MinMass:          utils.ClampByte(1, mass, utils.MakeRandomByte()),
+>>>>>>> Stashed changes
 		ReproductionType: makeRandomBool(),
 		NeuronCount:      utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, utils.MakeRandomByte()),
 		BrainLength:      utils.ClampByte(p.MinStartNeuronCount, p.MaxStartNeuronCount, utils.MakeRandomByte()),
 		JuvenilePeriod:   utils.MakeRandomByte(),
+		MetabolicRate:    utils.MakeRandomByte(),
 	}
 	for i := byte(0); i < g.BrainLength; i++ {
 		gene := MakeRandomGene()
@@ -181,9 +222,9 @@ func (g *Genome) Copy() *Genome {
 	return &new
 }
 
-// Mutate randomly flips bits in the genome at a rate of p.BaseMutationRate * g.MutationRate
+// Mutate randomly flips bits in the genome at a rate of p.MinMutationRate * g.MutationRate
 func Mutate(g *Genome, p *Parameters) {
-	mutationRate := p.BaseMutationRate * float32(g.MutationRate)
+	mutationRate := p.MinMutationRate * float32(g.MutationRate)
 
 	for i := 0; i < GENOME_STRUCTURE_COUNT; i++ {
 		r := rand.Float32()
@@ -198,7 +239,7 @@ func Mutate(g *Genome, p *Parameters) {
 			case SIGHT_DISTANCE:
 				new := g.SightDistance
 				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.SightDistance ^= utils.ClampByte(p.MinSightDistance, p.MaxSightDistance, new)
+				g.SightDistance = utils.ClampByte(p.MinSightDistance, p.MaxSightDistance, new)
 			case FIELD_OF_VIEW:
 				new := g.FieldOfView
 				new ^= byte(1 << (rand.Uint32() >> 29))
@@ -207,22 +248,33 @@ func Mutate(g *Genome, p *Parameters) {
 				g.Responsiveness ^= byte(1 << (rand.Uint32() >> 29))
 			case MUTATION_RATE:
 				g.MutationRate ^= byte(1 << (rand.Uint32() >> 29))
-			case SIZE:
-				new := g.Size
+				g.MutationRate = utils.ClampByte(1, math.MaxUint8, g.MutationRate)
+			case MASS:
+				new := g.Mass
 				new ^= byte(1 << (rand.Uint32() >> 29))
+<<<<<<< Updated upstream
 				g.Size = utils.ClampByte(p.MinSize, p.MaxSize, new)
+=======
+				g.Mass = utils.ClampByte(g.MinMass, p.MaxMass, new)
+			case MIN_MASS:
+				new := g.MinMass
+				new ^= byte(1 << (rand.Uint32() >> 29))
+				g.MinMass = utils.ClampByte(1, g.Mass, new)
+>>>>>>> Stashed changes
 			case REPRODUCTION_TYPE:
 				g.ReproductionType ^= 1
 			case NEURON_COUNT:
 				new := g.NeuronCount
 				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.BrainLength = utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, new)
+				g.NeuronCount = utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, new)
 			case NEUROLOGY_LENGTH:
 				new := g.BrainLength
 				new ^= byte(1 << (rand.Uint32() >> 29))
 				g.BrainLength = utils.ClampByte(p.MinNeuronCount, p.MaxNeuronCount, new)
 			case JUVENILE_PERIOD:
 				g.JuvenilePeriod ^= byte(1 << (rand.Uint32() >> 29))
+			case METABOLIC_RATE:
+				g.MetabolicRate ^= byte(1 << (rand.Uint32() >> 29))
 			}
 		}
 	}
@@ -261,19 +313,6 @@ func Mutate(g *Genome, p *Parameters) {
 func AsexualReproduction(parent *Genome, p *Parameters) *Genome {
 	child := parent.Copy()
 	Mutate(child, p)
-	return child
-}
-
-func AsexualReproductionArtificial(parent *Genome, p *Parameters) *Genome {
-	child := parent.Copy()
-
-	// 1. Temporarily boost the genome's mutation rate byte to max (255)
-	// or significantly higher than its current value.
-	child.MutationRate = 255
-
-	// 2. Mutate normally (it will use the 255 value)
-	Mutate(child, p)
-
 	return child
 }
 

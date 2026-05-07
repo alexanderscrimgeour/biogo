@@ -99,14 +99,14 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 				continue
 			}
 			maxE := float32(c.Genome.MaxEnergy)
-			targetSize := target.CurrentSize(params)
-			gain := params.PreyEnergyFraction * targetSize
+			targetMass := target.CurrentMass(params)
+			gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
 			c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
 
 			if target.Alive {
 				// Predation: kill prey in place; corpse stays in world.
 				target.Alive = false
-				target.Energy = targetSize
+				target.Energy = targetMass
 			} else {
 				// Scavenging: consume and remove the corpse.
 				w.RemoveCreature(target.Id)
@@ -123,11 +123,11 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 }
 
 // ProcessDeathQueue marks queued creatures as dead and sets their energy to their
-// size-based food value. Corpses remain in the world and decay over time.
+// mass-based food value. Corpses remain in the world and decay over time.
 func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 	for _, di := range p.DeathQueue {
 		di.Creature.Alive = false
-		di.Creature.Energy = di.Creature.CurrentSize(params)
+		di.Creature.Energy = di.Creature.CurrentMass(params)
 	}
 	p.DeathQueue = []DeathInstruction{}
 }
@@ -157,7 +157,7 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 		if !parent.Alive {
 			continue
 		}
-		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
+		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy) * (float32(parent.Genome.Mass) / float32(params.MaxMass))
 		if parent.Energy < cost {
 			continue
 		}
