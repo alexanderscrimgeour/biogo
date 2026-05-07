@@ -13,7 +13,7 @@ func TestIsActionEnabled(t *testing.T) {
 		}
 	}
 	// Actions at or above ACTION_COUNT should be disabled
-	disabled := []byte{simulation.REPRODUCE, simulation.EAT}
+	disabled := []byte{simulation.REPRODUCE}
 	for _, a := range disabled {
 		if simulation.IsActionEnabled(a) {
 			t.Errorf("action %d should be disabled", a)

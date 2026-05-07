@@ -10,6 +10,7 @@ type Population struct {
 	Creatures         map[int]*Creature
 	DeathQueue        []DeathInstruction
 	MoveQueue         []MoveInstruction
+	EatQueue          []EatInstruction
 	ReproductionQueue []ReproductionInstruction
 }
 
@@ -26,11 +27,17 @@ type MoveInstruction struct {
 	Loc      grid.Coord
 }
 
+type EatInstruction struct {
+	Creature  *Creature
+	TargetLoc grid.Coord
+}
+
 func NewPopulation(p *Parameters) *Population {
 	return &Population{
 		Creatures:         make(map[int]*Creature, p.StartingPopulation),
 		DeathQueue:        []DeathInstruction{},
 		MoveQueue:         []MoveInstruction{},
+		EatQueue:          []EatInstruction{},
 		ReproductionQueue: []ReproductionInstruction{},
 	}
 }
@@ -45,6 +52,10 @@ func (p *Population) QueueForDeath(creature *Creature) {
 
 func (p *Population) QueueForReproduction(creature *Creature) {
 	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{creature})
+}
+
+func (p *Population) QueueForEat(creature *Creature, targetLoc grid.Coord) {
+	p.EatQueue = append(p.EatQueue, EatInstruction{creature, targetLoc})
 }
 
 // AliveCount returns the number of living (non-corpse) creatures.
@@ -76,7 +87,7 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
 
 		case cellVal == grid.FOOD:
 			maxE := float32(c.Genome.MaxEnergy)
-			c.Energy = utils.MinFloat32(maxE, c.Energy+params.FoodEnergyFraction*maxE)
+			c.Energy = utils.MinFloat32(maxE, c.Energy+params.FoodEnergyAmount)
 			g.RemoveFood(targetLoc)
 			g.Set(c.Loc, grid.EMPTY)
 			g.Set(targetLoc, c.Id)
@@ -88,26 +99,60 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
 			if !ok || target == c {
 				break
 			}
+			if target.Alive {
+				// Living creatures block movement; use the EAT action to eat.
+				break
+			}
+			// Scavenging: consume the corpse, move into its cell.
 			maxE := float32(c.Genome.MaxEnergy)
 			targetSize := target.CurrentSize(params)
-			gain := params.PreyEnergyFraction * targetSize
+			gain := targetSize * float32(target.Genome.MaxEnergy) / float32(params.MaxSize)
 			c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
-
-			if target.Alive {
-				// Predation: kill the prey in place; predator does not move.
-				target.Alive = false
-				target.Energy = targetSize
-			} else {
-				// Scavenging: consume the corpse, move into its cell.
-				delete(p.Creatures, target.Id)
-				g.Set(c.Loc, grid.EMPTY)
-				g.Set(targetLoc, c.Id)
-				c.LastMoveDir = grid.GetDirection(c.Loc, targetLoc)
-				c.Loc = targetLoc
-			}
+			delete(p.Creatures, target.Id)
+			g.Set(c.Loc, grid.EMPTY)
+			g.Set(targetLoc, c.Id)
+			c.LastMoveDir = grid.GetDirection(c.Loc, targetLoc)
+			c.Loc = targetLoc
 		}
 	}
 	p.MoveQueue = []MoveInstruction{}
+}
+
+// ProcessEatQueue handles explicit eat actions. A creature eats the target at the
+// given location if one exists. Live prey is killed in place; corpses are consumed
+// and the eater moves into the vacated cell.
+func (p *Population) ProcessEatQueue(g *grid.Grid, params *Parameters) {
+	for _, instruction := range p.EatQueue {
+		c := instruction.Creature
+		if !c.Alive {
+			continue
+		}
+		targetLoc := instruction.TargetLoc
+		cellVal := g.At(targetLoc)
+		if cellVal < grid.RESERVED_CELL_TYPES {
+			continue
+		}
+		target, ok := p.Creatures[cellVal]
+		if !ok || target == c {
+			continue
+		}
+		maxE := float32(c.Genome.MaxEnergy)
+		targetSize := target.CurrentSize(params)
+		gain := targetSize * float32(target.Genome.MaxEnergy) / float32(params.MaxSize)
+		c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
+
+		if target.Alive {
+			target.Alive = false
+			target.Energy = targetSize
+		} else {
+			delete(p.Creatures, target.Id)
+			g.Set(c.Loc, grid.EMPTY)
+			g.Set(targetLoc, c.Id)
+			c.LastMoveDir = grid.GetDirection(c.Loc, targetLoc)
+			c.Loc = targetLoc
+		}
+	}
+	p.EatQueue = []EatInstruction{}
 }
 
 // ProcessDeathQueue marks queued creatures as dead and resets their energy to their
@@ -144,10 +189,10 @@ func (p *Population) ProcessReproductionQueue(g *grid.Grid, params *Parameters, 
 			break
 		}
 		parent := ri.Creature
-		if !parent.Alive {
+		if !parent.Alive || parent.IsJuvenile(params) {
 			continue
 		}
-		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
+		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy) * (float32(parent.Genome.Size) / float32(params.MaxSize))
 		if parent.Energy < cost {
 			continue
 		}

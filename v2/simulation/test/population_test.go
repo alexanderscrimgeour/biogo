@@ -76,7 +76,7 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	params := defaultParams()
 	params.GridWidth = 20
 	params.GridHeight = 20
-	params.FoodEnergyFraction = 0.3
+	params.FoodEnergyAmount = 30
 	g := grid.NewGrid(20, 20, 0)
 	g.ZeroFill()
 
@@ -137,11 +137,50 @@ func TestProcessDeathQueue(t *testing.T) {
 	}
 }
 
-// TestPredation verifies that a creature moving into a living creature's cell
-// kills the prey and gains energy without moving.
-func TestPredation(t *testing.T) {
+// TestMoveBlockedByLivingCreature verifies that moving into a living creature's cell
+// is blocked — the mover stays in place and the target is unharmed.
+func TestMoveBlockedByLivingCreature(t *testing.T) {
 	params := defaultParams()
-	params.PreyEnergyFraction = 0.5
+	g := grid.NewGrid(20, 20, 0)
+	g.ZeroFill()
+
+	genome := simulation.MakeRandomGenome(params)
+	moverLoc := grid.Coord{X: 5, Y: 5}
+	targetLoc := grid.Coord{X: 6, Y: 5}
+
+	moverID := grid.RESERVED_CELL_TYPES
+	targetID := grid.RESERVED_CELL_TYPES + 1
+
+	mover := simulation.NewCreature(moverID, moverLoc, genome)
+	target := simulation.NewCreature(targetID, targetLoc, genome)
+	mover.Energy = float32(mover.Genome.MaxEnergy) * 0.3
+
+	g.Set(moverLoc, moverID)
+	g.Set(targetLoc, targetID)
+
+	pop := simulation.NewPopulation(params)
+	pop.Creatures[moverID] = mover
+	pop.Creatures[targetID] = target
+
+	energyBefore := mover.Energy
+	pop.QueueForMove(mover, targetLoc)
+	pop.ProcessMoveQueue(g, params)
+
+	if !target.Alive {
+		t.Error("target should remain alive after blocked move")
+	}
+	if mover.Loc != moverLoc {
+		t.Errorf("mover should be blocked, got %v", mover.Loc)
+	}
+	if mover.Energy != energyBefore {
+		t.Error("mover should not gain energy from a blocked move")
+	}
+}
+
+// TestEatActionPredation verifies that a creature using the EAT action on a
+// neighbouring live creature kills the prey and gains energy without moving.
+func TestEatActionPredation(t *testing.T) {
+	params := defaultParams()
 	g := grid.NewGrid(20, 20, 0)
 	g.ZeroFill()
 
@@ -154,8 +193,7 @@ func TestPredation(t *testing.T) {
 
 	predator := simulation.NewCreature(predID, predatorLoc, genome)
 	prey := simulation.NewCreature(preyID, preyLoc, genome)
-	prey.Energy = 100
-	predator.Energy = float32(predator.Genome.MaxEnergy) * 0.3 // start low so energy gain is observable
+	predator.Energy = float32(predator.Genome.MaxEnergy) * 0.3
 
 	g.Set(predatorLoc, predID)
 	g.Set(preyLoc, preyID)
@@ -164,18 +202,18 @@ func TestPredation(t *testing.T) {
 	pop.Creatures[predID] = predator
 	pop.Creatures[preyID] = prey
 
-	predatorEnergyBefore := predator.Energy
-	pop.QueueForMove(predator, preyLoc)
-	pop.ProcessMoveQueue(g, params)
+	energyBefore := predator.Energy
+	pop.QueueForEat(predator, preyLoc)
+	pop.ProcessEatQueue(g, params)
 
 	if prey.Alive {
-		t.Error("prey should be dead after predation")
+		t.Error("prey should be dead after EAT action")
 	}
 	if predator.Loc != predatorLoc {
-		t.Errorf("predator should not move during predation, got %v", predator.Loc)
+		t.Errorf("predator should not move when eating live prey, got %v", predator.Loc)
 	}
-	if predator.Energy <= predatorEnergyBefore {
-		t.Error("predator should gain energy from predation")
+	if predator.Energy <= energyBefore {
+		t.Error("predator should gain energy from EAT action")
 	}
 	if g.At(preyLoc) != preyID {
 		t.Errorf("prey corpse should remain on grid at %v", preyLoc)
@@ -186,7 +224,6 @@ func TestPredation(t *testing.T) {
 // gains energy, and moves into the vacated cell.
 func TestScavenging(t *testing.T) {
 	params := defaultParams()
-	params.PreyEnergyFraction = 0.5
 	g := grid.NewGrid(20, 20, 0)
 	g.ZeroFill()
 
@@ -268,14 +305,15 @@ func TestProcessCorpseDecay(t *testing.T) {
 // genome field, not the prey's current energy level.
 func TestPredationGainBasedOnSize(t *testing.T) {
 	params := defaultParams()
-	params.PreyEnergyFraction = 1.0
 	g := grid.NewGrid(20, 20, 0)
 	g.ZeroFill()
 
 	smallGenome := simulation.MakeRandomGenome(params)
 	smallGenome.Size = 10
+	smallGenome.MaxEnergy = 100
 	largeGenome := simulation.MakeRandomGenome(params)
-	largeGenome.Size = 200
+	largeGenome.Size = 50
+	largeGenome.MaxEnergy = 100
 
 	predID := grid.RESERVED_CELL_TYPES
 	smallPreyID := grid.RESERVED_CELL_TYPES + 1
@@ -312,9 +350,9 @@ func TestPredationGainBasedOnSize(t *testing.T) {
 	pop.Creatures[largePreyID] = largePredator
 	pop.Creatures[largePreyID+1] = largePrey
 
-	pop.QueueForMove(smallPredator, smallPreyLoc)
-	pop.QueueForMove(largePredator, largePreyLoc)
-	pop.ProcessMoveQueue(g, params)
+	pop.QueueForEat(smallPredator, smallPreyLoc)
+	pop.QueueForEat(largePredator, largePreyLoc)
+	pop.ProcessEatQueue(g, params)
 
 	smallGain := smallPredator.Energy - 1
 	largeGain := largePredator.Energy - 1
@@ -375,8 +413,8 @@ func TestPredationSetsCorpseEnergyFromSize(t *testing.T) {
 	pop.Creatures[predID] = predator
 	pop.Creatures[preyID] = prey
 
-	pop.QueueForMove(predator, prey.Loc)
-	pop.ProcessMoveQueue(g, params)
+	pop.QueueForEat(predator, prey.Loc)
+	pop.ProcessEatQueue(g, params)
 
 	if prey.Energy != float32(preyGenome.Size) {
 		t.Errorf("corpse energy after predation should equal genome.Size (%d), got %f", preyGenome.Size, prey.Energy)
@@ -461,6 +499,7 @@ func TestReproductionPrefersSpotBehind(t *testing.T) {
 	parentID := grid.RESERVED_CELL_TYPES
 	parent := simulation.NewCreature(parentID, parentLoc, genome)
 	parent.Energy = float32(genome.MaxEnergy)
+	parent.Age = params.MaxJuvenilePeriod + 1 // adult
 	parent.LastMoveDir = grid.Dir{X: 1, Y: 0} // moving east; behind is west
 	g.Set(parentLoc, parentID)
 
@@ -510,6 +549,7 @@ func TestReproductionFallsBackToAdjacent(t *testing.T) {
 	parentID := grid.RESERVED_CELL_TYPES
 	parent := simulation.NewCreature(parentID, parentLoc, genome)
 	parent.Energy = float32(genome.MaxEnergy)
+	parent.Age = params.MaxJuvenilePeriod + 1 // adult
 	parent.LastMoveDir = grid.Dir{X: 1, Y: 0} // moving east
 	g.Set(parentLoc, parentID)
 
@@ -555,6 +595,41 @@ func TestGeneticDiversitySingleCreature(t *testing.T) {
 	diversity := pop.GeneticDiversity()
 	if diversity != 0 {
 		t.Errorf("single creature diversity should be 0, got %f", diversity)
+	}
+}
+
+// TestJuvenileCannotReproduce verifies that a juvenile parent is skipped by
+// ProcessReproductionQueue and produces no offspring.
+func TestJuvenileCannotReproduce(t *testing.T) {
+	params := defaultParams()
+	params.MaxPopulation = 100
+	params.ReproductionEnergyCost = 0.1
+	g := grid.NewGrid(20, 20, 0)
+	g.ZeroFill()
+
+	genome := simulation.MakeRandomGenome(params)
+	genome.MaxEnergy = 255
+
+	parentLoc := grid.Coord{X: 10, Y: 10}
+	parentID := grid.RESERVED_CELL_TYPES
+	parent := simulation.NewCreature(parentID, parentLoc, genome)
+	parent.Energy = float32(genome.MaxEnergy)
+	parent.Age = 0 // juvenile
+	g.Set(parentLoc, parentID)
+
+	pop := simulation.NewPopulation(params)
+	pop.Creatures[parentID] = parent
+
+	nextID := parentID + 1
+	pop.QueueForReproduction(parent)
+	pop.ProcessReproductionQueue(g, params, func() int {
+		id := nextID
+		nextID++
+		return id
+	})
+
+	if len(pop.Creatures) != 1 {
+		t.Errorf("juvenile parent should not reproduce, got %d creatures", len(pop.Creatures))
 	}
 }
 

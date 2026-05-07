@@ -9,7 +9,6 @@ type Parameters struct {
 	PopulationSensorRadius          int
 	MinEnergy                       byte
 	MaxEnergy                       byte
-	MinSize                         byte
 	MaxSize                         byte
 	MinStartNeuronCount             byte
 	MaxStartNeuronCount             byte
@@ -32,10 +31,10 @@ type Parameters struct {
 	MinJuvenilePeriod int
 	MaxJuvenilePeriod int
 	// Food system
-	MaxFood            int     // maximum food items on the grid at any time
-	FoodSpawnInterval  int     // ticks between food spawns
-	FoodPerSpawn       int     // food items placed per spawn event
-	FoodEnergyFraction float32 // food restores this fraction of MaxEnergy
+	MaxFood           int     // maximum food items on the grid at any time
+	FoodSpawnInterval int     // ticks between food spawns
+	FoodPerSpawn      int     // food items placed per spawn event
+	FoodEnergyAmount  float32 // flat energy gained from eating food; smallest creatures give 2x this amount
 	// Energy costs (absolute units, relative to creature MaxEnergy range)
 	MetabolicRate float32 // energy drained per tick
 	MoveCost      float32 // energy drained per move attempt
@@ -43,8 +42,9 @@ type Parameters struct {
 	ReproductionEnergyThreshold float32 // fraction of MaxEnergy required to reproduce
 	ReproductionEnergyCost      float32 // fraction of MaxEnergy deducted from parent on reproduction
 	// Predation and corpses
-	PreyEnergyFraction float32 // fraction of prey's energy the predator gains
-	CorpseDecayRate    float32 // energy drained per tick from a dead creature's corpse
+	CorpseDecayRate float32 // energy drained per tick from a dead creature's corpse
+	// Fraction of StartingPopulation seeded from saved genomes on new game (0..1)
+	SavedGenomeProportion float32
 }
 
 func DefaultParams() *Parameters {
@@ -57,7 +57,6 @@ func DefaultParams() *Parameters {
 		GridHeight:                      600,
 		MinEnergy:                       2,
 		MaxEnergy:                       255,
-		MinSize:                         1,
 		MaxSize:                         200,
 		MinStartNeuronCount:             2,
 		MaxStartNeuronCount:             20,
@@ -76,16 +75,16 @@ func DefaultParams() *Parameters {
 		ResponseCurveKFactor:            2,
 		MaxExpectedAge:                  50000,
 		MinJuvenilePeriod:               100,
-		MaxJuvenilePeriod:               500,
+		MaxJuvenilePeriod:               5000,
 		MaxFood:                         15000,
 		FoodSpawnInterval:               100,
 		FoodPerSpawn:                    100,
-		FoodEnergyFraction:              0.1,
+		FoodEnergyAmount:                25.0,
 		MetabolicRate:                   0.02,
 		MoveCost:                        0.005,
 		ReproductionEnergyThreshold:     0.85,
-		ReproductionEnergyCost:          0.2,
-		PreyEnergyFraction:              0.2,
+		ReproductionEnergyCost:          0.6,
 		CorpseDecayRate:                 0.05,
+		SavedGenomeProportion:           0.5,
 	}
 }

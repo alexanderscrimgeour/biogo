@@ -14,11 +14,11 @@ const (
 	MOVE_WEST
 	MOVE_NORTH
 	MOVE_SOUTH
+	EAT
 
 	ACTION_COUNT
 	// Disabled for now
 	REPRODUCE
-	EAT
 )
 
 func IsActionEnabled(a byte) bool {

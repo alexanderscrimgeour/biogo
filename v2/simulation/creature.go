@@ -57,15 +57,26 @@ func (c Creature) String() string {
 		c.LastMoveDir)
 }
 
-// CurrentSize returns the creature's effective size, scaling linearly from params.MinSize
+// JuvenilePeriod returns the number of ticks before this creature is considered an adult.
+func (c Creature) JuvenilePeriod(params *Parameters) int {
+	return params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(params.MaxJuvenilePeriod-params.MinJuvenilePeriod))
+}
+
+// IsJuvenile reports whether the creature has not yet completed its juvenile phase.
+func (c Creature) IsJuvenile(params *Parameters) bool {
+	jp := c.JuvenilePeriod(params)
+	return jp > 0 && c.Age < jp
+}
+
+// CurrentSize returns the creature's effective size, scaling linearly from genome.MinSize
 // at birth to genome.Size at the end of the juvenile period.
 func (c Creature) CurrentSize(params *Parameters) float32 {
-	juvenilePeriod := params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(params.MaxJuvenilePeriod-params.MinJuvenilePeriod))
-	if juvenilePeriod == 0 || c.Age >= juvenilePeriod {
+	jp := c.JuvenilePeriod(params)
+	if jp == 0 || c.Age >= jp {
 		return float32(c.Genome.Size)
 	}
-	t := float32(c.Age) / float32(juvenilePeriod)
-	return float32(params.MinSize) + (float32(c.Genome.Size)-float32(params.MinSize))*t
+	t := float32(c.Age) / float32(jp)
+	return float32(c.Genome.MinSize) + (float32(c.Genome.Size)-float32(c.Genome.MinSize))*t
 }
 
 func (c Creature) GetNextLoc(d grid.Dir) grid.Coord {

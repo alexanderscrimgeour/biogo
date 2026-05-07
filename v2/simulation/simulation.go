@@ -16,6 +16,8 @@ type Simulation struct {
 	Params         *Parameters
 }
 
+const savedGenomesPath = "data/saved_genomes.json"
+
 func New(params *Parameters) *Simulation {
 	sim := &Simulation{
 		Params:         params,
@@ -32,6 +34,10 @@ func (s *Simulation) initializeGrid() {
 }
 
 func (s *Simulation) initializePopulation() {
+	savedGenomes, _ := LoadGenomesFromFile(savedGenomesPath)
+	maxSeeded := int(float32(s.Params.StartingPopulation) * s.Params.SavedGenomeProportion)
+	seeded := 0
+
 	pop := NewPopulation(s.Params)
 	for i := 0; i < s.Params.StartingPopulation; i++ {
 		loc, ok := s.Grid.FindEmptyLocation()
@@ -39,10 +45,37 @@ func (s *Simulation) initializePopulation() {
 			break
 		}
 		id := s.allocateID()
-		pop.Creatures[id] = NewCreature(id, loc, MakeRandomGenome(s.Params))
+		var genome *Genome
+		if seeded < maxSeeded && len(savedGenomes) > 0 {
+			src := savedGenomes[seeded%len(savedGenomes)]
+			genome = AsexualReproduction(src, s.Params)
+			seeded++
+		} else {
+			genome = MakeRandomGenome(s.Params)
+		}
+		pop.Creatures[id] = NewCreature(id, loc, genome)
 		s.Grid.Set(loc, id)
 	}
 	s.Population = pop
+}
+
+// SaveBestGenomes selects the top MaxSavedGenomes representative genomes from the
+// current population and writes them to data/saved_genomes.json.
+func (s *Simulation) SaveBestGenomes() error {
+	genomes := SelectBestGenomes(s.Population.Creatures)
+	if len(genomes) == 0 {
+		return nil
+	}
+	return SaveGenomesToFile(genomes, savedGenomesPath)
+}
+
+// Reset reinitialises the simulation from scratch. A proportion of the starting
+// population is seeded from any previously saved genomes (see SavedGenomeProportion).
+func (s *Simulation) Reset() {
+	s.Tick = 0
+	s.nextCreatureID = grid.RESERVED_CELL_TYPES
+	s.initializeGrid()
+	s.initializePopulation()
 }
 
 func (s *Simulation) allocateID() int {
@@ -73,6 +106,7 @@ func (s *Simulation) step() {
 	}
 
 	s.Population.ProcessMoveQueue(s.Grid, s.Params)
+	s.Population.ProcessEatQueue(s.Grid, s.Params)
 	s.Population.ProcessDeathQueue(s.Grid, s.Params)
 	s.Population.ProcessCorpseDecay(s.Grid, s.Params)
 	s.Population.ProcessReproductionQueue(s.Grid, s.Params, s.allocateID)
@@ -105,9 +139,8 @@ func (s *Simulation) stepCreature(c *Creature) {
 		return
 	}
 
-	juvenilePeriod := s.Params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(s.Params.MaxJuvenilePeriod-s.Params.MinJuvenilePeriod))
 	reproThreshold := s.Params.ReproductionEnergyThreshold * float32(c.Genome.MaxEnergy)
-	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod {
+	if c.Energy >= reproThreshold && !c.IsJuvenile(s.Params) {
 		s.Population.QueueForReproduction(c)
 	}
 
@@ -191,6 +224,19 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 		offset := grid.RandomDir()
 		moveX += float32(offset.X) * level
 		moveY += float32(offset.Y) * level
+	}
+
+	if IsActionEnabled(EAT) {
+		level := actionLevels[EAT]
+		if level > 0 && prob2Bool(float64(level)) == 1 {
+			fwdLoc := grid.Coord{
+				X: c.Loc.X + c.LastMoveDir.X,
+				Y: c.Loc.Y + c.LastMoveDir.Y,
+			}
+			if s.Grid.IsInBounds(fwdLoc) {
+				s.Population.QueueForEat(c, fwdLoc)
+			}
+		}
 	}
 
 	moveX = float32(math.Tanh(float64(moveX)))

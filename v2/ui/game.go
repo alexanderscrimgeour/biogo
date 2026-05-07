@@ -30,6 +30,8 @@ type SimulationState interface {
 	AverageAge() float64
 	CreatureMinSize() byte
 	CreatureMaxSize() byte
+	SaveBestGenomes() error
+	Reset()
 }
 
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
@@ -39,6 +41,16 @@ const (
 	fovBtnY = 10
 	fovBtnW = 70
 	fovBtnH = 24
+
+	saveBestBtnX = 90
+	saveBestBtnY = 10
+	saveBestBtnW = 95
+	saveBestBtnH = 24
+
+	newGameBtnX = 195
+	newGameBtnY = 10
+	newGameBtnW = 90
+	newGameBtnH = 24
 )
 
 // creatureAnim holds the screen-space state of a creature across one
@@ -64,6 +76,8 @@ type Game struct {
 	tickDuration    time.Duration
 	minCreatureSize byte
 	maxCreatureSize byte
+	saveFeedback    string
+	saveFeedbackAt  time.Time
 }
 
 var BlockSize int = 2
@@ -203,6 +217,27 @@ func (g *Game) Update() error {
 		if mx >= fovBtnX && mx < fovBtnX+fovBtnW && my >= fovBtnY && my < fovBtnY+fovBtnH {
 			g.showFOV = !g.showFOV
 		}
+		if mx >= saveBestBtnX && mx < saveBestBtnX+saveBestBtnW && my >= saveBestBtnY && my < saveBestBtnY+saveBestBtnH {
+			if err := g.sim.SaveBestGenomes(); err != nil {
+				g.saveFeedback = "Save failed"
+			} else {
+				g.saveFeedback = "Saved!"
+			}
+			g.saveFeedbackAt = time.Now()
+		}
+		if mx >= newGameBtnX && mx < newGameBtnX+newGameBtnW && my >= newGameBtnY && my < newGameBtnY+newGameBtnH {
+			g.sim.Reset()
+			for _, blob := range g.foodBlobsByKey {
+				g.renderGrid.RemoveFoodBlob(blob)
+			}
+			g.foodBlobsByKey = make(map[string]*Blob)
+			for _, blob := range g.corpseBlobsByID {
+				g.renderGrid.RemoveBlob(blob)
+			}
+			g.corpseBlobsByID = make(map[int]*Blob)
+			g.animByID = make(map[int]*creatureAnim)
+			g.lastTickTime = time.Time{}
+		}
 	}
 
 	// Record time at the very end so Draw() can compute how far into this
@@ -297,9 +332,30 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawFOVCones(screen, g.sim.CreatureViews(), t)
 	}
 	g.drawFOVButton(screen)
+	g.drawSaveBestButton(screen)
+	g.drawNewGameButton(screen)
+	if !g.saveFeedbackAt.IsZero() && time.Since(g.saveFeedbackAt) < 3*time.Second {
+		text.Draw(screen, g.saveFeedback, g.statFont, saveBestBtnX+5, saveBestBtnY+saveBestBtnH+14, color.White)
+	}
 	g.addStatLine(screen, "Population", fmt.Sprintf("%d", g.sim.PopulationCount()), 1)
 	g.addStatLine(screen, "Food", fmt.Sprintf("%d", g.sim.FoodCount()), 2)
 	g.addStatLine(screen, "Avg Age", fmt.Sprintf("%.0f", g.sim.AverageAge()), 3)
+	if g.tickDuration > 0 {
+		tickRate := 1.0 / g.tickDuration.Seconds()
+		g.addStatLine(screen, "Tick Rate", fmt.Sprintf("%.0f/s", tickRate), 4)
+	}
+}
+
+func (g *Game) drawSaveBestButton(screen *ebiten.Image) {
+	bg := color.RGBA{R: 50, G: 80, B: 50, A: 220}
+	vector.DrawFilledRect(screen, saveBestBtnX, saveBestBtnY, saveBestBtnW, saveBestBtnH, bg, false)
+	text.Draw(screen, "Save Best", g.statFont, saveBestBtnX+5, saveBestBtnY+17, color.White)
+}
+
+func (g *Game) drawNewGameButton(screen *ebiten.Image) {
+	bg := color.RGBA{R: 80, G: 50, B: 50, A: 220}
+	vector.DrawFilledRect(screen, newGameBtnX, newGameBtnY, newGameBtnW, newGameBtnH, bg, false)
+	text.Draw(screen, "New Game", g.statFont, newGameBtnX+5, newGameBtnY+17, color.White)
 }
 
 func (g *Game) drawFOVButton(screen *ebiten.Image) {

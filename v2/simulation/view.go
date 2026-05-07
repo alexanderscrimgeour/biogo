@@ -48,7 +48,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 	return views
 }
 
-func (s *Simulation) CreatureMinSize() byte { return s.Params.MinSize }
+func (s *Simulation) CreatureMinSize() byte { return 1 }
 func (s *Simulation) CreatureMaxSize() byte { return s.Params.MaxSize }
 
 // FoodViews returns a snapshot of all current food locations for rendering.
