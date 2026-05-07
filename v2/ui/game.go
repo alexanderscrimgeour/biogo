@@ -83,7 +83,7 @@ const (
 	detailPanelX   = 10
 	detailPanelY   = 168
 	detailPanelW   = 210
-	detailPanelH   = 325
+	detailPanelH   = 435
 	detailTpad     = 8
 	detailSaveBtnH = 22
 

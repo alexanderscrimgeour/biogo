@@ -1,9 +1,9 @@
 {
-  "osc_period": 137,
+  "osc_period": 1,
   "max_energy": 146,
   "sight_distance": 26,
   "field_of_view": 175,
-  "responsiveness": 36,
+  "responsiveness": 4,
   "mutation_rate": 172,
   "mass": 5,
   "min_mass": 1,
@@ -11,7 +11,7 @@
   "neuron_count": 3,
   "brain_length": 25,
   "juvenile_period": 1,
-  "metabolic_rate": 5,
+  "metabolic_rate": 4,
   "brain": [
     {
       "source_type": 0,
@@ -77,7 +77,7 @@
       "weight": 177
     },
     {
-      "source_type": 1,
+      "source_type": 0,
       "source_id": 56,
       "sink_type": 0,
       "sink_id": 29,
@@ -91,7 +91,7 @@
       "weight": 177
     },
     {
-      "source_type": 0,
+      "source_type": 1,
       "source_id": 52,
       "sink_type": 1,
       "sink_id": 71,
@@ -102,7 +102,7 @@
       "source_id": 176,
       "sink_type": 1,
       "sink_id": 186,
-      "weight": 197
+      "weight": 196
     },
     {
       "source_type": 1,
@@ -114,7 +114,7 @@
     {
       "source_type": 1,
       "source_id": 54,
-      "sink_type": 1,
+      "sink_type": 0,
       "sink_id": 229,
       "weight": 216
     },
@@ -149,7 +149,7 @@
     {
       "source_type": 1,
       "source_id": 209,
-      "sink_type": 0,
+      "sink_type": 1,
       "sink_id": 208,
       "weight": 233
     },
