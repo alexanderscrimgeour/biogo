@@ -76,7 +76,7 @@ func DefaultParams() *Parameters {
 		MinHiddenLayerCount:             3,
 		MaxHiddenLayerCount:             8,
 		MinSightDistance:                2,
-		MaxSightDistance:                100,
+		MaxSightDistance:                50,
 		MinFieldOfView:                  10,
 		MaxFieldOfView:                  180,
 		MinMutationRate:                 0.0001,

@@ -40,6 +40,7 @@ type CreatureDetailView struct {
 	NeuronCount    byte
 	BrainLength    int
 	MutationPct    float32 // actual per-gene mutation probability as a percentage
+	R, G, B, A     uint8
 }
 
 // CreatureDetail returns a detailed view of a living creature by ID.
@@ -49,6 +50,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	if !ok || !c.Alive {
 		return CreatureDetailView{}, false
 	}
+	r, g, b, a := genomeColor(c.Genome, s.Params)
 	return CreatureDetailView{
 		ID:             c.Id,
 		Energy:         c.Energy,
@@ -64,6 +66,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		NeuronCount:    c.Genome.NeuronCount,
 		BrainLength:    len(c.Genome.Brain),
 		MutationPct:    s.Params.MinMutationRate * float32(c.Genome.MutationRate) * 100,
+		R:              r,
+		G:              g,
+		B:              b,
+		A:              a,
 	}, true
 }
 
@@ -74,7 +80,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 		if !c.Alive {
 			continue
 		}
-		r, g, b, a := genomeColor(c.Genome)
+		r, g, b, a := genomeColor(c.Genome, s.Params)
 		views = append(views, CreatureView{
 			ID: c.Id,
 			X:  c.Loc.X,

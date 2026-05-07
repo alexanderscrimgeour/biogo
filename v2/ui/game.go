@@ -76,7 +76,7 @@ const (
 	detailPanelX   = 10
 	detailPanelY   = 44
 	detailPanelW   = 210
-	detailPanelH   = 215
+	detailPanelH   = 325
 	detailTpad     = 8
 	detailSaveBtnH = 22
 )
@@ -485,25 +485,18 @@ func (g *Game) drawSelectionHighlight(screen *ebiten.Image) {
 	}
 }
 
-// drawCreatureDetail renders the inspector panel for the selected creature.
 func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDetailView) {
 	const tpad = detailTpad
-	px := float32(detailPanelX)
-	py := float32(detailPanelY)
-	pw := float32(detailPanelW)
-	ph := float32(detailPanelH)
+	px, py, pw, ph := float32(detailPanelX), float32(detailPanelY), float32(detailPanelW), float32(detailPanelH)
 
 	vector.DrawFilledRect(screen, px, py, pw, ph, color.RGBA{8, 10, 22, 215}, false)
 	vector.StrokeRect(screen, px, py, pw, ph, 1, color.RGBA{90, 90, 150, 255}, false)
 
-	tx := int(px) + tpad
-	ty := int(py) + 16
+	tx, ty := int(px)+tpad, int(py)+16
 
-	// Header
-	text.Draw(screen, fmt.Sprintf("Creature #%d", d.ID), g.statFont, tx, ty, color.RGBA{R: 255, G: 220, B: 80, A: 255})
+	text.Draw(screen, fmt.Sprintf("Creature #%d", d.ID), g.statFont, tx, ty, color.RGBA{255, 220, 80, 255})
 	ty += 22
 
-	// Energy label then bar
 	frac := d.Energy / float32(d.MaxEnergy)
 	if frac < 0 {
 		frac = 0
@@ -511,52 +504,94 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 		frac = 1
 	}
 	text.Draw(screen, fmt.Sprintf("Energy  %.0f / %.0f", d.Energy, float32(d.MaxEnergy)), g.statFont, tx, ty, color.White)
-	barX := px + float32(tpad)
-	barW := pw - float32(tpad)*2
-	barY := float32(ty + 2)
+	barX, barW, barY := px+float32(tpad), pw-float32(tpad)*2, float32(ty+2)
 	vector.DrawFilledRect(screen, barX, barY, barW, 6, color.RGBA{35, 35, 35, 255}, false)
 	vector.DrawFilledRect(screen, barX, barY, barW*frac, 6, creatureEnergyBarColor(frac), false)
 	ty += 26
 
-	// Age
-	ageStatus := "Adult"
-	if d.IsJuvenile {
-		ageStatus = fmt.Sprintf("Juv (%d left)", d.JuvenilePeriod-d.Age)
-	}
-	text.Draw(screen, fmt.Sprintf("Age  %d  %s", d.Age, ageStatus), g.statFont, tx, ty, color.White)
+	text.Draw(screen, fmt.Sprintf("Age  %d", d.Age), g.statFont, tx, ty, color.White)
 	ty += 18
-
-	// Action
-	text.Draw(screen, fmt.Sprintf("Action  %s", d.LastAction), g.statFont, tx, ty, color.RGBA{R: 160, G: 220, B: 160, A: 255})
+	text.Draw(screen, fmt.Sprintf("Action  %s", d.LastAction), g.statFont, tx, ty, color.RGBA{160, 220, 160, 255})
 	ty += 20
-
-	// Divider
 	vector.DrawFilledRect(screen, px+4, float32(ty)-6, pw-8, 1, color.RGBA{70, 70, 100, 255}, false)
 
-	// Mass
 	text.Draw(screen, fmt.Sprintf("Mass  %.0f / %d", d.CurrentMass, d.AdultMass), g.statFont, tx, ty, color.White)
 	ty += 18
-
-	// Sight + FOV
 	text.Draw(screen, fmt.Sprintf("Sight %d  FOV %d°", d.SightDistance, d.FieldOfView), g.statFont, tx, ty, color.White)
 	ty += 18
-
-	// Brain
 	text.Draw(screen, fmt.Sprintf("Layers %d  Genes %d", d.NeuronCount, d.BrainLength), g.statFont, tx, ty, color.White)
 	ty += 18
-
-	// Mutation
 	text.Draw(screen, fmt.Sprintf("Mutation  %.2f%%", d.MutationPct), g.statFont, tx, ty, color.White)
 
-	// Save button at the bottom of the panel.
-	saveBtnY := float32(detailPanelY + detailPanelH - detailTpad - detailSaveBtnH)
-	vector.DrawFilledRect(screen, px+float32(tpad), saveBtnY, pw-float32(tpad)*2, float32(detailSaveBtnH),
-		color.RGBA{R: 40, G: 100, B: 60, A: 220}, false)
-	text.Draw(screen, "Save", g.statFont, tx+int(pw/2)-16, int(saveBtnY)+17, color.White)
+	ty += 50
+	chartSize := float32(64)
+	chartX, chartY := float32(tx)+5, float32(ty)
+	text.Draw(screen, "GENETIC PROFILE", g.statFont, tx, int(chartY)-12, color.RGBA{120, 120, 180, 255})
 
-	// Feedback from the last save attempt.
+	step := float32(2)
+	for gy := float32(0); gy < chartSize; gy += step {
+		gVal := uint8((1.0-(gy/chartSize))*185) + 70
+		for rx := float32(0); rx < chartSize; rx += step {
+			rVal := uint8((rx/chartSize)*185) + 70
+			vector.DrawFilledRect(screen, chartX+rx, chartY+gy, step, step, color.RGBA{rVal, gVal, d.B, 255}, false)
+		}
+	}
+
+	rPerc := (float32(d.R-70) / 185.0)
+	gPerc := (float32(d.G-70) / 185.0)
+	if rPerc < 0 {
+		rPerc = 0
+	} else if rPerc > 1 {
+		rPerc = 1
+	}
+	if gPerc < 0 {
+		gPerc = 0
+	} else if gPerc > 1 {
+		gPerc = 1
+	}
+
+	cx, cy := chartX+(rPerc*chartSize), chartY+(chartSize-(gPerc*chartSize))
+	vector.StrokeLine(screen, cx, chartY, cx, chartY+chartSize, 1, color.White, false)
+	vector.StrokeLine(screen, chartX, cy, chartX+chartSize, cy, 1, color.White, false)
+
+	mx, mw, spc := chartX+chartSize+15, float32(10), float32(14)
+	stats := []struct {
+		val float32
+		clr color.RGBA
+		lbl string
+	}{
+		{float32(d.G-70) / 185, color.RGBA{100, 255, 100, 255}, "I"},
+		{float32(d.R-70) / 185, color.RGBA{255, 100, 100, 255}, "P"},
+		{float32(d.B-70) / 185, color.RGBA{100, 150, 255, 255}, "S"},
+		{d.MutationPct / 100, color.RGBA{255, 100, 255, 255}, "M"},
+	}
+
+	for i, s := range stats {
+		currX := mx + float32(i)*spc
+		v := s.val
+		if v < 0 {
+			v = 0
+		} else if v > 1 {
+			v = 1
+		}
+		vector.DrawFilledRect(screen, currX, chartY, mw, chartSize, color.RGBA{20, 20, 25, 255}, false)
+		vector.DrawFilledRect(screen, currX, chartY+(chartSize-(v*chartSize)), mw, v*chartSize, s.clr, false)
+		text.Draw(screen, s.lbl, g.statFont, int(currX)+2, int(chartY+chartSize)+14, s.clr)
+	}
+
+	btnH, btnW := float32(detailSaveBtnH), pw-float32(tpad)*2
+	btnX, btnY := px+float32(tpad), py+ph-float32(detailSaveBtnH)-float32(tpad)
+
+	vector.DrawFilledRect(screen, btnX, btnY, btnW, btnH, color.RGBA{40, 100, 60, 220}, false)
+	msg := "Save Genome"
+	b, _ := font.BoundString(g.statFont, msg)
+	tw, th := (b.Max.X - b.Min.X).Ceil(), (b.Max.Y - b.Min.Y).Ceil()
+	text.Draw(screen, msg, g.statFont, int(btnX+btnW/2)-tw/2, int(btnY+btnH/2)+th/2, color.White)
+
 	if !g.saveFeedbackAt.IsZero() && time.Since(g.saveFeedbackAt) < 3*time.Second {
-		text.Draw(screen, g.saveFeedback, g.statFont, tx, int(saveBtnY)+detailSaveBtnH+14, color.White)
+		fb, _ := font.BoundString(g.statFont, g.saveFeedback)
+		fw := (fb.Max.X - fb.Min.X).Ceil()
+		text.Draw(screen, g.saveFeedback, g.statFont, int(btnX+btnW/2)-fw/2, int(btnY)-10, color.RGBA{255, 255, 255, 180})
 	}
 }
 
