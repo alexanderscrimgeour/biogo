@@ -264,31 +264,30 @@ func (w *World) FindEmptyLocation() (Position, bool) {
 	return Position{}, false
 }
 
-func (w *World) SpawnFood(n int) {
-	const patchRadius = 20.0
-	const patchSize = 200
+// SpawnFood places n food items in the world using a clustered patch distribution.
+// patchRadius controls the spread of each cluster; patchSize limits items per cluster.
+// Bounds-clamped sampling eliminates per-item retries while guaranteeing in-bounds placement.
+func (w *World) SpawnFood(n int, patchRadius float64, patchSize int) {
 	totalSpawned := 0
 	for totalSpawned < n {
 		seed, ok := w.FindEmptyLocation()
 		if !ok {
 			break
 		}
+		minX := math.Max(0, seed.X-patchRadius)
+		maxX := math.Min(w.Width, seed.X+patchRadius)
+		minY := math.Max(0, seed.Y-patchRadius)
+		maxY := math.Min(w.Height, seed.Y+patchRadius)
+		rangeX := maxX - minX
+		rangeY := maxY - minY
 		for i := 0; i < patchSize && totalSpawned < n; i++ {
-			placed := false
-			for attempt := 0; attempt < 20; attempt++ {
-				pos := Position{
-					X: seed.X + (rand.Float64()*2-1)*patchRadius,
-					Y: seed.Y + (rand.Float64()*2-1)*patchRadius,
-				}
-				if w.IsInBounds(pos) && !w.IsWall(pos) {
-					w.AddFood(pos)
-					totalSpawned++
-					placed = true
-					break
-				}
+			pos := Position{
+				X: minX + rand.Float64()*rangeX,
+				Y: minY + rand.Float64()*rangeY,
 			}
-			if !placed {
-				break
+			if !w.IsWall(pos) {
+				w.AddFood(pos)
+				totalSpawned++
 			}
 		}
 	}

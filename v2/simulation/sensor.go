@@ -22,9 +22,10 @@ const (
 	POPULATION_FORWARD
 	POPULATION_LR
 	SIGHT_POPULATION_FORWARD
+	SIGHT_FOOD_FORWARD
+	SIGHT_CORPSE_FORWARD
 	GENETIC_SIM_FORWARD
 	RANDOM
-	SIGHT_FOOD_FORWARD
 	POPULATION_FOV
 	SATIATION
 
@@ -93,6 +94,8 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 
 	case SIGHT_FOOD_FORWARD:
 		output = calculateSightFoodFwd(c, w)
+	case SIGHT_CORPSE_FORWARD:
+		output = calculateSightCorpseFwd(c, w)
 
 	case POPULATION_FOV:
 		output = calculatePopulationFOV(c, w)
@@ -140,6 +143,39 @@ func calculateSightFoodFwd(c Creature, w *grid.World) float32 {
 	return best
 }
 
+func calculateSightCorpseFwd(c Creature, w *grid.World) float32 {
+	dist := float64(c.Genome.SightDistance)
+	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
+
+	count := 0
+	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+		if id == c.Id {
+			continue
+		}
+		if c.Alive {
+			continue
+		}
+		pos, _ := w.GetCreaturePos(id)
+		dx := pos.X - c.Loc.X
+		dy := pos.Y - c.Loc.Y
+		d := math.Sqrt(dx*dx + dy*dy)
+		if d == 0 {
+			continue
+		}
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
+			count++
+		}
+	}
+	// Return 1 (open) when empty, approaching 0 as cone fills with creatures.
+	const maxExpected = 10.0
+	frac := float64(count) / maxExpected
+	if frac > 1 {
+		frac = 1
+	}
+	return float32(1.0 - frac)
+}
+
 func calculateSightPopFwd(c Creature, w *grid.World) float32 {
 	dist := float64(c.Genome.SightDistance)
 	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
@@ -148,6 +184,9 @@ func calculateSightPopFwd(c Creature, w *grid.World) float32 {
 	count := 0
 	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
 		if id == c.Id {
+			continue
+		}
+		if !c.Alive {
 			continue
 		}
 		pos, _ := w.GetCreaturePos(id)

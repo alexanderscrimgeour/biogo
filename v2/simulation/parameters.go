@@ -39,6 +39,8 @@ type Parameters struct {
 	FoodSpawnInterval  int     // ticks between food spawns
 	FoodPerSpawn       int     // food items placed per spawn event
 	FoodEnergyFraction float32 // food restores this fraction of MaxEnergy
+	FoodPatchRadius    float64 // world units radius of each food cluster
+	FoodPatchSize      int     // maximum food items placed per cluster
 	// Energy costs (absolute units, relative to creature MaxEnergy range)
 	MinMetabolicRate float32 // energy drained per tick when genome MetabolicRate byte = 0
 	MaxMetabolicRate float32 // energy drained per tick when genome MetabolicRate byte = 255
@@ -59,9 +61,9 @@ type Parameters struct {
 
 func DefaultParams() *Parameters {
 	return &Parameters{
-		MaxPopulation:                   5000,
+		MaxPopulation:                   20000,
 		MinPopulation:                   400,
-		StartingPopulation:              1000,
+		StartingPopulation:              500,
 		PopulationSensorRadius:          6,
 		GridWidth:                       1000,
 		GridHeight:                      600,
@@ -75,7 +77,7 @@ func DefaultParams() *Parameters {
 		MinHiddenLayerCount:             3,
 		MaxHiddenLayerCount:             8,
 		MinSightDistance:                2,
-		MaxSightDistance:                100,
+		MaxSightDistance:                50,
 		MinFieldOfView:                  10,
 		MaxFieldOfView:                  180,
 		MinMutationRate:                 0.0001,
@@ -92,6 +94,8 @@ func DefaultParams() *Parameters {
 		FoodSpawnInterval:               20,
 		FoodPerSpawn:                    1000,
 		FoodEnergyFraction:              0.1,
+		FoodPatchRadius:                 20.0,
+		FoodPatchSize:                   200,
 		MinMetabolicRate:                0.01,
 		MaxMetabolicRate:                0.1,
 		MoveCost:                        0.05,

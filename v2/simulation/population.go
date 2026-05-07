@@ -100,7 +100,8 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		newPos := instruction.Loc
 
 		// Eat the closest food within interaction radius.
-		foodIDs := w.GetFoodInRadius(newPos, params.FoodInteractionRadius)
+		halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+		foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
 		if len(foodIDs) > 0 {
 			closestID := foodIDs[0]
 			closestDist := math.MaxFloat64
@@ -117,6 +118,39 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 			maxE := float32(c.Genome.MaxEnergy)
 			c.Energy = utils.MinFloat32(maxE, c.Energy+params.FoodEnergyFraction*maxE)
 			w.RemoveFood(closestID)
+		}
+
+		// Eat the closest Corpse within interaction radius
+		creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
+		if len(creatureIDs) > 0 {
+			closestCreatureID := -1
+			closestDist := math.MaxFloat64
+			for _, cid := range creatureIDs {
+				if c, ok := p.Creatures[cid]; ok {
+					if c.Alive {
+						continue
+					}
+				}
+				cpos, ok := w.GetCreaturePos(cid)
+				if !ok {
+					continue
+				}
+				dx := cpos.X - newPos.X
+				dy := cpos.Y - newPos.Y
+				d := math.Sqrt(dx*dx + dy*dy)
+				if d < closestDist {
+					closestDist = d
+					closestCreatureID = cid
+				}
+			}
+			if closestCreatureID != -1 {
+				if target, ok := p.Creatures[closestCreatureID]; ok {
+					maxE := float32(c.Genome.MaxEnergy)
+					c.Energy = utils.MinFloat32(maxE, c.Energy+target.Energy)
+					w.RemoveCreature(closestCreatureID)
+					delete(p.Creatures, closestCreatureID)
+				}
+			}
 		}
 
 		// Move the creature.

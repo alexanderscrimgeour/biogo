@@ -30,7 +30,7 @@ func New(params *Parameters) *Simulation {
 
 func (s *Simulation) initializeWorld() {
 	s.World = grid.NewWorld(float64(s.Params.GridWidth), float64(s.Params.GridHeight), 1)
-	s.World.SpawnFood(s.Params.MaxFood)
+	s.World.SpawnFood(s.Params.MaxFood, s.Params.FoodPatchRadius, s.Params.FoodPatchSize)
 }
 
 func (s *Simulation) initializePopulation() {
@@ -98,14 +98,14 @@ func (s *Simulation) step() {
 			toSpawn = available
 		}
 		if toSpawn > 0 {
-			s.World.SpawnFood(toSpawn)
+			s.World.SpawnFood(toSpawn, s.Params.FoodPatchRadius, s.Params.FoodPatchSize)
 		}
 	}
 
 	// Collect alive IDs before spawning goroutines so the map is not modified
 	// while goroutines are reading it.
 	ids := s.Population.AliveIDs()
-	n := runtime.NumCPU()
+	n := runtime.GOMAXPROCS(0)
 	batches := partitionIDs(ids, n)
 
 	// Each goroutine writes to its own pendingInstructions; no shared mutation.
@@ -163,7 +163,7 @@ func (s *Simulation) step() {
 func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions) {
 	c.Age++
 	c.GrowMass(s.Params)
-	c.LastAction = "Idle"
+	c.LastAction = ""
 	c.Energy -= c.MetabolicRate(s.Params)
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
 		pending.death = append(pending.death, DeathInstruction{c})
@@ -174,7 +174,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	reproThreshold := s.Params.ReproductionEnergyThreshold * float32(c.Genome.MaxEnergy)
 	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod && c.Mass >= float32(c.Genome.Mass) {
 		pending.reproduction = append(pending.reproduction, ReproductionInstruction{c})
-		c.LastAction = "Reproducing"
+		c.LastAction = appendActionString(c.LastAction, "Reproducing")
 	}
 
 	actionLevels := c.FeedForward(s.World, s.Population, s.Tick, s.Params)
@@ -190,7 +190,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		level := actionLevels[DO_NOTHING]
 		if level > 0 && prob2Bool(float64(level)) == 1 {
 			c.Energy += c.MetabolicRate(s.Params)
-			c.LastAction = "Resting"
+			c.LastAction = appendActionString(c.LastAction, "Resting")
 			return
 		}
 	}
@@ -206,7 +206,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if level > 0 && prob2Bool(float64(level)) == 1 {
 			if targetID := findNearestInFOV(c, s.World, s.Params.PredationRadius); targetID != -1 {
 				pending.eat = append(pending.eat, EatInstruction{c, targetID})
-				c.LastAction = "Eating"
+				c.LastAction = appendActionString(c.LastAction, "Eating")
 			}
 		}
 	}
@@ -232,6 +232,11 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		rotateRight = float64(actionLevels[ROTATE_RIGHT])
 	}
 	rotateAmount := math.Tanh(rotateLeft-rotateRight) * float64(responseAdjust) * s.Params.MaxRotationPerStep
+	if rotateAmount != 0 {
+		rotationCostFactor := 0.5
+		c.Energy -= s.Params.MoveCost * float32(math.Abs(rotateAmount)) * float32(rotationCostFactor)
+		c.LastAction = appendActionString(c.LastAction, "Rotating")
+	}
 	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
 
 	// Forward/backward movement.
@@ -263,7 +268,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 
 	if !s.World.IsWall(newPos) {
 		c.Energy -= s.Params.MoveCost * float32(massFactor)
-		c.LastAction = "Moving"
+		c.LastAction = appendActionString(c.LastAction, "Moving")
 		pending.move = append(pending.move, MoveInstruction{c, newPos})
 	}
 }
@@ -346,4 +351,12 @@ func partitionIDs(ids []int, n int) [][]int {
 		batches[i%n] = append(batches[i%n], id)
 	}
 	return batches
+}
+
+func appendActionString(base, new string) string {
+	if base == "" {
+		return new
+	} else {
+		return fmt.Sprintf("%s | %s", base, new)
+	}
 }
