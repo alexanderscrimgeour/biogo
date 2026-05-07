@@ -29,12 +29,12 @@ type SimulationState interface {
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
 
 type Game struct {
-	sim              SimulationState
-	renderGrid       *RenderGrid
-	blobsByID        map[int]*Blob
-	foodBlobsByKey   map[string]*Blob
-	corpseBlobsByID  map[int]*Blob
-	statFont         font.Face
+	sim             SimulationState
+	renderGrid      *RenderGrid
+	blobsByID       map[int]*Blob
+	foodBlobsByKey  map[string]*Blob
+	corpseBlobsByID map[int]*Blob
+	statFont        font.Face
 }
 
 var BlockSize int = 2
@@ -56,14 +56,24 @@ func NewGame(sim SimulationState) *Game {
 		statFont:        statFont,
 	}
 
+	// Dirty fix, fix with rendering from sim.walls
 	width := 5
 	centerX := sim.GridWidth() / 2
-	minX := centerX - width/2
-	maxX := centerX + width/2
-	minY := sim.GridHeight() / 4
-	maxY := minY + sim.GridHeight()/2
-	g.renderGrid.AddLine(float64(minX*BlockSize), float64(minY*BlockSize), float64(maxX*BlockSize), float64(maxY*BlockSize))
+	centerY := sim.GridHeight() / 2 // Added centerY
 
+	// 1. Vertical Bar (The one you already have)
+	minX_V := centerX - width/2
+	maxX_V := centerX + width/2
+	minY_V := sim.GridHeight() / 4
+	maxY_V := minY_V + sim.GridHeight()/2
+	g.renderGrid.AddLine(float64(minX_V*BlockSize), float64(minY_V*BlockSize), float64(maxX_V*BlockSize), float64(maxY_V*BlockSize))
+
+	// 2. Horizontal Bar (The missing piece)
+	minX_H := sim.GridWidth() / 4
+	maxX_H := minX_H + sim.GridWidth()/2
+	minY_H := centerY - width/2
+	maxY_H := centerY + width/2
+	g.renderGrid.AddLine(float64(minX_H*BlockSize), float64(minY_H*BlockSize), float64(maxX_H*BlockSize), float64(maxY_H*BlockSize))
 	return g
 }
 

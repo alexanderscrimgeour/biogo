@@ -18,6 +18,7 @@ type MapType int
 
 const (
 	MIDDLE_WALL MapType = iota
+	CROSS_WALL
 )
 
 type Grid struct {
@@ -70,6 +71,17 @@ func (g *Grid) CreateWall() {
 		minY := g.SizeY() / 4
 		maxY := minY + g.SizeY()/2
 		g.DrawBox(minX, minY, maxX, maxY)
+	case CROSS_WALL:
+		width := 5
+		centerX := g.SizeX() / 2
+		centerY := g.SizeY() / 2
+
+		// Vertical Bar: narrow X range, full Y range (middle 50%)
+		g.DrawBox(centerX-width/2, g.SizeY()/4, centerX+width/2, 3*g.SizeY()/4)
+
+		// Horizontal Bar: full X range (middle 50%), narrow Y range
+		// NOTE: Use centerX logic for X and centerY logic for Y
+		g.DrawBox(g.SizeX()/4, centerY-width/2, 3*g.SizeX()/4, centerY+width/2)
 	}
 }
 

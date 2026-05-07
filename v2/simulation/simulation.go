@@ -27,7 +27,7 @@ func New(params *Parameters) *Simulation {
 }
 
 func (s *Simulation) initializeGrid() {
-	s.Grid = grid.NewGrid(s.Params.GridWidth, s.Params.GridHeight, 0)
+	s.Grid = grid.NewGrid(s.Params.GridWidth, s.Params.GridHeight, 1)
 	s.Grid.SpawnFood(s.Params.MaxFood)
 }
 
