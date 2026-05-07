@@ -1,0 +1,122 @@
+{
+  "osc_period": 8,
+  "max_energy": 253,
+  "sight_distance": 22,
+  "field_of_view": 99,
+  "responsiveness": 218,
+  "mutation_rate": 14,
+  "mass": 109,
+  "min_mass": 88,
+  "reproduction_type": 0,
+  "neuron_count": 3,
+  "brain_length": 15,
+  "juvenile_period": 19,
+  "metabolic_rate": 23,
+  "brain": [
+    {
+      "source_type": 0,
+      "source_id": 38,
+      "sink_type": 1,
+      "sink_id": 72,
+      "weight": 18
+    },
+    {
+      "source_type": 0,
+      "source_id": 204,
+      "sink_type": 0,
+      "sink_id": 152,
+      "weight": 10
+    },
+    {
+      "source_type": 0,
+      "source_id": 181,
+      "sink_type": 1,
+      "sink_id": 217,
+      "weight": 6
+    },
+    {
+      "source_type": 0,
+      "source_id": 61,
+      "sink_type": 1,
+      "sink_id": 17,
+      "weight": 117
+    },
+    {
+      "source_type": 0,
+      "source_id": 172,
+      "sink_type": 0,
+      "sink_id": 49,
+      "weight": 234
+    },
+    {
+      "source_type": 1,
+      "source_id": 171,
+      "sink_type": 0,
+      "sink_id": 149,
+      "weight": 86
+    },
+    {
+      "source_type": 1,
+      "source_id": 61,
+      "sink_type": 0,
+      "sink_id": 25,
+      "weight": 167
+    },
+    {
+      "source_type": 0,
+      "source_id": 81,
+      "sink_type": 1,
+      "sink_id": 58,
+      "weight": 248
+    },
+    {
+      "source_type": 0,
+      "source_id": 27,
+      "sink_type": 1,
+      "sink_id": 178,
+      "weight": 44
+    },
+    {
+      "source_type": 1,
+      "source_id": 145,
+      "sink_type": 0,
+      "sink_id": 136,
+      "weight": 221
+    },
+    {
+      "source_type": 0,
+      "source_id": 169,
+      "sink_type": 0,
+      "sink_id": 12,
+      "weight": 161
+    },
+    {
+      "source_type": 0,
+      "source_id": 80,
+      "sink_type": 1,
+      "sink_id": 52,
+      "weight": 112
+    },
+    {
+      "source_type": 0,
+      "source_id": 226,
+      "sink_type": 0,
+      "sink_id": 84,
+      "weight": 157
+    },
+    {
+      "source_type": 1,
+      "source_id": 85,
+      "sink_type": 0,
+      "sink_id": 105,
+      "weight": 194
+    },
+    {
+      "source_type": 0,
+      "source_id": 155,
+      "sink_type": 1,
+      "sink_id": 14,
+      "weight": 23
+    }
+  ]
+}

@@ -27,6 +27,10 @@ const (
 	SIGHT_FOOD_FORWARD
 
 	SENSOR_COUNT
+
+	// Unimplemented
+	SATIATION
+	
 )
 
 func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep int, params *Parameters) float32 {
