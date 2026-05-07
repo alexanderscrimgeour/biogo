@@ -131,43 +131,76 @@ func (c Creature) GetSensor(sensorID byte, g *grid.Grid, p *Population, simStep 
 	return output
 }
 
-// calculateSightFoodFwd returns 1.0 if food is immediately ahead, scaling down to ~0
-// for food at max sight distance, and 0 if no food is visible in the sight line.
-// The scan stops at walls or creatures.
+// calculateSightFoodFwd returns a score for the nearest food within the creature's
+// FOV cone. 1.0 = food at distance 1, scaling toward 0 at max SightDistance.
+// The cone is defined by FieldOfView degrees centred on LastMoveDir.
 func calculateSightFoodFwd(c Creature, g *grid.Grid) float32 {
-	loc := grid.Coord{X: c.Loc.X + c.LastMoveDir.X, Y: c.Loc.Y + c.LastMoveDir.Y}
-	dist := c.Genome.SightDistance
-	for d := byte(1); d <= dist; d++ {
-		if !g.IsInBounds(loc) {
-			break
+	dist := int(c.Genome.SightDistance)
+	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+
+	best := float32(0)
+	for dx := -dist; dx <= dist; dx++ {
+		for dy := -dist; dy <= dist; dy++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			distSq := dx*dx + dy*dy
+			if distSq > dist*dist {
+				continue
+			}
+			if float64(grid.RaySameness(c.LastMoveDir, grid.Dir{X: dx, Y: dy})) < halfFOVCos {
+				continue
+			}
+			loc := grid.Coord{X: c.Loc.X + dx, Y: c.Loc.Y + dy}
+			if !g.IsInBounds(loc) || !g.IsFood(loc) {
+				continue
+			}
+			d := math.Sqrt(float64(distSq))
+			val := 1.0 - float32(d-1)/float32(dist)
+			if val < 0 {
+				val = 0
+			}
+			if val > best {
+				best = val
+			}
 		}
-		if g.IsFood(loc) {
-			return 1.0 - float32(d-1)/float32(dist)
-		}
-		if !g.IsEmptyAt(loc) {
-			break
-		}
-		loc = grid.Coord{X: loc.X + c.LastMoveDir.X, Y: loc.Y + c.LastMoveDir.Y}
 	}
-	return 0
+	return best
 }
 
+// calculateSightPopFwd returns the fraction of in-bounds cells within the
+// creature's FOV cone that are empty.
 func calculateSightPopFwd(c Creature, g *grid.Grid) float32 {
-	count := 0
-	newLoc := grid.Coord{
-		X: c.Loc.X + c.LastMoveDir.X,
-		Y: c.Loc.Y + c.LastMoveDir.Y,
-	}
-	toTest := c.Genome.SightDistance
-	for toTest > 0 && g.IsInBounds(newLoc) && g.IsEmptyAt(newLoc) {
-		count++
-		newLoc = grid.Coord{
-			X: newLoc.X + c.LastMoveDir.X,
-			Y: newLoc.Y + c.LastMoveDir.Y,
+	dist := int(c.Genome.SightDistance)
+	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+
+	total, empty := 0, 0
+	for dx := -dist; dx <= dist; dx++ {
+		for dy := -dist; dy <= dist; dy++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			distSq := dx*dx + dy*dy
+			if distSq > dist*dist {
+				continue
+			}
+			if float64(grid.RaySameness(c.LastMoveDir, grid.Dir{X: dx, Y: dy})) < halfFOVCos {
+				continue
+			}
+			loc := grid.Coord{X: c.Loc.X + dx, Y: c.Loc.Y + dy}
+			if !g.IsInBounds(loc) {
+				continue
+			}
+			total++
+			if g.IsEmptyAt(loc) {
+				empty++
+			}
 		}
-		toTest--
 	}
-	return float32(count) / float32(c.Genome.SightDistance)
+	if total == 0 {
+		return 0
+	}
+	return float32(empty) / float32(total)
 }
 
 func getLocalPopulationDensity(loc grid.Coord, g *grid.Grid, params *Parameters) float32 {

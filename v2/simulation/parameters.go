@@ -19,6 +19,8 @@ type Parameters struct {
 	MaxHiddenLayerCount             byte
 	MinSightDistance                byte
 	MaxSightDistance                byte
+	MinFieldOfView                  byte
+	MaxFieldOfView                  byte
 	BaseMutationRate                float32
 	BaseGenomeMutationRate          float32
 	SexualReproductionSimilarityMin float32
@@ -64,7 +66,9 @@ func DefaultParams() *Parameters {
 		MinHiddenLayerCount:             2,
 		MaxHiddenLayerCount:             8,
 		MinSightDistance:                2,
-		MaxSightDistance:                10,
+		MaxSightDistance:                20,
+		MinFieldOfView:                  10,
+		MaxFieldOfView:                  180,
 		BaseMutationRate:                0.001,
 		BaseGenomeMutationRate:          0.001,
 		SexualReproductionSimilarityMin: 0.9,
@@ -73,7 +77,7 @@ func DefaultParams() *Parameters {
 		MaxExpectedAge:                  50000,
 		MinJuvenilePeriod:               100,
 		MaxJuvenilePeriod:               500,
-		MaxFood:                         6000,
+		MaxFood:                         15000,
 		FoodSpawnInterval:               100,
 		FoodPerSpawn:                    100,
 		FoodEnergyFraction:              0.1,

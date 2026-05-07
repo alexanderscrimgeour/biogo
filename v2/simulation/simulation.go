@@ -211,8 +211,11 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 	moveYBool := prob2Bool(math.Abs(float64(moveY)))
 	movementOffset := grid.Dir{X: moveXBool * moveXSign, Y: moveYBool * moveYSign}
 	newCoord := c.GetNextLoc(movementOffset)
-	newCoord = s.Grid.WrapCoords(newCoord)
-	if s.Grid.At(newCoord) != grid.WALL {
+
+	if s.Grid.Torodial {
+		newCoord = s.Grid.WrapCoords(newCoord)
+	}
+	if (s.Grid.Torodial || s.Grid.IsInBounds(newCoord)) && s.Grid.At(newCoord) != grid.WALL {
 		sizeFactor := 1.0 + c.CurrentSize(s.Params)/255.0
 		c.Energy -= s.Params.MoveCost * sizeFactor
 		s.Population.QueueForMove(c, newCoord)

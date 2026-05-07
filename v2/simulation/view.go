@@ -3,9 +3,13 @@ package simulation
 // CreatureView is a read-only snapshot of a creature's display state.
 // It contains only what the rendering layer needs, keeping simulation internals private.
 type CreatureView struct {
-	ID         int
-	X, Y       int
-	R, G, B, A uint8
+	ID            int
+	X, Y          int
+	R, G, B, A    uint8
+	DirX, DirY    int
+	SightDistance byte
+	FieldOfView   byte
+	Size          byte
 }
 
 // FoodView is a read-only snapshot of a food item's position for rendering.
@@ -30,14 +34,22 @@ func (s *Simulation) CreatureViews() []CreatureView {
 		}
 		r, g, b, a := genomeColor(c.Genome)
 		views = append(views, CreatureView{
-			ID: c.Id,
-			X:  c.Loc.X,
-			Y:  c.Loc.Y,
-			R:  r, G: g, B: b, A: a,
+			ID:            c.Id,
+			X:             c.Loc.X,
+			Y:             c.Loc.Y,
+			R:             r, G: g, B: b, A: a,
+			DirX:          c.LastMoveDir.X,
+			DirY:          c.LastMoveDir.Y,
+			SightDistance: c.Genome.SightDistance,
+			FieldOfView:   c.Genome.FieldOfView,
+			Size:          c.Genome.Size,
 		})
 	}
 	return views
 }
+
+func (s *Simulation) CreatureMinSize() byte { return s.Params.MinSize }
+func (s *Simulation) CreatureMaxSize() byte { return s.Params.MaxSize }
 
 // FoodViews returns a snapshot of all current food locations for rendering.
 func (s *Simulation) FoodViews() []FoodView {
