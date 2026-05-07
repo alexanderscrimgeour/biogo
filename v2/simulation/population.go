@@ -89,10 +89,16 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
 				break
 			}
 			maxE := float32(c.Genome.MaxEnergy)
+<<<<<<< Updated upstream
 			targetSize := target.CurrentSize(params)
 			gain := params.PreyEnergyFraction * targetSize
+=======
+			targetMass := target.CurrentMass(params)
+			gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
+>>>>>>> Stashed changes
 			c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
 
+<<<<<<< Updated upstream
 			if target.Alive {
 				// Predation: kill the prey in place; predator does not move.
 				target.Alive = false
@@ -100,12 +106,54 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
 			} else {
 				// Scavenging: consume the corpse, move into its cell.
 				delete(p.Creatures, target.Id)
+=======
+// ProcessEatQueue handles explicit eat actions. A creature eats the target at the
+// given location if one exists. Live prey is killed in place; corpses are consumed
+// in place without the eater moving.
+func (p *Population) ProcessEatQueue(g *grid.Grid, params *Parameters) {
+	for _, instruction := range p.EatQueue {
+		c := instruction.Creature
+		if !c.Alive {
+			continue
+		}
+		targetLoc := instruction.TargetLoc
+		cellVal := g.At(targetLoc)
+		if cellVal < grid.RESERVED_CELL_TYPES {
+			continue
+		}
+		target, ok := p.Creatures[cellVal]
+		if !ok || target == c {
+			continue
+		}
+		maxE := float32(c.Genome.MaxEnergy)
+		currentMass := c.CurrentMass(params)
+		targetMass := target.CurrentMass(params)
+		gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
+		c.Energy = utils.MinFloat32(maxE, (c.Energy+gain)*0.8)
+		// Test logic to dissuade eating larger creatures
+		if targetMass > currentMass {
+			massRatio := targetMass / currentMass
+			deathChance := (massRatio - 1.0) * 0.2
+			if rand.Float32() < deathChance {
+				c.Alive = false
+>>>>>>> Stashed changes
 				g.Set(c.Loc, grid.EMPTY)
 				g.Set(targetLoc, c.Id)
 				c.LastMoveDir = grid.GetDirection(c.Loc, targetLoc)
 				c.Loc = targetLoc
 			}
 		}
+<<<<<<< Updated upstream
+=======
+
+		if target.Alive {
+			target.Alive = false
+			target.Energy = targetMass
+		} else {
+			delete(p.Creatures, target.Id)
+			g.Set(targetLoc, grid.EMPTY)
+		}
+>>>>>>> Stashed changes
 	}
 	p.MoveQueue = []MoveInstruction{}
 }
@@ -115,7 +163,7 @@ func (p *Population) ProcessMoveQueue(g *grid.Grid, params *Parameters) {
 func (p *Population) ProcessDeathQueue(g *grid.Grid, params *Parameters) {
 	for _, di := range p.DeathQueue {
 		di.Creature.Alive = false
-		di.Creature.Energy = di.Creature.CurrentSize(params)
+		di.Creature.Energy = di.Creature.CurrentMass(params)
 	}
 	p.DeathQueue = []DeathInstruction{}
 }
@@ -147,7 +195,11 @@ func (p *Population) ProcessReproductionQueue(g *grid.Grid, params *Parameters, 
 		if !parent.Alive {
 			continue
 		}
+<<<<<<< Updated upstream
 		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
+=======
+		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy) * (float32(parent.Genome.Mass) / float32(params.MaxMass))
+>>>>>>> Stashed changes
 		if parent.Energy < cost {
 			continue
 		}

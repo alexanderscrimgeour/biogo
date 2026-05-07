@@ -264,18 +264,26 @@ func TestProcessCorpseDecay(t *testing.T) {
 	}
 }
 
-// TestPredationGainBasedOnSize verifies that predation gain depends on the prey's Size
+// TestPredationGainBasedOnMass verifies that predation gain depends on the prey's Mass
 // genome field, not the prey's current energy level.
-func TestPredationGainBasedOnSize(t *testing.T) {
+func TestPredationGainBasedOnMass(t *testing.T) {
 	params := defaultParams()
 	params.PreyEnergyFraction = 1.0
 	g := grid.NewGrid(20, 20, 0)
 	g.ZeroFill()
 
 	smallGenome := simulation.MakeRandomGenome(params)
+<<<<<<< Updated upstream
 	smallGenome.Size = 10
 	largeGenome := simulation.MakeRandomGenome(params)
 	largeGenome.Size = 200
+=======
+	smallGenome.Mass = 10
+	smallGenome.MaxEnergy = 100
+	largeGenome := simulation.MakeRandomGenome(params)
+	largeGenome.Mass = 50
+	largeGenome.MaxEnergy = 100
+>>>>>>> Stashed changes
 
 	predID := grid.RESERVED_CELL_TYPES
 	smallPreyID := grid.RESERVED_CELL_TYPES + 1
@@ -283,6 +291,7 @@ func TestPredationGainBasedOnSize(t *testing.T) {
 
 	predatorGenome := simulation.MakeRandomGenome(params)
 	predatorGenome.MaxEnergy = 255
+	predatorGenome.Mass = params.MaxMass // guarantee predator is always larger than any prey
 
 	predatorLoc := grid.Coord{X: 5, Y: 5}
 	smallPreyLoc := grid.Coord{X: 6, Y: 5}
@@ -291,15 +300,17 @@ func TestPredationGainBasedOnSize(t *testing.T) {
 
 	smallPredator := simulation.NewCreature(predID, predatorLoc, predatorGenome)
 	smallPredator.Energy = 1
+	smallPredator.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 	smallPrey := simulation.NewCreature(smallPreyID, smallPreyLoc, smallGenome)
 	smallPrey.Energy = 999
-	smallPrey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
+	smallPrey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 
 	largePredator := simulation.NewCreature(largePreyID, largePredatorLoc, predatorGenome)
 	largePredator.Energy = 1
+	largePredator.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 	largePrey := simulation.NewCreature(largePreyID+1, largePreyLoc, largeGenome)
 	largePrey.Energy = 999
-	largePrey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
+	largePrey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 
 	g.Set(predatorLoc, predID)
 	g.Set(smallPreyLoc, smallPreyID)
@@ -320,24 +331,24 @@ func TestPredationGainBasedOnSize(t *testing.T) {
 	largeGain := largePredator.Energy - 1
 
 	if largeGain <= smallGain {
-		t.Errorf("larger prey (size=%d) should yield more energy than smaller prey (size=%d): got gains %f vs %f",
-			largeGenome.Size, smallGenome.Size, largeGain, smallGain)
+		t.Errorf("larger prey (mass=%d) should yield more energy than smaller prey (mass=%d): got gains %f vs %f",
+			largeGenome.Mass, smallGenome.Mass, largeGain, smallGain)
 	}
 }
 
 // TestCorpseEnergySetOnDeath verifies that ProcessDeathQueue initializes corpse energy
-// from the genome Size, not from the creature's remaining energy at time of death.
+// from the genome Mass, not from the creature's remaining energy at time of death.
 func TestCorpseEnergySetOnDeath(t *testing.T) {
 	params := defaultParams()
 	g := grid.NewGrid(20, 20, 0)
 	g.ZeroFill()
 
 	genome := simulation.MakeRandomGenome(params)
-	genome.Size = 120
+	genome.Mass = 120
 	loc := grid.Coord{X: 3, Y: 3}
 	creature := simulation.NewCreature(grid.RESERVED_CELL_TYPES, loc, genome)
 	creature.Energy = 5 // very low — should not affect corpse food value
-	creature.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
+	creature.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 	g.Set(loc, grid.RESERVED_CELL_TYPES)
 
 	pop := simulation.NewPopulation(params)
@@ -345,28 +356,31 @@ func TestCorpseEnergySetOnDeath(t *testing.T) {
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(g, params)
 
-	if creature.Energy != float32(genome.Size) {
-		t.Errorf("corpse energy should equal genome.Size (%d), got %f", genome.Size, creature.Energy)
+	if creature.Energy != float32(genome.Mass) {
+		t.Errorf("corpse energy should equal genome.Mass (%d), got %f", genome.Mass, creature.Energy)
 	}
 }
 
-// TestPredationSetsCorpseEnergyFromSize verifies that a creature killed by predation
-// has its corpse energy set to its genome Size.
-func TestPredationSetsCorpseEnergyFromSize(t *testing.T) {
+// TestPredationSetsCorpseEnergyFromMass verifies that a creature killed by predation
+// has its corpse energy set to its genome Mass.
+func TestPredationSetsCorpseEnergyFromMass(t *testing.T) {
 	params := defaultParams()
 	g := grid.NewGrid(20, 20, 0)
 	g.ZeroFill()
 
 	preyGenome := simulation.MakeRandomGenome(params)
-	preyGenome.Size = 80
+	preyGenome.Mass = 80
 
 	predID := grid.RESERVED_CELL_TYPES
 	preyID := grid.RESERVED_CELL_TYPES + 1
 
-	predator := simulation.NewCreature(predID, grid.Coord{X: 5, Y: 5}, simulation.MakeRandomGenome(params))
+	predatorGenome2 := simulation.MakeRandomGenome(params)
+	predatorGenome2.Mass = params.MaxMass // guarantee predator is always larger than prey
+	predator := simulation.NewCreature(predID, grid.Coord{X: 5, Y: 5}, predatorGenome2)
+	predator.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 	prey := simulation.NewCreature(preyID, grid.Coord{X: 6, Y: 5}, preyGenome)
 	prey.Energy = 999 // high pre-death energy — should not be the corpse value
-	prey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Size
+	prey.Age = params.MaxJuvenilePeriod + 1 // adult: CurrentSize == genome.Mass
 
 	g.Set(predator.Loc, predID)
 	g.Set(prey.Loc, preyID)
@@ -378,8 +392,8 @@ func TestPredationSetsCorpseEnergyFromSize(t *testing.T) {
 	pop.QueueForMove(predator, prey.Loc)
 	pop.ProcessMoveQueue(g, params)
 
-	if prey.Energy != float32(preyGenome.Size) {
-		t.Errorf("corpse energy after predation should equal genome.Size (%d), got %f", preyGenome.Size, prey.Energy)
+	if prey.Energy != float32(preyGenome.Mass) {
+		t.Errorf("corpse energy after predation should equal genome.Mass (%d), got %f", preyGenome.Mass, prey.Energy)
 	}
 }
 

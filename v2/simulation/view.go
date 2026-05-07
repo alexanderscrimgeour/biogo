@@ -9,7 +9,7 @@ type CreatureView struct {
 	DirX, DirY    int
 	SightDistance byte
 	FieldOfView   byte
-	Size          byte
+	Mass          byte
 }
 
 // FoodView is a read-only snapshot of a food item's position for rendering.
@@ -23,6 +23,49 @@ type CorpseView struct {
 	ID             int
 	X, Y           int
 	EnergyFraction float32
+}
+
+// CreatureDetailView is a rich snapshot of a single creature for the inspector panel.
+type CreatureDetailView struct {
+	ID             int
+	Energy         float32
+	MaxEnergy      byte
+	Age            int
+	IsJuvenile     bool
+	JuvenilePeriod int
+	CurrentMass    float32
+	AdultMass      byte
+	LastAction     string
+	SightDistance  byte
+	FieldOfView    byte
+	NeuronCount    byte
+	BrainLength    int
+	MutationPct    float32 // actual per-gene mutation probability as a percentage
+}
+
+// CreatureDetail returns a detailed view of a living creature by ID.
+// The second return value is false if the creature is dead or not found.
+func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
+	c, ok := s.Population.Creatures[id]
+	if !ok || !c.Alive {
+		return CreatureDetailView{}, false
+	}
+	return CreatureDetailView{
+		ID:             c.Id,
+		Energy:         c.Energy,
+		MaxEnergy:      c.Genome.MaxEnergy,
+		Age:            c.Age,
+		IsJuvenile:     c.IsJuvenile(s.Params),
+		JuvenilePeriod: c.JuvenilePeriod(s.Params),
+		CurrentMass:    c.CurrentMass(s.Params),
+		AdultMass:      c.Genome.Mass,
+		LastAction:     c.LastAction,
+		SightDistance:  c.Genome.SightDistance,
+		FieldOfView:    c.Genome.FieldOfView,
+		NeuronCount:    c.Genome.NeuronCount,
+		BrainLength:    len(c.Genome.Brain),
+		MutationPct:    s.Params.MinMutationRate * float32(c.Genome.MutationRate) * 100,
+	}, true
 }
 
 // CreatureViews returns a snapshot of all living creatures for rendering.
@@ -42,14 +85,19 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			DirY:          c.LastMoveDir.Y,
 			SightDistance: c.Genome.SightDistance,
 			FieldOfView:   c.Genome.FieldOfView,
-			Size:          c.Genome.Size,
+			Mass:          c.Genome.Mass,
 		})
 	}
 	return views
 }
 
+<<<<<<< Updated upstream
 func (s *Simulation) CreatureMinSize() byte { return s.Params.MinSize }
 func (s *Simulation) CreatureMaxSize() byte { return s.Params.MaxSize }
+=======
+func (s *Simulation) CreatureMinMass() byte { return 1 }
+func (s *Simulation) CreatureMaxMass() byte { return s.Params.MaxMass }
+>>>>>>> Stashed changes
 
 // FoodViews returns a snapshot of all current food locations for rendering.
 func (s *Simulation) FoodViews() []FoodView {
@@ -67,7 +115,7 @@ func (s *Simulation) CorpseViews() []CorpseView {
 		if c.Alive {
 			continue
 		}
-		sizeE := float32(c.Genome.Size)
+		sizeE := float32(c.Genome.Mass)
 		frac := float32(0)
 		if sizeE > 0 {
 			frac = c.Energy / sizeE
