@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm \"d:/projects/biogo/v2/simulation/food.go\" \"d:/projects/biogo/v2/grid/wall.go\" \"d:/projects/biogo/v2/ui/statline.go\")",
+      "Bash(go build *)",
+      "Bash(go test *)",
+      "Bash(go vet *)",
+      "Bash(Get-ChildItem -Path \"d:\\\\projects\\\\biogo\\\\v2\\\\simulation\\\\test\\\\\" -File)",
+      "Bash(git stash *)",
+      "Bash(Get-ChildItem -Path \"d:\\\\projects\\\\biogo\\\\v2\" -File)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"d:\\\\projects\\\\biogo\\\\v2\\\\ui\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"d:\\\\projects\\\\biogo\" -Recurse -Depth 2)",
+      "Bash(Sort-Object FullName)"
+    ],
+    "additionalDirectories": [
+      "d:\\projects\\biogo\\v2\\simulation"
+    ]
+  }
+}
