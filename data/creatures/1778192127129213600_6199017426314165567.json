@@ -1,0 +1,129 @@
+{
+  "osc_period": 241,
+  "max_energy": 169,
+  "sight_distance": 58,
+  "field_of_view": 69,
+  "responsiveness": 29,
+  "mutation_rate": 59,
+  "mass": 13,
+  "min_mass": 6,
+  "reproduction_type": 1,
+  "neuron_count": 4,
+  "brain_length": 16,
+  "juvenile_period": 224,
+  "metabolic_rate": 128,
+  "brain": [
+    {
+      "source_type": 0,
+      "source_id": 192,
+      "sink_type": 0,
+      "sink_id": 120,
+      "weight": 163
+    },
+    {
+      "source_type": 1,
+      "source_id": 113,
+      "sink_type": 1,
+      "sink_id": 26,
+      "weight": 122
+    },
+    {
+      "source_type": 1,
+      "source_id": 74,
+      "sink_type": 0,
+      "sink_id": 40,
+      "weight": 80
+    },
+    {
+      "source_type": 0,
+      "source_id": 232,
+      "sink_type": 0,
+      "sink_id": 114,
+      "weight": 17
+    },
+    {
+      "source_type": 0,
+      "source_id": 71,
+      "sink_type": 0,
+      "sink_id": 85,
+      "weight": 203
+    },
+    {
+      "source_type": 1,
+      "source_id": 12,
+      "sink_type": 1,
+      "sink_id": 164,
+      "weight": 11
+    },
+    {
+      "source_type": 0,
+      "source_id": 164,
+      "sink_type": 0,
+      "sink_id": 72,
+      "weight": 249
+    },
+    {
+      "source_type": 1,
+      "source_id": 164,
+      "sink_type": 0,
+      "sink_id": 47,
+      "weight": 51
+    },
+    {
+      "source_type": 0,
+      "source_id": 116,
+      "sink_type": 1,
+      "sink_id": 131,
+      "weight": 196
+    },
+    {
+      "source_type": 1,
+      "source_id": 66,
+      "sink_type": 0,
+      "sink_id": 79,
+      "weight": 42
+    },
+    {
+      "source_type": 1,
+      "source_id": 125,
+      "sink_type": 1,
+      "sink_id": 169,
+      "weight": 175
+    },
+    {
+      "source_type": 0,
+      "source_id": 36,
+      "sink_type": 0,
+      "sink_id": 225,
+      "weight": 161
+    },
+    {
+      "source_type": 1,
+      "source_id": 165,
+      "sink_type": 0,
+      "sink_id": 65,
+      "weight": 255
+    },
+    {
+      "source_type": 0,
+      "source_id": 25,
+      "sink_type": 0,
+      "sink_id": 78,
+      "weight": 3
+    },
+    {
+      "source_type": 1,
+      "source_id": 247,
+      "sink_type": 1,
+      "sink_id": 127,
+      "weight": 59
+    },
+    {
+      "source_type": 1,
+      "source_id": 237,
+      "sink_type": 0,
+      "sink_id": 114,
+      "weight": 221
+    }
+  ]
+}
