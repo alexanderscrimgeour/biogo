@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -87,4 +88,9 @@ func (b *Blob) SetCenter(x, y float64) {
 func (b *Blob) updateCenter(x, y float64) {
 	b.center.X += x
 	b.center.Y += y
+}
+
+// SetColor fills the blob's image with a new color, e.g. to update corpse alpha.
+func (b *Blob) SetColor(c color.Color) {
+	b.img.Fill(c)
 }

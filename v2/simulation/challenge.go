@@ -17,8 +17,10 @@ const (
 	MiddleWall
 )
 
-func PassedSurvivalCriteria(c *Creature, s *Simulation) bool {
-	switch s.Challenge {
+// PassedSurvivalCriteria reports whether a creature satisfies the given challenge.
+// This is retained for analysis and testing; the continuous simulation does not use it.
+func PassedSurvivalCriteria(c *Creature, s *Simulation, challenge ChallengeType) bool {
+	switch challenge {
 	case LeftSurvive:
 		return c.Loc.X < s.Params.GridWidth/2
 

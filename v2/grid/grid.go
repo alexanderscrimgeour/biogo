@@ -10,7 +10,7 @@ import (
 const (
 	EMPTY int = iota
 	WALL
-	// FOOD
+	FOOD
 	RESERVED_CELL_TYPES
 )
 
@@ -23,6 +23,7 @@ const (
 type Grid struct {
 	Data          [][]int
 	WallLocations []Coord
+	FoodLocations []Coord
 	Type          MapType
 }
 
@@ -55,6 +56,7 @@ func (grid *Grid) ZeroFill() {
 		}
 	}
 	grid.WallLocations = []Coord{}
+	grid.FoodLocations = []Coord{}
 }
 
 func (g *Grid) CreateWall() {
@@ -104,7 +106,32 @@ func (grid Grid) IsEmptyAt(loc Coord) bool {
 }
 
 func (grid Grid) IsOccupiedAt(loc Coord) bool {
-	return grid.Data[loc.X][loc.Y] != EMPTY && grid.Data[loc.X][loc.Y] != WALL
+	return grid.Data[loc.X][loc.Y] >= RESERVED_CELL_TYPES
+}
+
+func (grid Grid) IsFood(loc Coord) bool {
+	return grid.Data[loc.X][loc.Y] == FOOD
+}
+
+func (g *Grid) SpawnFood(n int) {
+	for i := 0; i < n; i++ {
+		loc, ok := g.FindEmptyLocation()
+		if !ok {
+			break
+		}
+		g.Data[loc.X][loc.Y] = FOOD
+		g.FoodLocations = append(g.FoodLocations, loc)
+	}
+}
+
+func (g *Grid) RemoveFood(loc Coord) {
+	g.Data[loc.X][loc.Y] = EMPTY
+	for i, fl := range g.FoodLocations {
+		if fl == loc {
+			g.FoodLocations = append(g.FoodLocations[:i], g.FoodLocations[i+1:]...)
+			return
+		}
+	}
 }
 
 // IsBarrierAt()
@@ -120,15 +147,22 @@ func (grid *Grid) Set(loc Coord, id int) {
 	grid.Data[loc.X][loc.Y] = id
 }
 
-func (g Grid) FindEmptyLocation() Coord {
-	loc := Coord{}
-	for {
-		loc.X = rand.Intn(g.SizeX() - 1)
-		loc.Y = rand.Intn(g.SizeY() - 1)
+func (g Grid) FindEmptyLocation() (Coord, bool) {
+	for i := 0; i < 100; i++ {
+		loc := Coord{X: rand.Intn(g.SizeX()), Y: rand.Intn(g.SizeY())}
 		if g.IsEmptyAt(loc) {
-			return loc
+			return loc, true
 		}
 	}
+	for x := 0; x < g.SizeX(); x++ {
+		for y := 0; y < g.SizeY(); y++ {
+			loc := Coord{X: x, Y: y}
+			if g.IsEmptyAt(loc) {
+				return loc, true
+			}
+		}
+	}
+	return Coord{}, false
 }
 
 func (g Grid) FindEmptyLocationRightHalf() Coord {
@@ -195,10 +229,10 @@ func (g Grid) DensityAxis(loc Coord, radius float32, lastMoveDir Dir, fn func(g 
 	}
 	maxSumMag := float32(6 * radius)
 	if sum > maxSumMag {
-		fmt.Printf("Population density is impossibly large: %f", sum)
+		// fmt.Printf("Population density is impossibly large: %f", sum)
 		sum = maxSumMag
 	} else if sum < -maxSumMag {
-		fmt.Printf("Population density is impossibly small: %f", sum)
+		// fmt.Printf("Population density is impossibly small: %f", sum)
 		sum = -maxSumMag
 	}
 	return sum / maxSumMag

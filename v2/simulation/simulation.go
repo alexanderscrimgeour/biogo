@@ -9,97 +9,108 @@ import (
 )
 
 type Simulation struct {
-	Grid             *grid.Grid
-	Population       *Population
-	Tick             int
-	Generation       int
-	GeneticDiversity float32
-	Challenge        ChallengeType
-	Params           *Parameters
+	Grid           *grid.Grid
+	Population     *Population
+	Tick           int
+	nextCreatureID int
+	Params         *Parameters
 }
 
 func New(params *Parameters) *Simulation {
 	sim := &Simulation{
-		Challenge: params.Challenge,
-		Params:    params,
+		Params:         params,
+		nextCreatureID: grid.RESERVED_CELL_TYPES,
 	}
 	sim.initializeGrid()
-	sim.initializeFirstGeneration()
+	sim.initializePopulation()
 	return sim
 }
 
 func (s *Simulation) initializeGrid() {
 	s.Grid = grid.NewGrid(s.Params.GridWidth, s.Params.GridHeight, 0)
+	s.Grid.SpawnFood(s.Params.MaxFood)
 }
 
-func (s *Simulation) initializeFirstGeneration() {
+func (s *Simulation) initializePopulation() {
 	pop := NewPopulation(s.Params)
-	for i := grid.RESERVED_CELL_TYPES; i < s.Params.StartingPopulation+grid.RESERVED_CELL_TYPES; i++ {
-		loc := s.Grid.FindEmptyLocation()
-		pop.Creatures[i] = NewCreature(i, loc, MakeRandomGenome(s.Params))
-		s.Grid.Set(loc, i)
+	for i := 0; i < s.Params.StartingPopulation; i++ {
+		loc, ok := s.Grid.FindEmptyLocation()
+		if !ok {
+			break
+		}
+		id := s.allocateID()
+		pop.Creatures[id] = NewCreature(id, loc, MakeRandomGenome(s.Params))
+		s.Grid.Set(loc, id)
 	}
 	s.Population = pop
 }
 
-func (s *Simulation) Update() {
-	if s.Tick < s.Params.MaxAge {
-		s.step()
-	} else {
-		s.initializeNewGeneration()
-	}
-	if s.Generation >= s.Params.MaxGenerations {
-		panic("Simulation ended")
-	}
+func (s *Simulation) allocateID() int {
+	id := s.nextCreatureID
+	s.nextCreatureID++
+	return id
 }
 
-func (s *Simulation) initializeNewGeneration() {
-	s.Generation++
-	s.Tick = 0
-
-	childrenGenomes := []*Genome{}
-	for _, creature := range s.Population.Creatures {
-		if PassedSurvivalCriteria(creature, s) {
-			childrenGenomes = append(childrenGenomes, AsexualReproduction(creature.Genome, s.Params))
-		}
-	}
-
-	if len(childrenGenomes) == 0 {
-		panic("The creatures have gone extinct.")
-	}
-	survivalPercentage := float64(len(childrenGenomes)) / float64(len(s.Population.Creatures)) * 100
-	fmt.Printf("Generation: %d\t%.2f%% Survived\n", s.Generation, survivalPercentage)
-
-	s.Grid.ZeroFill()
-	s.Grid.CreateWall()
-
-	children := make(map[int]*Creature, s.Params.MaxPopulation)
-	for i := grid.RESERVED_CELL_TYPES; i < s.Params.MaxPopulation+grid.RESERVED_CELL_TYPES; i++ {
-		loc := s.Grid.FindEmptyLocation()
-		child := NewCreature(i, loc, childrenGenomes[(i-grid.RESERVED_CELL_TYPES)%len(childrenGenomes)])
-		children[i] = child
-		s.Grid.Set(loc, i)
-	}
-
-	s.Population = &Population{
-		Creatures:  children,
-		DeathQueue: []DeathInstruction{},
-		MoveQueue:  []MoveInstruction{},
-	}
+func (s *Simulation) Update() {
+	s.step()
 }
 
 func (s *Simulation) step() {
+	if s.Tick%s.Params.FoodSpawnInterval == 0 {
+		toSpawn := s.Params.FoodPerSpawn
+		if available := s.Params.MaxFood - len(s.Grid.FoodLocations); available < toSpawn {
+			toSpawn = available
+		}
+		if toSpawn > 0 {
+			s.Grid.SpawnFood(toSpawn)
+		}
+	}
+
 	for _, creature := range s.Population.Creatures {
 		if creature.Alive {
 			s.stepCreature(creature)
 		}
 	}
-	s.Population.ProcessMoveQueue(s.Grid)
+
+	s.Population.ProcessMoveQueue(s.Grid, s.Params)
+	s.Population.ProcessDeathQueue(s.Grid)
+	s.Population.ProcessCorpseDecay(s.Grid, s.Params)
+	s.Population.ProcessReproductionQueue(s.Grid, s.Params, s.allocateID)
+
+	for s.Population.AliveCount() < s.Params.MinPopulation {
+		loc, ok := s.Grid.FindEmptyLocation()
+		if !ok {
+			break
+		}
+		id := s.allocateID()
+		var genome *Genome
+		if source := s.Population.OldestGenome(); source != nil {
+			genome = AsexualReproduction(source, s.Params)
+		} else {
+			genome = MakeRandomGenome(s.Params)
+		}
+		c := NewCreature(id, loc, genome)
+		s.Population.Creatures[id] = c
+		s.Grid.Set(loc, id)
+	}
+
 	s.Tick++
 }
 
 func (s *Simulation) stepCreature(c *Creature) {
 	c.Age++
+	c.Energy -= s.Params.MetabolicRate
+	if c.Energy <= 0 {
+		s.Population.QueueForDeath(c)
+		return
+	}
+
+	juvenilePeriod := s.Params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(s.Params.MaxJuvenilePeriod-s.Params.MinJuvenilePeriod))
+	reproThreshold := s.Params.ReproductionEnergyThreshold * float32(c.Genome.MaxEnergy)
+	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod {
+		s.Population.QueueForReproduction(c)
+	}
+
 	actionLevels := c.FeedForward(s.Grid, s.Population, s.Tick, s.Params)
 	s.executeActions(c, actionLevels)
 }
@@ -200,14 +211,11 @@ func (s *Simulation) executeActions(c *Creature, actionLevels []float32) {
 	moveYBool := prob2Bool(math.Abs(float64(moveY)))
 	movementOffset := grid.Dir{X: moveXBool * moveXSign, Y: moveYBool * moveYSign}
 	newCoord := c.GetNextLoc(movementOffset)
-	if s.Grid.IsInBounds(newCoord) && s.Grid.IsEmptyAt(newCoord) {
+	if s.Grid.IsInBounds(newCoord) && s.Grid.At(newCoord) != grid.WALL {
+		sizeFactor := 1.0 + float32(c.Genome.Size)/255.0
+		c.Energy -= s.Params.MoveCost * sizeFactor
 		s.Population.QueueForMove(c, newCoord)
 	}
-}
-
-// CurrentGeneration returns the current generation number.
-func (s *Simulation) CurrentGeneration() int {
-	return s.Generation
 }
 
 // GridWidth returns the simulation grid width.
@@ -220,9 +228,30 @@ func (s *Simulation) GridHeight() int {
 	return s.Grid.SizeY()
 }
 
-// PopulationCount returns the current number of creatures.
+// PopulationCount returns the current number of living creatures (excludes corpses).
 func (s *Simulation) PopulationCount() int {
-	return len(s.Population.Creatures)
+	return s.Population.AliveCount()
+}
+
+// FoodCount returns the current number of food items on the grid.
+func (s *Simulation) FoodCount() int {
+	return len(s.Grid.FoodLocations)
+}
+
+// AverageAge returns the mean age of all living creatures, or 0 if none.
+func (s *Simulation) AverageAge() float64 {
+	total := 0
+	count := 0
+	for _, c := range s.Population.Creatures {
+		if c.Alive {
+			total += c.Age
+			count++
+		}
+	}
+	if count == 0 {
+		return 0
+	}
+	return float64(total) / float64(count)
 }
 
 func prob2Bool(val float64) int {

@@ -105,6 +105,18 @@ func TestGenomeSimilarity(t *testing.T) {
 	}
 }
 
+func TestMakeRandomGenomeSizeInBounds(t *testing.T) {
+	p := defaultParams()
+	p.MinSize = 10
+	p.MaxSize = 50
+	for i := 0; i < 100; i++ {
+		g := simulation.MakeRandomGenome(p)
+		if g.Size < p.MinSize || g.Size > p.MaxSize {
+			t.Errorf("Size %d outside [%d, %d]", g.Size, p.MinSize, p.MaxSize)
+		}
+	}
+}
+
 func TestGenomeToByteArray(t *testing.T) {
 	p := defaultParams()
 	g := simulation.MakeRandomGenome(p)

@@ -14,9 +14,11 @@ const (
 	SIGHT_DISTANCE
 	RESPONSIVENESS
 	MUTATION_RATE
+	SIZE
 	REPRODUCTION_TYPE
 	NEURON_COUNT
 	NEUROLOGY_LENGTH
+	JUVENILE_PERIOD
 	// NEUROLOGY - not counted
 	GENOME_STRUCTURE_COUNT
 )
@@ -37,9 +39,11 @@ type Genome struct {
 	SightDistance    byte
 	Responsiveness   byte
 	MutationRate     byte
+	Size             byte
 	ReproductionType byte
 	NeuronCount      byte
 	BrainLength      byte
+	JuvenilePeriod   byte
 	Brain            []*Gene
 }
 
@@ -48,7 +52,7 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%08b%b%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%b%08b%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.Size, g.ReproductionType, g.BrainLength, g.JuvenilePeriod)
 	for _, gene := range g.Brain {
 		str += gene.String()
 	}
@@ -60,7 +64,7 @@ func (g Gene) BinaryString() string {
 }
 
 func (g Genome) BinaryString() string {
-	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.Size, g.ReproductionType, g.BrainLength, g.JuvenilePeriod)
 	for _, gene := range g.Brain {
 		str += gene.BinaryString()
 	}
@@ -74,9 +78,11 @@ func (g Genome) ToByteArray() []byte {
 	arr = append(arr, g.SightDistance)
 	arr = append(arr, g.Responsiveness)
 	arr = append(arr, g.MutationRate)
+	arr = append(arr, g.Size)
 	arr = append(arr, g.ReproductionType)
 	arr = append(arr, g.NeuronCount)
 	arr = append(arr, g.BrainLength)
+	arr = append(arr, g.JuvenilePeriod)
 	for _, n := range g.Brain {
 		arr = append(arr, n.SourceType)
 		arr = append(arr, n.SourceID)
@@ -91,7 +97,7 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.ReproductionType, g.BrainLength)
+	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%08b|%b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.Responsiveness, g.MutationRate, g.Size, g.ReproductionType, g.BrainLength, g.JuvenilePeriod)
 	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
@@ -141,9 +147,11 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		SightDistance:    utils.ClampByte(p.MinSightDistance, p.MaxSightDistance, utils.MakeRandomByte()),
 		Responsiveness:   utils.MakeRandomByte(),
 		MutationRate:     utils.MakeRandomByte(),
+		Size:             utils.ClampByte(p.MinSize, p.MaxSize, utils.MakeRandomByte()),
 		ReproductionType: makeRandomBool(),
 		NeuronCount:      utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, utils.MakeRandomByte()),
 		BrainLength:      utils.ClampByte(p.MinStartNeuronCount, p.MaxStartNeuronCount, utils.MakeRandomByte()),
+		JuvenilePeriod:   utils.MakeRandomByte(),
 	}
 	for i := byte(0); i < g.BrainLength; i++ {
 		gene := MakeRandomGene()
@@ -191,6 +199,10 @@ func Mutate(g *Genome, p *Parameters) {
 				g.Responsiveness ^= byte(1 << (rand.Uint32() >> 29))
 			case MUTATION_RATE:
 				g.MutationRate ^= byte(1 << (rand.Uint32() >> 29))
+			case SIZE:
+				new := g.Size
+				new ^= byte(1 << (rand.Uint32() >> 29))
+				g.Size = utils.ClampByte(p.MinSize, p.MaxSize, new)
 			case REPRODUCTION_TYPE:
 				g.ReproductionType ^= 1
 			case NEURON_COUNT:
@@ -201,6 +213,8 @@ func Mutate(g *Genome, p *Parameters) {
 				new := g.BrainLength
 				new ^= byte(1 << (rand.Uint32() >> 29))
 				g.BrainLength = utils.ClampByte(p.MinNeuronCount, p.MaxNeuronCount, new)
+			case JUVENILE_PERIOD:
+				g.JuvenilePeriod ^= byte(1 << (rand.Uint32() >> 29))
 			}
 		}
 	}

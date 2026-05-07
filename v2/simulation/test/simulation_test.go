@@ -10,10 +10,11 @@ func smallParams() *simulation.Parameters {
 	p.GridWidth = 50
 	p.GridHeight = 50
 	p.StartingPopulation = 10
-	p.MaxPopulation = 10
-	p.MaxAge = 5
-	p.MaxGenerations = 10
-	p.Challenge = simulation.AllSurvive
+	p.MaxPopulation = 20
+	p.MinPopulation = 5
+	p.FoodSpawnInterval = 10
+	p.FoodPerSpawn = 5
+	p.MaxFood = 500 // grid is 50x50=2500 cells; keep food well under cell count
 	return p
 }
 
@@ -35,24 +36,18 @@ func TestNewSimulation(t *testing.T) {
 	if sim.Tick != 0 {
 		t.Errorf("initial Tick should be 0, got %d", sim.Tick)
 	}
-	if sim.Generation != 0 {
-		t.Errorf("initial Generation should be 0, got %d", sim.Generation)
-	}
 }
 
-func TestSimulationRunsFullGeneration(t *testing.T) {
+func TestSimulationRunsContinuously(t *testing.T) {
 	p := smallParams()
 	sim := simulation.New(p)
 
-	for i := 0; i <= p.MaxAge; i++ {
+	for i := 0; i < 50; i++ {
 		sim.Update()
 	}
 
-	if sim.Generation != 1 {
-		t.Errorf("expected Generation 1 after one cycle, got %d", sim.Generation)
-	}
-	if sim.Tick != 0 {
-		t.Errorf("Tick should reset to 0 after new generation, got %d", sim.Tick)
+	if sim.Tick != 50 {
+		t.Errorf("expected Tick=50 after 50 updates, got %d", sim.Tick)
 	}
 }
 
@@ -84,10 +79,137 @@ func TestSimulationInterfaceMethods(t *testing.T) {
 	if sim.GridHeight() != p.GridHeight {
 		t.Errorf("GridHeight() = %d, want %d", sim.GridHeight(), p.GridHeight)
 	}
-	if sim.CurrentGeneration() != 0 {
-		t.Errorf("CurrentGeneration() = %d, want 0", sim.CurrentGeneration())
-	}
 	if sim.PopulationCount() != p.StartingPopulation {
 		t.Errorf("PopulationCount() = %d, want %d", sim.PopulationCount(), p.StartingPopulation)
+	}
+}
+
+func TestSimulationFoodSpawns(t *testing.T) {
+	p := smallParams()
+	p.FoodSpawnInterval = 1
+	p.FoodPerSpawn = 3
+	sim := simulation.New(p)
+
+	// Tick 0 spawns food during the first step
+	sim.Update()
+	if sim.FoodCount() == 0 {
+		t.Error("expected food to spawn after first update with FoodSpawnInterval=1")
+	}
+}
+
+func TestSimulationFoodViews(t *testing.T) {
+	p := smallParams()
+	p.FoodSpawnInterval = 1
+	p.FoodPerSpawn = 5
+	sim := simulation.New(p)
+	sim.Update()
+
+	views := sim.FoodViews()
+	if len(views) != sim.FoodCount() {
+		t.Errorf("FoodViews len %d != FoodCount %d", len(views), sim.FoodCount())
+	}
+	for _, v := range views {
+		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
+			t.Errorf("food at (%d,%d) is out of grid bounds", v.X, v.Y)
+		}
+	}
+}
+
+func TestSimulationCorpseViews(t *testing.T) {
+	p := smallParams()
+	// High metabolic rate to kill a creature immediately, no food
+	p.MetabolicRate = 10000
+	p.FoodSpawnInterval = 999999
+	p.CorpseDecayRate = 0.001 // decay very slowly so corpses persist
+	sim := simulation.New(p)
+
+	sim.Update()
+
+	views := sim.CorpseViews()
+	for _, v := range views {
+		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
+			t.Errorf("corpse at (%d,%d) is out of grid bounds", v.X, v.Y)
+		}
+		if v.EnergyFraction < 0 || v.EnergyFraction > 1 {
+			t.Errorf("corpse EnergyFraction %f out of [0,1]", v.EnergyFraction)
+		}
+	}
+}
+
+func TestSimulationMinPopulationMaintained(t *testing.T) {
+	p := smallParams()
+	p.StartingPopulation = 1
+	p.MaxPopulation = 10
+	p.MinPopulation = 5
+	// High metabolic rate to kill creatures quickly
+	p.MetabolicRate = 1000
+	p.FoodSpawnInterval = 999999
+	sim := simulation.New(p)
+
+	for i := 0; i < 20; i++ {
+		sim.Update()
+	}
+
+	if sim.PopulationCount() < p.MinPopulation {
+		t.Errorf("population %d dropped below MinPopulation %d", sim.PopulationCount(), p.MinPopulation)
+	}
+}
+
+func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
+	p := smallParams()
+	p.MaxJuvenilePeriod = 10000 // very long juvenile phase
+	p.MetabolicRate = 0
+	p.MoveCost = 0
+	p.ReproductionEnergyThreshold = 0.1
+	p.MinPopulation = 0 // prevent auto-spawning from inflating count
+	p.MaxFood = 0
+
+	sim := simulation.New(p)
+
+	// Force all creatures to maximum juvenile period and full energy
+	for _, c := range sim.Population.Creatures {
+		c.Genome.JuvenilePeriod = 255 // effective period = 10000 ticks
+		c.Energy = float32(c.Genome.MaxEnergy)
+	}
+
+	initialCount := sim.PopulationCount()
+
+	for i := 0; i < 10; i++ {
+		sim.Update()
+	}
+
+	if sim.PopulationCount() > initialCount {
+		t.Errorf("juvenile creatures should not reproduce: started with %d, now have %d", initialCount, sim.PopulationCount())
+	}
+}
+
+func TestAdultCreaturesCanReproduce(t *testing.T) {
+	p := smallParams()
+	p.MaxJuvenilePeriod = 0 // no juvenile phase — all creatures are immediately adults
+	p.MetabolicRate = 0
+	p.MoveCost = 0
+	p.ReproductionEnergyThreshold = 0.1
+	p.ReproductionEnergyCost = 0.05
+	p.MinPopulation = 0
+	p.MaxPopulation = 200
+	p.StartingPopulation = 10
+	p.MaxFood = 0
+
+	sim := simulation.New(p)
+
+	// Fill energy so reproduction threshold is met immediately
+	for _, c := range sim.Population.Creatures {
+		c.Genome.JuvenilePeriod = 255 // byte value doesn't matter when MaxJuvenilePeriod = 0
+		c.Energy = float32(c.Genome.MaxEnergy)
+	}
+
+	initialCount := sim.PopulationCount()
+
+	for i := 0; i < 20; i++ {
+		sim.Update()
+	}
+
+	if sim.PopulationCount() <= initialCount {
+		t.Errorf("adults with sufficient energy should reproduce: started with %d, still have %d", initialCount, sim.PopulationCount())
 	}
 }
