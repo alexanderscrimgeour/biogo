@@ -11,7 +11,7 @@
   "neuron_count": 3,
   "brain_length": 22,
   "juvenile_period": 18,
-  "metabolic_rate": 31,
+  "metabolic_rate": 15,
   "brain": [
     {
       "source_type": 1,

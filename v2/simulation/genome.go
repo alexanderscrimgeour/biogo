@@ -113,15 +113,54 @@ func (g Genome) PrettyString() string {
 	return str
 }
 
-// genomeColor derives display RGB values from gene structure bytes.
-func genomeColor(g *Genome) (uint8, uint8, uint8, uint8) {
-	first := g.Brain[0]
-	mid := g.Brain[len(g.Brain)/2]
-	last := g.Brain[len(g.Brain)-1]
-	firstAsByte := (first.SourceID&3)<<6 | (first.SourceType&3)<<4 | (first.SinkID&3)<<2 | (first.SinkType & 3)
-	midAsByte := (mid.SourceID&3)<<6 | (mid.SourceType&3)<<4 | (mid.SinkID&3)<<2 | (mid.SinkType & 3)
-	lastAsByte := (last.SourceID&3)<<6 | (last.SourceType&3)<<4 | (last.SinkID&3)<<2 | (last.SinkType & 3)
-	return firstAsByte, midAsByte, lastAsByte, 255
+func genomeColor(g *Genome, p *Parameters) (uint8, uint8, uint8, uint8) {
+	if g == nil {
+		return 0, 0, 0, 255
+	}
+
+	// Helper to ensure visibility: Maps 0-255 stats to 70-255 brightness
+	scale := func(val, min, max float64) uint8 {
+		if max == min {
+			return 70
+		}
+		// Normalize to 0.0 - 1.0
+		t := (val - min) / (max - min)
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		// Map to visibility range [70, 255]
+		return uint8(t*185 + 70)
+	}
+
+	// 1. Red: Physicality (Mass & Metabolism)
+	redMass := float64(g.Mass)
+	redMeta := float64(g.MetabolicRate) / float64(p.MaxMetabolicRate)
+	rVal := (redMass/255.0 + redMeta) / 2.0
+	red := uint8(rVal*185 + 70)
+
+	// 2. Green: Intelligence (Neuron Count & Brain Complexity)
+	layerScore := scale(float64(g.NeuronCount+2), 2, float64(p.MaxHiddenLayerCount+2))
+
+	// B. Brain Complexity (Gene Count)
+	// Max length for genes is often capped at a reasonable limit like 128 or 255
+	geneScore := scale(float64(len(g.Brain)), 0, 50)
+
+	// Average the four intelligence dimensions
+	green := uint8(uint16(layerScore) + uint16(geneScore)/2)
+
+	// 3. Blue: Perception (Sight & FOV)
+	blueSight := scale(float64(g.SightDistance), float64(p.MinSightDistance), float64(p.MaxSightDistance))
+	blueFOV := scale(float64(g.FieldOfView), float64(p.MinFieldOfView), float64(p.MaxFieldOfView))
+	blue := uint8((uint16(blueSight) + uint16(blueFOV)) / 2)
+
+	// 4. Alpha: 50% to 100% based on MutationRate
+	// 0 Mutation = 255 Alpha, 255 Mutation = 128 Alpha
+	alpha := 255 - uint8((uint16(g.MutationRate)*127)/255)
+
+	return red, green, blue, alpha
 }
 
 // byteAsFloat converts from a byte to a float32 range -1...1

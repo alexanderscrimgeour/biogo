@@ -1,6 +1,6 @@
 {
   "osc_period": 100,
-  "max_energy": 142,
+  "max_energy": 174,
   "sight_distance": 18,
   "field_of_view": 36,
   "responsiveness": 60,
@@ -66,11 +66,11 @@
       "source_type": 0,
       "source_id": 187,
       "sink_type": 1,
-      "sink_id": 105,
+      "sink_id": 104,
       "weight": 68
     },
     {
-      "source_type": 1,
+      "source_type": 0,
       "source_id": 218,
       "sink_type": 1,
       "sink_id": 154,
@@ -88,7 +88,7 @@
       "source_id": 70,
       "sink_type": 0,
       "sink_id": 50,
-      "weight": 92
+      "weight": 220
     },
     {
       "source_type": 0,

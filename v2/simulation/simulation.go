@@ -267,7 +267,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 	if !s.World.IsWall(newPos) {
-		c.Energy -= s.Params.MoveCost * float32(massFactor)
+		c.Energy -= s.Params.MoveCost * float32(moveAmount)
 		c.LastAction = appendActionString(c.LastAction, "Moving")
 		pending.move = append(pending.move, MoveInstruction{c, newPos})
 	}
