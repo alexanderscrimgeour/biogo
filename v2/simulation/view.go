@@ -79,14 +79,14 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 }
 
 // CreatureViews returns a snapshot of all living creatures for rendering.
-func (s *Simulation) CreatureViews() []CreatureView {
-	views := make([]CreatureView, 0, len(s.Population.Creatures))
+func (s *Simulation) CreatureViews() map[int]CreatureView {
+	views := make(map[int]CreatureView, len(s.Population.Creatures))
 	for _, c := range s.Population.Creatures {
 		if !c.Alive {
 			continue
 		}
 		r, g, b, a := genomeColor(c.Genome, s.Params)
-		views = append(views, CreatureView{
+		views[c.Id] = CreatureView{
 			ID: c.Id,
 			X:  c.Loc.X,
 			Y:  c.Loc.Y,
@@ -95,7 +95,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			SightDistance: c.Genome.SightDistance,
 			FieldOfView:   c.Genome.FieldOfView,
 			Mass:          c.Genome.Mass,
-		})
+		}
 	}
 	return views
 }

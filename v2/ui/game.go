@@ -20,7 +20,7 @@ import (
 // SimulationState is the interface the UI requires
 type SimulationState interface {
 	Update()
-	CreatureViews() []simulation.CreatureView
+	CreatureViews() map[int]simulation.CreatureView
 	FoodViews() []simulation.FoodView
 	CorpseViews() []simulation.CorpseView
 	GridWidth() int
@@ -96,7 +96,6 @@ type Game struct {
 	foodBlobsByKey     map[string]*Blob
 	corpseBlobsByID    map[int]*Blob
 	statFont           font.Face
-	showFOV            bool
 	whiteImage         *ebiten.Image
 	animByID           map[int]*creatureAnim
 	lastTickTime       time.Time
@@ -116,7 +115,6 @@ type Game struct {
 	pauseBtn           *components.Button
 	newGameBtn         *components.Button
 	themeBtn           *components.Button
-	fovBtn             *components.Button
 	spawnMutSlider     *components.Slider
 	detailsPanel       *components.Panel
 }
@@ -146,6 +144,7 @@ func NewGame(sim SimulationState) *Game {
 		maxCreatureMass:    sim.CreatureMaxMass(),
 		selectedCreatureID: -1,
 		spawnMutRate:       0.01,
+		isDarkBackground:   true,
 	}
 	g.pauseBtn = &components.Button{
 		X: 90, Y: 10, W: 80, H: 24,
@@ -184,15 +183,6 @@ func NewGame(sim SimulationState) *Game {
 			g.lastTickTime = time.Time{}
 			g.histHead = 0
 			g.histCount = 0
-		},
-	}
-	g.fovBtn = &components.Button{
-		X: 10, Y: 10, W: 70, H: 24,
-		Label:      "FOV",
-		Color:      components.ColorDefault,
-		LabelColor: color.White,
-		OnClick: func() {
-			g.showFOV = !g.showFOV
 		},
 	}
 	g.themeBtn = &components.Button{
@@ -248,6 +238,7 @@ func (g *Game) handleInput() bool {
 	isClick := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	mx, my := ebiten.CursorPosition()
 	if isClick {
+
 		if g.pauseBtn.IsClicked(mx, my) {
 			g.pauseBtn.OnClick()
 			return true
@@ -258,8 +249,8 @@ func (g *Game) handleInput() bool {
 			return true
 		}
 
-		if g.newGameBtn.IsClicked(mx, my) {
-			g.fovBtn.OnClick()
+		if g.themeBtn.IsClicked(mx, my) {
+			g.themeBtn.OnClick()
 			return true
 		}
 
@@ -392,7 +383,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.isDarkBackground {
 		screen.Fill(color.RGBA{5, 5, 10, 255})
 	} else {
-		screen.Fill(color.RGBA{15, 15, 15, 255})
+		screen.Fill(color.RGBA{100, 100, 100, 255})
 	}
 	g.renderGrid.DrawBackground(screen)
 
@@ -442,14 +433,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		screen.DrawTriangles(creatureVs, creatureIs, g.whiteImage, nil)
 	}
 
-	if g.showFOV {
-		g.drawFOVCones(screen, g.sim.CreatureViews(), t)
-	}
 	g.drawHistoryGraph(screen)
 	if g.selectedCreatureID != -1 {
 		g.drawSelectionHighlight(screen)
 		if detail, ok := g.sim.CreatureDetail(g.selectedCreatureID); ok {
 			g.drawCreatureDetail(screen, detail)
+			g.drawFOVCones(screen, map[int]simulation.CreatureView{g.selectedCreatureID: g.sim.CreatureViews()[g.selectedCreatureID]}, t)
 		} else {
 			g.selectedCreatureID = -1
 		}
@@ -457,7 +446,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.pauseBtn.Draw(screen, g.statFont)
 	g.themeBtn.Draw(screen, g.statFont)
 	g.newGameBtn.Draw(screen, g.statFont)
-	g.fovBtn.Draw(screen, g.statFont)
 	if g.spawnMutSlider != nil {
 		g.drawSpawnMutSlider(screen)
 	}
@@ -471,7 +459,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
-func (g *Game) drawFOVCones(screen *ebiten.Image, views []simulation.CreatureView, t float64) {
+func (g *Game) drawFOVCones(screen *ebiten.Image, views map[int]simulation.CreatureView, t float64) {
 	bs := float64(BlockSize)
 	half := float32(BlockSize) / 2
 	for _, cv := range views {
