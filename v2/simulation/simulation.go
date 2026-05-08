@@ -234,7 +234,11 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	rotateAmount := math.Tanh(rotateLeft-rotateRight) * float64(responseAdjust) * s.Params.MaxRotationPerStep
 	if rotateAmount != 0 {
 		rotationCostFactor := 0.5
+		maxE := float32(c.Genome.MaxEnergy)
 		c.Energy -= s.Params.MoveCost * float32(math.Abs(rotateAmount)) * float32(rotationCostFactor)
+		if c.Energy > maxE {
+			c.Energy = maxE
+		}
 		c.LastAction = appendActionString(c.LastAction, "Rotating")
 	}
 	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
@@ -267,7 +271,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 	if !s.World.IsWall(newPos) {
-		c.Energy -= s.Params.MoveCost * float32(moveAmount)
+		c.Energy -= s.Params.MoveCost * float32(math.Abs(moveAmount))
 		c.LastAction = appendActionString(c.LastAction, "Moving")
 		pending.move = append(pending.move, MoveInstruction{c, newPos})
 	}

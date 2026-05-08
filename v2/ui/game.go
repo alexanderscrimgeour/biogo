@@ -550,7 +550,9 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	_, h = eBar.Draw(screen, currX, currY)
 	currY += h + 15
 
-	// Action Line
+	action := &components.Label{Text: fmt.Sprintf("Actions: %s", d.LastAction), Font: g.statFont, Color: color.White}
+	action.Draw(screen, currX, currY)
+	currY += h + 15
 	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %d", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
 	mass.Draw(screen, currX, currY)
 	currY += h + 15
