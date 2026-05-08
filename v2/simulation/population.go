@@ -118,8 +118,10 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 					}
 				}
 				maxE := float32(c.Genome.MaxEnergy)
-				c.GainEnergy(params.FoodEnergyFraction * maxE)
-				w.RemoveFood(closestID)
+				if c.Energy <= 0.9*maxE {
+					c.GainEnergy(params.FoodEnergyFraction * maxE)
+					w.RemoveFood(closestID)
+				}
 			}
 
 			// Eat the closest corpse within interaction radius.

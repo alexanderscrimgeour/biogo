@@ -189,7 +189,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	if IsActionEnabled(DO_NOTHING) {
 		level := actionLevels[DO_NOTHING]
 		if level > 0 && prob2Bool(float64(level)) == 1 {
-			c.GainEnergy(c.MetabolicRate(s.Params))
+			c.DrainEnergy(c.MetabolicRate(s.Params) / 2)
 			c.LastAction = appendActionString(c.LastAction, "Resting")
 			return
 		}

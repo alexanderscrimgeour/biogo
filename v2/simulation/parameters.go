@@ -63,7 +63,7 @@ type Parameters struct {
 func DefaultParams() *Parameters {
 	return &Parameters{
 		MaxPopulation:                   20000,
-		MinPopulation:                   400,
+		MinPopulation:                   10,
 		StartingPopulation:              500,
 		PopulationSensorRadius:          6,
 		GridWidth:                       1000,
@@ -77,7 +77,7 @@ func DefaultParams() *Parameters {
 		MaxNeuronCount:                  26,
 		MinHiddenLayerCount:             3,
 		MaxHiddenLayerCount:             8,
-		MinSightDistance:                2,
+		MinSightDistance:                5,
 		MaxSightDistance:                50,
 		MinFieldOfView:                  10,
 		MaxFieldOfView:                  180,
@@ -98,8 +98,8 @@ func DefaultParams() *Parameters {
 		FoodEnergyFraction:              0.1,
 		FoodPatchRadius:                 20.0,
 		FoodPatchSize:                   200,
-		MinMetabolicRate:                0.01,
-		MaxMetabolicRate:                0.1,
+		MinMetabolicRate:                0.2,
+		MaxMetabolicRate:                0.4,
 		MoveCost:                        0.05,
 		ReproductionEnergyThreshold:     0.85,
 		ReproductionEnergyCost:          0.4,

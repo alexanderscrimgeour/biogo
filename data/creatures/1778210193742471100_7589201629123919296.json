@@ -1,0 +1,185 @@
+{
+  "osc_period": 119,
+  "max_energy": 211,
+  "sight_distance": 8,
+  "field_of_view": 175,
+  "responsiveness": 81,
+  "mutation_rate": 162,
+  "mass": 53,
+  "min_mass": 1,
+  "reproduction_type": 0,
+  "neuron_count": 6,
+  "brain_length": 24,
+  "juvenile_period": 13,
+  "metabolic_rate": 1,
+  "brain": [
+    {
+      "source_type": 1,
+      "source_id": 8,
+      "sink_type": 1,
+      "sink_id": 104,
+      "weight": 225
+    },
+    {
+      "source_type": 1,
+      "source_id": 82,
+      "sink_type": 0,
+      "sink_id": 40,
+      "weight": 108
+    },
+    {
+      "source_type": 1,
+      "source_id": 187,
+      "sink_type": 1,
+      "sink_id": 237,
+      "weight": 211
+    },
+    {
+      "source_type": 1,
+      "source_id": 169,
+      "sink_type": 0,
+      "sink_id": 189,
+      "weight": 8
+    },
+    {
+      "source_type": 1,
+      "source_id": 136,
+      "sink_type": 1,
+      "sink_id": 18,
+      "weight": 18
+    },
+    {
+      "source_type": 1,
+      "source_id": 1,
+      "sink_type": 1,
+      "sink_id": 253,
+      "weight": 232
+    },
+    {
+      "source_type": 1,
+      "source_id": 213,
+      "sink_type": 0,
+      "sink_id": 132,
+      "weight": 206
+    },
+    {
+      "source_type": 0,
+      "source_id": 150,
+      "sink_type": 1,
+      "sink_id": 216,
+      "weight": 239
+    },
+    {
+      "source_type": 1,
+      "source_id": 213,
+      "sink_type": 1,
+      "sink_id": 182,
+      "weight": 235
+    },
+    {
+      "source_type": 0,
+      "source_id": 134,
+      "sink_type": 1,
+      "sink_id": 239,
+      "weight": 13
+    },
+    {
+      "source_type": 0,
+      "source_id": 92,
+      "sink_type": 0,
+      "sink_id": 73,
+      "weight": 51
+    },
+    {
+      "source_type": 1,
+      "source_id": 136,
+      "sink_type": 0,
+      "sink_id": 20,
+      "weight": 199
+    },
+    {
+      "source_type": 0,
+      "source_id": 72,
+      "sink_type": 1,
+      "sink_id": 222,
+      "weight": 247
+    },
+    {
+      "source_type": 1,
+      "source_id": 54,
+      "sink_type": 1,
+      "sink_id": 28,
+      "weight": 84
+    },
+    {
+      "source_type": 0,
+      "source_id": 63,
+      "sink_type": 0,
+      "sink_id": 29,
+      "weight": 200
+    },
+    {
+      "source_type": 1,
+      "source_id": 132,
+      "sink_type": 0,
+      "sink_id": 95,
+      "weight": 217
+    },
+    {
+      "source_type": 0,
+      "source_id": 124,
+      "sink_type": 0,
+      "sink_id": 182,
+      "weight": 138
+    },
+    {
+      "source_type": 0,
+      "source_id": 89,
+      "sink_type": 1,
+      "sink_id": 21,
+      "weight": 5
+    },
+    {
+      "source_type": 0,
+      "source_id": 123,
+      "sink_type": 0,
+      "sink_id": 184,
+      "weight": 147
+    },
+    {
+      "source_type": 0,
+      "source_id": 54,
+      "sink_type": 0,
+      "sink_id": 1,
+      "weight": 176
+    },
+    {
+      "source_type": 0,
+      "source_id": 178,
+      "sink_type": 1,
+      "sink_id": 210,
+      "weight": 194
+    },
+    {
+      "source_type": 0,
+      "source_id": 169,
+      "sink_type": 1,
+      "sink_id": 217,
+      "weight": 69
+    },
+    {
+      "source_type": 0,
+      "source_id": 36,
+      "sink_type": 0,
+      "sink_id": 194,
+      "weight": 145
+    },
+    {
+      "source_type": 1,
+      "source_id": 122,
+      "sink_type": 1,
+      "sink_id": 14,
+      "weight": 16
+    }
+  ]
+}
