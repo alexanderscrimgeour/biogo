@@ -29,8 +29,8 @@ func New(params *Parameters) *Simulation {
 }
 
 func (s *Simulation) initializeWorld() {
-	s.World = grid.NewWorld(float64(s.Params.GridWidth), float64(s.Params.GridHeight), 1)
-	s.World.SpawnFood(s.Params.MaxFood, s.Params.FoodPatchRadius, s.Params.FoodPatchSize)
+	s.World = grid.NewWorld(s.Params.GridWidth, s.Params.GridHeight, 1)
+	s.World.SpawnRandom(s.Params.MaxFood)
 }
 
 func (s *Simulation) initializePopulation() {
@@ -143,7 +143,7 @@ func (s *Simulation) step() {
 		}
 
 		// Decay the dopamine signal
-		c.Dopamine *= 0.7
+		c.Dopamine *= 0.95
 
 		if c.Dopamine < 0.01 {
 			c.Dopamine = 0
@@ -163,11 +163,11 @@ func (s *Simulation) step() {
 		}
 		id := s.allocateID()
 		var genome *Genome
-		if source := s.Population.OldestGenome(); source != nil {
-			genome = AsexualReproduction(source, &spawnParams)
-		} else {
-			genome = MakeRandomGenome(&spawnParams)
-		}
+		// if source := s.Population.OldestGenome(); source != nil {
+		// 	genome = AsexualReproduction(source, &spawnParams)
+		// } else {
+		genome = MakeRandomGenome(&spawnParams)
+		// }
 		c := NewAdultCreature(id, loc, genome, s.Params)
 		s.Population.Creatures[id] = c
 		s.World.AddCreature(id, loc)
@@ -187,7 +187,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	}
 
 	juvenilePeriod := s.Params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(s.Params.MaxJuvenilePeriod-s.Params.MinJuvenilePeriod))
-	reproThreshold := s.Params.ReproductionEnergyThreshold * float32(c.Genome.MaxEnergy)
+	reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
 	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod && c.Mass >= float32(c.Genome.Mass) {
 		pending.reproduction = append(pending.reproduction, ReproductionInstruction{c})
 		c.LastAction = appendActionString(c.LastAction, "Reproducing")
@@ -205,7 +205,11 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	if IsActionEnabled(DO_NOTHING) {
 		level := actionLevels[DO_NOTHING]
 		if level > 0 && prob2Bool(float64(level)) == 1 {
-			c.DrainEnergy(c.MetabolicRate(s.Params) / 2)
+			// Resting pays half the basal metabolic rate: refund the base drain
+			// already charged this tick, then re-charge the lower resting rate.
+			rate := c.MetabolicRate(s.Params)
+			c.GainEnergy(rate, s.Params)
+			c.DrainEnergy(rate / 2)
 			c.LastAction = appendActionString(c.LastAction, "Resting")
 			return
 		}
@@ -249,7 +253,9 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	}
 	rotateAmount := math.Tanh(rotateLeft-rotateRight) * float64(responseAdjust) * s.Params.MaxRotationPerStep
 	if rotateAmount != 0 {
-		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5)
+		massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
+		massCostMult := 0.5 + massNorm // [0.5 at zero mass, 1.5 at max mass]
+		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
 		c.LastAction = appendActionString(c.LastAction, "Rotating")
 	}
 	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
@@ -282,7 +288,9 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 	if !s.World.IsWall(newPos) {
-		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)))
+		massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
+		massCostMult := 0.5 + massNorm // heavier creatures pay more energy per unit distance
+		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)) * massCostMult)
 		c.LastAction = appendActionString(c.LastAction, "Moving")
 		pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
 	}
@@ -294,8 +302,27 @@ func (s *Simulation) SetSpawnMutationRate(rate float32) {
 	s.Params.SpawnMutationRate = rate
 }
 
-func (s *Simulation) GridWidth() int  { return s.Params.GridWidth }
-func (s *Simulation) GridHeight() int { return s.Params.GridHeight }
+// SpawnAt creates a new random creature at the given world-space position.
+// Returns false if the position is inside a wall.
+func (s *Simulation) SpawnAt(x, y float64) bool {
+	pos := s.World.ClampToBounds(grid.Position{X: x, Y: y})
+	if s.World.IsWall(pos) {
+		return false
+	}
+	spawnParams := *s.Params
+	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
+		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
+	}
+	id := s.allocateID()
+	genome := MakeRandomGenome(&spawnParams)
+	c := NewAdultCreature(id, pos, genome, s.Params)
+	s.Population.Creatures[id] = c
+	s.World.AddCreature(id, pos)
+	return true
+}
+
+func (s *Simulation) GridWidth() float64  { return s.Params.GridWidth }
+func (s *Simulation) GridHeight() float64 { return s.Params.GridHeight }
 
 func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 

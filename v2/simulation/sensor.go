@@ -43,22 +43,25 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 		output = float32(c.Age) / float32(c.MaxAge(params))
 
 	case ENERGY:
-		output = c.Energy / float32(c.Genome.MaxEnergy)
+		maxE := c.MaxEnergy(params)
+		if maxE > 0 {
+			output = c.Energy / maxE
+		}
 
 	case BOUNDARY_DIST:
-		distX := math.Min(c.Loc.X, float64(params.GridWidth)-c.Loc.X)
-		distY := math.Min(c.Loc.Y, float64(params.GridHeight)-c.Loc.Y)
+		distX := math.Min(c.Loc.X, params.GridWidth-c.Loc.X)
+		distY := math.Min(c.Loc.Y, params.GridHeight-c.Loc.Y)
 		closest := math.Min(distX, distY)
-		maxPossible := math.Max(float64(params.GridWidth)/2, float64(params.GridHeight)/2)
+		maxPossible := math.Max(params.GridWidth/2, params.GridHeight/2)
 		output = float32(closest / maxPossible)
 
 	case BOUNDARY_DIST_X:
-		distX := math.Min(c.Loc.X, float64(params.GridWidth)-c.Loc.X)
-		output = float32(distX / (float64(params.GridWidth) / 2))
+		distX := math.Min(c.Loc.X, params.GridWidth-c.Loc.X)
+		output = float32(distX / (params.GridWidth / 2))
 
 	case BOUNDARY_DIST_Y:
-		distY := math.Min(c.Loc.Y, float64(params.GridHeight)-c.Loc.Y)
-		output = float32(distY / (float64(params.GridHeight) / 2))
+		distY := math.Min(c.Loc.Y, params.GridHeight-c.Loc.Y)
+		output = float32(distY / (params.GridHeight / 2))
 
 	case LAST_MOVE_DIR_X:
 		output = float32(math.Cos(c.Heading))/2 + 0.5
@@ -67,10 +70,10 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 		output = float32(math.Sin(c.Heading))/2 + 0.5
 
 	case LOC_X:
-		output = float32(c.Loc.X / float64(params.GridWidth))
+		output = float32(c.Loc.X / params.GridWidth)
 
 	case LOC_Y:
-		output = float32(c.Loc.Y / float64(params.GridHeight))
+		output = float32(c.Loc.Y / params.GridHeight)
 
 	case OSC1:
 		val := int(c.Genome.OscPeriod)
@@ -106,15 +109,16 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 
 	case SATIATION:
 		minE := float32(params.MinEnergy)
-		maxE := float32(c.Genome.MaxEnergy)
+		maxE := c.MaxEnergy(params)
 		if maxE > minE {
 			output = (c.Energy - minE) / (maxE - minE)
 		}
 
 	case REWARD_SIGNAL:
 		delta := c.Energy - c.LastTickEnergy
-		if delta > 0 {
-			return float32(math.Min(1.0, float64(delta*10)))
+		maxE := c.MaxEnergy(params)
+		if delta > 0 && maxE > 0 {
+			return float32(math.Min(1.0, float64(delta/maxE*10)))
 		}
 	case PUNISH_SIGNAL:
 		output = 0
@@ -277,7 +281,7 @@ func calculatePopulationFOV(c Creature, w *grid.World) float32 {
 }
 
 func getLocalPopulationDensity(loc grid.Position, w *grid.World, params *Parameters) float32 {
-	radius := float64(params.PopulationSensorRadius)
+	radius := params.PopulationSensorRadius
 	ids := w.GetCreaturesInRadius(loc, radius)
 	// Normalize: approximate max density as one creature per 4 sq units in the area.
 	maxExpected := math.Pi * radius * radius / 4.0
@@ -289,7 +293,7 @@ func getLocalPopulationDensity(loc grid.Position, w *grid.World, params *Paramet
 
 func getPopulationDensityAlongAxis(loc grid.Position, selfID int, w *grid.World, heading float64, params *Parameters) float32 {
 	fwdX, fwdY := grid.HeadingToVec(heading)
-	radius := float64(params.PopulationSensorRadius)
+	radius := params.PopulationSensorRadius
 	sum := float32(0)
 	for _, id := range w.GetCreaturesInRadius(loc, radius) {
 		if id == selfID {

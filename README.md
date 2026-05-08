@@ -6,9 +6,16 @@ Heavily inspired by https://github.com/davidrmiller/biosim4/tree/main/src
 
 #### About
 
-This project simulates natural selection and genetic inheritence. 
+This project simulates natural selection and genetic inheritence.
 
-To start, we represent behaviour via a genome, which is a collection of bytes that determine general characteristics, as well as a slice of genes responsible for generating a neural network.
+![Screenshot of the simulation.](,/images/screen-capture.PNG)
+
+Creatures in this simulation have:
+- A set of possible sensors for the world (Population ahead, last move direction, boundaries...)
+- A set of possible actions (Move, rotate, rest, etc...)
+- A set of traits (Mass, responsiveness, energy level...)
+
+Most importantly, creatures have a Genome, which encodes traits as well as a slice of genes that define connections between Sensors and Actions via a Neural network.
 
 A genome may look something like this:\
 
@@ -17,7 +24,7 @@ A genome may look something like this:\
 ```
 where each section of bits represents a single characteristic:\
 ```
-OscPeriod|MaxEnergy|SightDistance|Responsiveness|MutationRate|ReproductionType|NeuronCount|BrainLength|...NeuralGenes
+OscPeriod|Mass|SightDistance|Responsiveness|MutationRate|ReproductionType|NeuronCount|BrainLength|...NeuralGenes
 ```
 with neural genes representing a neural pathway:
 ```
@@ -34,16 +41,17 @@ In the simple case above, we create a simple neural network with three neurons:
     |--------|             |--------|             |--------|
 ```
 
-At the start of the simulation a number of creatures are created with random genomes. The creatures must solve a challenge, e.g. reach the left 10% of the map, before the "generation" is over. 
-At first, the creatures are terrible at solving the problem:
-![Generation 1](./images/generation-1.gif)
+Once initialised, the creature then uses this Neural network to behave in the world. 
 
-However, those that succeed go on to populate the next generation. Eventually, those that are most able to move left are able to dominate the genetic makeup of the population. However, some of these creatures are still blocked by the wall, and as such the survival rate stabilises at around 70%.
-![Generation 51](./images/generation-51.gif)
-
-The final piece of the puzzle is that there is a chance of genetic mutation when children inherit their parent's genome. This means that a more optimal strategy emerges and this new genome flourishes. In this example, a mutation occured that allowed the children to first travel down to below the wall before heading left.
-By the 500th generation 99.6% of creatures managed to survive the challenge and reach the left hand side:
-![Generation 508](./images/generation-508.gif)
+Features
+- Asexual Reproduction
+    - When a certain energy threshold is reached, and creatures have enough mass, they may asexually reproduce, splitting in two. 
+- Genetic Evolution
+    - Currently not particularly biologically accurate - but when asexually reproducing, there's a minor chance that a mutation occurs in a gene via a random bit flip. Mutations can change characteristics such as a trait, but may also change the neural connections, or even change the size or wiring of the brain. 
+- Hebbian Learning
+    - To reward energy gain and reproduction, creatures gain dopamine when performing actions that gain energy or reproduce
+    - At the expense of energy, weights of the NNet will then update as neurons fire together. These decay over time.
+- 
 
 ### Install
 `
@@ -61,7 +69,8 @@ Dependencies:
 - golang.org/x/image
 
 #### TODO
-- Concurrent execution of neural FFward steps to improve performance
-- Continuous environment rather than "Generations"
-- Redo the hastily made test UI
-- Output data to file for analysis
+
+- Sexual Reproduction
+- Code cleanup & refactor
+- Split UI and world space interfaces
+- Gene editing?

@@ -18,7 +18,7 @@ func main() {
 
 	game := ui.NewGame(sim)
 
-	ebiten.SetWindowSize(params.GridWidth*2, params.GridHeight*2)
+	ebiten.SetWindowSize(int(params.GridWidth)*2, int(params.GridHeight)*2)
 	ebiten.SetWindowTitle("Genetic Simulation")
 
 	if err := ebiten.RunGame(game); err != nil {

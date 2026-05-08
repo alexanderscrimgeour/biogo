@@ -60,11 +60,11 @@ func TestSimulationCreatureViews(t *testing.T) {
 		t.Errorf("CreatureViews returned %d views, want %d", len(views), p.StartingPopulation)
 	}
 	for _, v := range views {
-		if v.X < 0 || v.X >= float64(p.GridWidth) {
-			t.Errorf("creature X=%f out of world bounds [0,%d)", v.X, p.GridWidth)
+		if v.X < 0 || v.X >= p.GridWidth {
+			t.Errorf("creature X=%f out of world bounds [0,%.0f)", v.X, p.GridWidth)
 		}
-		if v.Y < 0 || v.Y >= float64(p.GridHeight) {
-			t.Errorf("creature Y=%f out of world bounds [0,%d)", v.Y, p.GridHeight)
+		if v.Y < 0 || v.Y >= p.GridHeight {
+			t.Errorf("creature Y=%f out of world bounds [0,%.0f)", v.Y, p.GridHeight)
 		}
 	}
 }
@@ -74,10 +74,10 @@ func TestSimulationInterfaceMethods(t *testing.T) {
 	sim := simulation.New(p)
 
 	if sim.GridWidth() != p.GridWidth {
-		t.Errorf("GridWidth() = %d, want %d", sim.GridWidth(), p.GridWidth)
+		t.Errorf("GridWidth() = %.0f, want %.0f", sim.GridWidth(), p.GridWidth)
 	}
 	if sim.GridHeight() != p.GridHeight {
-		t.Errorf("GridHeight() = %d, want %d", sim.GridHeight(), p.GridHeight)
+		t.Errorf("GridHeight() = %.0f, want %.0f", sim.GridHeight(), p.GridHeight)
 	}
 	if sim.PopulationCount() != p.StartingPopulation {
 		t.Errorf("PopulationCount() = %d, want %d", sim.PopulationCount(), p.StartingPopulation)
@@ -108,7 +108,7 @@ func TestSimulationFoodViews(t *testing.T) {
 		t.Errorf("FoodViews len %d != FoodCount %d", len(views), sim.FoodCount())
 	}
 	for _, v := range views {
-		if v.X < 0 || v.X >= float64(p.GridWidth) || v.Y < 0 || v.Y >= float64(p.GridHeight) {
+		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
 			t.Errorf("food at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 	}
@@ -117,8 +117,7 @@ func TestSimulationFoodViews(t *testing.T) {
 func TestSimulationCorpseViews(t *testing.T) {
 	p := smallParams()
 	// High metabolic rate to kill a creature immediately, no food
-	p.MinMetabolicRate = 10000
-	p.MaxMetabolicRate = 10000
+	p.BaseBMR = 10000
 	p.FoodSpawnInterval = 999999
 	p.CorpseDecayRate = 0.001
 	sim := simulation.New(p)
@@ -127,7 +126,7 @@ func TestSimulationCorpseViews(t *testing.T) {
 
 	views := sim.CorpseViews()
 	for _, v := range views {
-		if v.X < 0 || v.X >= float64(p.GridWidth) || v.Y < 0 || v.Y >= float64(p.GridHeight) {
+		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
 			t.Errorf("corpse at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 		if v.EnergyFraction < 0 || v.EnergyFraction > 1 {
@@ -142,8 +141,7 @@ func TestSimulationMinPopulationMaintained(t *testing.T) {
 	p.MaxPopulation = 10
 	p.MinPopulation = 5
 	// High metabolic rate to kill creatures quickly
-	p.MinMetabolicRate = 1000
-	p.MaxMetabolicRate = 1000
+	p.BaseBMR = 1000
 	p.FoodSpawnInterval = 999999
 	sim := simulation.New(p)
 
@@ -159,8 +157,7 @@ func TestSimulationMinPopulationMaintained(t *testing.T) {
 func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 	p := smallParams()
 	p.MaxJuvenilePeriod = 10000 // very long juvenile phase
-	p.MinMetabolicRate = 0
-	p.MaxMetabolicRate = 0
+	p.BaseBMR = 0
 	p.MoveCost = 0
 	p.ReproductionEnergyThreshold = 0.1
 	p.MinPopulation = 0
@@ -170,7 +167,7 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
-		c.Energy = float32(c.Genome.MaxEnergy)
+		c.Energy = c.Mass * p.EnergyPerMassUnit
 		c.Age = 0 // reset so the full juvenile phase must elapse before reproduction
 	}
 
@@ -189,11 +186,9 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 func TestAdultCreaturesCanReproduce(t *testing.T) {
 	p := smallParams()
 	p.MaxJuvenilePeriod = 0 // no juvenile phase — all creatures are immediately adults
-	p.MinMetabolicRate = 0
-	p.MaxMetabolicRate = 0
+	p.BaseBMR = 0
 	p.MoveCost = 0
 	p.ReproductionEnergyThreshold = 0.1
-	p.ReproductionEnergyCost = 0.05
 	p.MinPopulation = 0
 	p.MaxPopulation = 200
 	p.StartingPopulation = 10
@@ -203,7 +198,7 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
-		c.Energy = float32(c.Genome.MaxEnergy)
+		c.Energy = c.Mass * p.EnergyPerMassUnit
 	}
 
 	initialCount := sim.PopulationCount()

@@ -26,10 +26,9 @@ type Creature struct {
 	Dopamine       float32
 }
 
-func NewCreature(id int, loc grid.Position, g *Genome) *Creature {
+func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
 	c := Creature{
 		Id:             id,
-		Energy:         float32(g.MaxEnergy),
 		Age:            0,
 		Alive:          true,
 		Clock:          int(g.OscPeriod),
@@ -41,6 +40,7 @@ func NewCreature(id int, loc grid.Position, g *Genome) *Creature {
 		Genome:         g,
 		Mass:           float32(g.MinMass),
 	}
+	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
 	return &c
 }
@@ -48,7 +48,6 @@ func NewCreature(id int, loc grid.Position, g *Genome) *Creature {
 func NewAdultCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
 	c := Creature{
 		Id:             id,
-		Energy:         float32(g.MaxEnergy),
 		Age:            0,
 		Alive:          true,
 		Clock:          int(g.OscPeriod),
@@ -60,6 +59,7 @@ func NewAdultCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Crea
 		Genome:         g,
 		Mass:           float32(g.Mass),
 	}
+	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
 	c.Age = c.JuvenilePeriod(p)
 	return &c
@@ -73,6 +73,12 @@ func (c Creature) String() string {
 	return fmt.Sprintf("\nCREATURE| \nID: %d,\nEnergy: %f,\nResponsiveness: %f,\nAge: %d,\nAlive: %t,\nClock: %d,\nNnet: \n%s,\nLoc: %v,\nBirthLoc: %v,\nHeading: %f",
 		c.Id, c.Energy, c.Responsiveness, c.Age, c.Alive, c.Clock,
 		c.Nnet.String(), c.Loc, c.BirthLoc, c.Heading)
+}
+
+// MaxEnergy returns the creature's energy storage capacity, derived from current mass.
+// Energy capacity scales linearly with body size (larger creatures can store more energy).
+func (c Creature) MaxEnergy(params *Parameters) float32 {
+	return c.Mass * params.EnergyPerMassUnit
 }
 
 // JuvenilePeriod returns the number of ticks before this creature is considered an adult.
@@ -91,31 +97,32 @@ func (c Creature) CurrentMass(params *Parameters) float32 {
 	return c.Mass
 }
 
-// GrowMass advances the creature's mass toward Genome.Mass by one tick's worth of growth.
-// Growth rate is linear: MinMass → Mass over JuvenilePeriod ticks.
+// GrowMass advances the creature's mass toward Genome.Mass using a von Bertalanffy
+// growth curve: slowest at birth, fastest at ~1/3 of adult mass, tapering to zero at adult.
 func (c *Creature) GrowMass(params *Parameters) {
 	maxMass := float32(c.Genome.Mass)
 	if c.Mass >= maxMass {
 		c.Mass = maxMass
 		return
 	}
-	survivalBuffer := float32(c.Genome.MaxEnergy) * 0.10
-	if c.Energy <= survivalBuffer {
-		return
-	}
-
-	jp := c.JuvenilePeriod(params)
-	if jp <= 0 {
+	// Snap to full mass when within 1% to avoid asymptotic convergence blocking reproduction.
+	if c.Mass >= maxMass*0.99 {
 		c.Mass = maxMass
 		return
 	}
 
-	potentialGrowth := (maxMass - float32(c.Genome.MinMass)) / float32(jp)
-	energyCost := potentialGrowth * params.GrowthEnergyCostFactor
+	survivalBuffer := c.MaxEnergy(params) * 0.10
+	if c.Energy <= survivalBuffer {
+		return
+	}
+
+	massRatio := c.Mass / maxMass
+	// von Bertalanffy rate: peaks at massRatio ≈ 0.33, zero at 0 and 1.
+	growthRate := params.MaxGrowthRatePerTick * float32(math.Sqrt(float64(massRatio))) * (1.0 - massRatio)
+	energyCost := growthRate * params.GrowthEnergyCostFactor
 
 	disposableEnergy := c.Energy - survivalBuffer
-
-	actualGrowth := potentialGrowth
+	actualGrowth := growthRate
 	if energyCost > disposableEnergy {
 		actualGrowth = disposableEnergy / params.GrowthEnergyCostFactor
 		energyCost = disposableEnergy
@@ -123,7 +130,6 @@ func (c *Creature) GrowMass(params *Parameters) {
 
 	c.Mass = utils.MinFloat32(maxMass, c.Mass+actualGrowth)
 	c.DrainEnergy(energyCost)
-
 }
 
 func (c *Creature) DrainEnergy(amount float32) {
@@ -133,11 +139,12 @@ func (c *Creature) DrainEnergy(amount float32) {
 	}
 }
 
-func (c *Creature) GainEnergy(amount float32) {
-	maxE := float32(c.Genome.MaxEnergy)
+func (c *Creature) GainEnergy(amount float32, params *Parameters) {
+	maxE := c.MaxEnergy(params)
 	c.Energy = utils.MinFloat32(maxE, c.Energy+amount)
-	c.GainDopamine(amount / maxE)
-
+	if maxE > 0 {
+		c.GainDopamine(amount / maxE)
+	}
 }
 
 func (c *Creature) GainDopamine(ratio float32) {
@@ -148,18 +155,22 @@ func (c *Creature) GainDopamine(ratio float32) {
 	}
 }
 
-// MetabolicRate returns the energy drained per tick. The genome byte scales into
-// [MinMetabolicRate, MaxMetabolicRate], then an inverse-size modifier is applied so
-// smaller creatures burn energy faster (modifier = 2.0 at zero mass, 1.0 at MaxMass).
+// MetabolicRate returns the basal energy cost per tick.
+// Follows Kleiber's Law: absolute BMR scales as Mass^0.75 — larger creatures
+// have higher absolute metabolic costs, creating genuine selective pressure against
+// runaway body size. The MetabolicRate genome gene shifts efficiency in [0.7, 1.3].
 func (c Creature) MetabolicRate(params *Parameters) float32 {
-	base := params.MinMetabolicRate + float32(c.Genome.MetabolicRate)/255.0*(params.MaxMetabolicRate-params.MinMetabolicRate)
 	massNorm := c.Mass / float32(params.MaxMass)
-	return base * (2.0 - massNorm)
+	metabolicGene := 0.7 + 0.6*(float32(c.Genome.MetabolicRate)/255.0) // [0.7, 1.3]
+	return params.BaseBMR * float32(math.Pow(float64(massNorm), 0.75)) * metabolicGene
 }
 
+// MaxAge returns the creature's maximum lifespan in ticks.
+// Larger creatures live longer (rate-of-living theory); higher metabolic gene shortens life.
 func (c Creature) MaxAge(params *Parameters) int {
 	baseLife := float32(params.BaseMaxAge)
-	sizeMult := 0.5 + (float32(c.Genome.Mass) / 255.0)
-	metabolicPenalty := 1.0 + (float32(c.Genome.Responsiveness) / 255.0)
+	sizeMult := 0.5 + float32(c.Genome.Mass)/255.0        // [0.5, 1.5]
+	metabolicGeneNorm := float32(c.Genome.MetabolicRate) / 255.0
+	metabolicPenalty := 0.75 + metabolicGeneNorm           // [0.75, 1.75]
 	return int((baseLife * sizeMult) / metabolicPenalty)
 }

@@ -3,16 +3,16 @@ package test
 import (
 	"biogo/v2/grid"
 	"biogo/v2/simulation"
+	"math"
 	"testing"
 )
 
-func TestDoNothingRefundsMetabolicCost(t *testing.T) {
+func TestDoNothingHalvesMetabolicCost(t *testing.T) {
 	p := defaultParams()
-	p.MinMetabolicRate = 5
-	p.MaxMetabolicRate = 5
+	p.BaseBMR = 5
 	p.MoveCost = 0
 	p.MinPopulation = 0
-	p.MaxPopulation = 1 // prevents reproduction energy drain during the test
+	p.MaxPopulation = 1
 	p.MaxFood = 0
 	p.StartingPopulation = 1
 
@@ -23,29 +23,32 @@ func TestDoNothingRefundsMetabolicCost(t *testing.T) {
 		c = v
 		break
 	}
-	c.Genome.MetabolicRate = 127 // mid-range, maps to exactly 5.0 with min==max==5
-	c.Energy = float32(c.Genome.MaxEnergy)
+	c.Genome.MetabolicRate = 127
+	c.Energy = c.Mass * p.EnergyPerMassUnit // start at full MaxEnergy
 	energyBefore := c.Energy
 
-	// Force DO_NOTHING to fire by wiring OSC1 (= 1.0 at step 0 with OscPeriod=1) into it.
-	// OSC1 gives an exact 1.0 output, so prob2Bool always returns 1 (rand.Float64() < 1.0).
+	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into DO_NOTHING so it always fires.
 	c.Genome.OscPeriod = 1
 	doNothingGene := &simulation.Gene{
 		SourceType: simulation.SENSOR,
 		SourceID:   simulation.OSC1,
 		SinkType:   simulation.ACTION,
 		SinkID:     simulation.DO_NOTHING,
-		Weight:     255, // max positive weight → level = 1.0, prob2Bool always fires
+		Weight:     255,
 	}
 	c.Genome.Brain = []*simulation.Gene{doNothingGene}
 	c.Genome.BrainLength = 1
 	c.CreateNeuralNet()
 
+	rate := c.MetabolicRate(p)
 	sim.Update()
 
-	// After one tick with DO_NOTHING firing, energy should be unchanged (metabolic cost refunded).
-	if c.Energy != energyBefore {
-		t.Errorf("DO_NOTHING should conserve energy: before=%f after=%f", energyBefore, c.Energy)
+	// Resting refunds the full metabolic drain and charges half — net cost = rate/2.
+	expectedEnergy := energyBefore - rate/2
+	tolerance := float32(0.01)
+	if math.Abs(float64(c.Energy-expectedEnergy)) > float64(tolerance) {
+		t.Errorf("DO_NOTHING should charge half metabolic rate: before=%f expected=%f got=%f (rate=%f)",
+			energyBefore, expectedEnergy, c.Energy, rate)
 	}
 }
 
@@ -58,24 +61,21 @@ func TestDoNothingIsEnabled(t *testing.T) {
 func TestEatAction_KillsTargetInFOV(t *testing.T) {
 	p := defaultParams()
 	p.MinPopulation = 0
-	p.MaxPopulation = 0 // prevents reproduction energy drain and ID-allocation side effects
+	p.MaxPopulation = 0
 	p.MaxFood = 0
 	p.StartingPopulation = 0
 	p.PredationRadius = 2.0
 
 	sim := simulation.New(p)
 
-	// Build predator with a deterministic brain: OSC1 (=1.0 at tick 0 with OscPeriod=1) → EAT.
-	// Use high IDs to avoid conflicts with the sim's internal allocateID counter.
 	const predID = 9000
 	predGenome := simulation.MakeRandomGenome(p)
 	predGenome.FieldOfView = 90
-	predGenome.MaxEnergy = 200
-	predGenome.OscPeriod = 1        // OSC1 = 1.0 at simStep=0
-	predGenome.Responsiveness = 128 // non-zero prevents NaN in SET_RESPONSIVENESS
+	predGenome.OscPeriod = 1
+	predGenome.Responsiveness = 128
 	eatGene := &simulation.Gene{
 		SourceType: simulation.SENSOR,
-		SourceID:   simulation.OSC1, // evaluates to 1.0 → EAT always fires
+		SourceID:   simulation.OSC1,
 		SinkType:   simulation.ACTION,
 		SinkID:     simulation.EAT,
 		Weight:     255,
@@ -84,15 +84,15 @@ func TestEatAction_KillsTargetInFOV(t *testing.T) {
 	predGenome.BrainLength = 1
 	pred := simulation.NewAdultCreature(predID, grid.Position{X: 50, Y: 50}, predGenome, p)
 	pred.Heading = 0
-	pred.Energy = 100 // below MaxEnergy so energy gain from eating is measurable
+	// Set energy below MaxEnergy so that the energy gain from eating is measurable.
+	pred.Energy = pred.Mass * p.EnergyPerMassUnit * 0.5
 	sim.Population.Creatures[pred.Id] = pred
 	sim.World.AddCreature(pred.Id, pred.Loc)
 
-	// Build prey with an empty brain so it never moves or predates.
 	const preyID = 9001
 	preyGenome := simulation.MakeRandomGenome(p)
 	preyGenome.Mass = 200
-	preyGenome.MaxEnergy = 200
+	preyGenome.MinMass = 10
 	preyGenome.Responsiveness = 128
 	preyGenome.Brain = []*simulation.Gene{}
 	preyGenome.BrainLength = 0
@@ -117,7 +117,6 @@ func TestIsActionEnabled(t *testing.T) {
 			t.Errorf("action %d should be enabled", a)
 		}
 	}
-	// Anything at or above ACTION_COUNT should be disabled.
 	if simulation.IsActionEnabled(simulation.ACTION_COUNT) {
 		t.Errorf("action %d (ACTION_COUNT) should be disabled", simulation.ACTION_COUNT)
 	}

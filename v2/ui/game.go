@@ -23,8 +23,8 @@ type SimulationState interface {
 	CreatureViews() map[int]simulation.CreatureView
 	FoodViews() []simulation.FoodView
 	CorpseViews() []simulation.CorpseView
-	GridWidth() int
-	GridHeight() int
+	GridWidth() float64
+	GridHeight() float64
 	PopulationCount() int
 	FoodCount() int
 	AverageAge() float64
@@ -35,6 +35,7 @@ type SimulationState interface {
 	Reset()
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetSpawnMutationRate(rate float32)
+	SpawnAt(x, y float64) bool
 }
 
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
@@ -87,7 +88,7 @@ type creatureAnim struct {
 	curX, curY   float64
 	r, g, b, a   uint8
 	heading      float64
-	mass         byte // Prioritized mass
+	mass         float64 // Prioritized mass
 }
 
 type Game struct {
@@ -116,6 +117,8 @@ type Game struct {
 	newGameBtn         *components.Button
 	themeBtn           *components.Button
 	saveBtn            *components.Button
+	spawnRandomBtn     *components.Button
+	spawnPlacing       bool
 	spawnMutSlider     *components.Slider
 	detailsPanel       *components.Panel
 }
@@ -195,6 +198,15 @@ func NewGame(sim SimulationState) *Game {
 			g.isDarkBackground = !g.isDarkBackground
 		},
 	}
+	g.spawnRandomBtn = &components.Button{
+		X: 642, Y: 10, W: 130, H: 24,
+		Label:      "Spawn Random",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.spawnPlacing = !g.spawnPlacing
+		},
+	}
 	g.spawnMutSlider = &components.Slider{
 		X: 315, Y: 10, W: 240, H: 24,
 		TrackX: 530, TrackW: 100,
@@ -214,18 +226,18 @@ func NewGame(sim SimulationState) *Game {
 	}
 	const wallThickness = 10.0
 	bs := float64(BlockSize)
-	cx := float64(sim.GridWidth()) / 2
-	cy := float64(sim.GridHeight()) / 2
+	cx := sim.GridWidth() / 2
+	cy := sim.GridHeight() / 2
 
 	// Vertical bar of the cross
 	g.renderGrid.AddLine(
-		(cx-wallThickness/2)*bs, float64(sim.GridHeight())/4*bs,
-		(cx+wallThickness/2)*bs, float64(sim.GridHeight())*3/4*bs,
+		(cx-wallThickness/2)*bs, sim.GridHeight()/4*bs,
+		(cx+wallThickness/2)*bs, sim.GridHeight()*3/4*bs,
 	)
 	// Horizontal bar of the cross
 	g.renderGrid.AddLine(
-		float64(sim.GridWidth())/4*bs, (cy-wallThickness/2)*bs,
-		float64(sim.GridWidth())*3/4*bs, (cy+wallThickness/2)*bs,
+		sim.GridWidth()/4*bs, (cy-wallThickness/2)*bs,
+		sim.GridWidth()*3/4*bs, (cy+wallThickness/2)*bs,
 	)
 	return g
 }
@@ -275,9 +287,24 @@ func (g *Game) handleInput() bool {
 			g.sim.SetSpawnMutationRate(float32(g.spawnMutSlider.Value))
 			return true
 		}
-	}
-	return false
 
+		if g.spawnRandomBtn.IsClicked(mx, my) {
+			g.spawnRandomBtn.OnClick()
+			return true
+		}
+
+		if g.spawnPlacing {
+			bs := float64(BlockSize)
+			g.sim.SpawnAt(float64(mx)/bs, float64(my)/bs)
+			return true
+		}
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.spawnPlacing = false
+	}
+
+	return false
 }
 
 func (g *Game) Update() error {
@@ -323,14 +350,14 @@ func (g *Game) Update() error {
 				anim.curX, anim.curY = screenX, screenY
 				anim.r, anim.g, anim.b, anim.a = cv.R, cv.G, cv.B, cv.A
 				anim.heading = cv.Heading
-				anim.mass = cv.Mass // Prioritise mass
+				anim.mass = cv.CurrentMass // Prioritise mass
 			} else {
 				g.animByID[cv.ID] = &creatureAnim{
 					prevX: screenX, prevY: screenY,
 					curX: screenX, curY: screenY,
 					r: cv.R, g: cv.G, b: cv.B, a: cv.A,
 					heading: cv.Heading,
-					mass:    cv.Mass,
+					mass:    cv.CurrentMass,
 				}
 			}
 		}
@@ -464,6 +491,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.spawnMutSlider != nil {
 		g.drawSpawnMutSlider(screen)
 	}
+	if g.spawnPlacing {
+		g.spawnRandomBtn.Color = components.ColorButtonGreen
+		g.spawnRandomBtn.Label = "Cancel Spawn"
+	} else {
+		g.spawnRandomBtn.Color = components.ColorDefault
+		g.spawnRandomBtn.Label = "Spawn Random"
+	}
+	g.spawnRandomBtn.Draw(screen, g.statFont)
+	if g.spawnPlacing {
+		mx, my := ebiten.CursorPosition()
+		cx, cy := float32(mx), float32(my)
+		const arm = float32(10)
+		vector.StrokeLine(screen, cx-arm, cy, cx+arm, cy, 1.5, color.RGBA{255, 220, 80, 220}, false)
+		vector.StrokeLine(screen, cx, cy-arm, cx, cy+arm, 1.5, color.RGBA{255, 220, 80, 220}, false)
+		vector.StrokeCircle(screen, cx, cy, arm*0.6, 1, color.RGBA{255, 220, 80, 160}, false)
+	}
 
 	g.addStatLine(screen, "Population", fmt.Sprintf("%d", g.sim.PopulationCount()), 1)
 	g.addStatLine(screen, "Food", fmt.Sprintf("%d", g.sim.FoodCount()), 2)
@@ -504,7 +547,7 @@ func (g *Game) drawFOVCones(screen *ebiten.Image, views map[int]simulation.Creat
 func (g *Game) Layout(w, h int) (int, int) { return w, h }
 
 func (g *Game) addStatLine(img *ebiten.Image, desc string, val string, row int) {
-	x := g.sim.GridWidth()*BlockSize - 200
+	x := int(g.sim.GridWidth())*BlockSize - 200
 	text.Draw(img, fmt.Sprintf("%s: %s", desc, val), g.statFont, x, 20*row+3, color.White)
 }
 
@@ -545,11 +588,11 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	currY += h + 4
 
 	// Energy Section
-	energyTxt := &components.Label{Text: fmt.Sprintf("Energy: %.f/%d", d.Energy, d.MaxEnergy), Font: g.statFont, Color: color.White}
+	energyTxt := &components.Label{Text: fmt.Sprintf("Energy: %.f/%.f", d.Energy, d.MaxEnergy), Font: g.statFont, Color: color.White}
 	energyTxt.Draw(screen, currX, currY)
 	currY += 5
 
-	eBar := &components.EnergyBar{Value: d.Energy, Max: float32(d.MaxEnergy), Width: p.W - (detailTpad * 2)}
+	eBar := &components.EnergyBar{Value: d.Energy, Max: d.MaxEnergy, Width: p.W - (detailTpad * 2)}
 	_, h = eBar.Draw(screen, currX, currY)
 	currY += h + 15
 	juvenileStr := "Adult"

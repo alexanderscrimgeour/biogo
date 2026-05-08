@@ -279,7 +279,7 @@ func (w *World) FindEmptyLocation() (Position, bool) {
 func (w *World) SpawnFood(n int, patchRadius float64, patchSize int) {
 	switch w.spawnMode {
 	case SpawnRandom:
-		w.spawnRandom(n)
+		w.SpawnRandom(n)
 	case SpawnClustered:
 		w.spawnClustered(n, patchRadius, patchSize)
 	case SpawnTrail:
@@ -345,7 +345,7 @@ func (w *World) placeClusterAt(center Position, remainingN int, radius float64, 
 	return spawned
 }
 
-func (w *World) spawnRandom(n int) {
+func (w *World) SpawnRandom(n int) {
 	for i := 0; i < n; i++ {
 		pos, ok := w.FindEmptyLocation()
 		if ok {

@@ -28,7 +28,7 @@ func TestSaveAndLoadGenomes(t *testing.T) {
 	}
 	for i := range genomes {
 		g, l := genomes[i], loaded[i]
-		if g.OscPeriod != l.OscPeriod || g.MaxEnergy != l.MaxEnergy || g.Mass != l.Mass {
+		if g.OscPeriod != l.OscPeriod || g.Mass != l.Mass {
 			t.Errorf("genome[%d] header mismatch", i)
 		}
 		if len(g.Brain) != len(l.Brain) {
