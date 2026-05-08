@@ -13,7 +13,7 @@ func makeCreatureAt(pos grid.Position, sightDist, fov byte) *simulation.Creature
 	g := simulation.MakeRandomGenome(p)
 	g.SightDistance = sightDist
 	g.FieldOfView = fov
-	c := simulation.NewCreature(1, pos, g)
+	c := simulation.NewCreature(1, pos, g, p)
 	c.Heading = 0 // facing east
 	return c
 }
@@ -180,7 +180,9 @@ func TestSatiation_FullEnergy(t *testing.T) {
 	w := makeWorld(200, 200)
 	w.AddCreature(c.Id, loc)
 
-	c.Energy = float32(c.Genome.MaxEnergy)
+	// Fix mass so MaxEnergy (= mass * EperM) is well above MinEnergy.
+	c.Mass = 100
+	c.Energy = c.Mass * params.EnergyPerMassUnit
 	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
 	if math.Abs(float64(val)-1.0) > 0.01 {
 		t.Errorf("SATIATION at full energy should be ~1.0, got %f", val)
@@ -205,12 +207,14 @@ func TestSatiation_MidEnergy(t *testing.T) {
 	params := defaultParams()
 	loc := grid.Position{X: 50, Y: 50}
 	c := makeCreatureAt(loc, 1, 90)
-	c.Genome.MaxEnergy = 100
 	w := makeWorld(200, 200)
 	w.AddCreature(c.Id, loc)
 
-	// Energy halfway between min (2) and max (100) → satiation ≈ 0.5.
-	c.Energy = float32(params.MinEnergy) + (float32(c.Genome.MaxEnergy)-float32(params.MinEnergy))/2
+	// Fix mass so MaxEnergy = 100 (EnergyPerMassUnit = 1.0 by default).
+	c.Mass = 100
+	maxE := c.Mass * params.EnergyPerMassUnit // = 100
+	// Energy halfway between min and max → satiation ≈ 0.5.
+	c.Energy = float32(params.MinEnergy) + (maxE-float32(params.MinEnergy))/2
 	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
 	if math.Abs(float64(val)-0.5) > 0.01 {
 		t.Errorf("SATIATION at mid energy should be ~0.5, got %f", val)

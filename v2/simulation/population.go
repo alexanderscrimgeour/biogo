@@ -101,8 +101,9 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		newPos := instruction.Loc
 
 		if instruction.MoveAmount > 0 {
-			// Eat the closest food within interaction radius.
 			halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+
+			// Consume the nearest food item within interaction radius.
 			foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
 			if len(foodIDs) > 0 {
 				closestID := foodIDs[0]
@@ -117,21 +118,21 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 						closestID = fid
 					}
 				}
-				maxE := float32(c.Genome.MaxEnergy)
-				if c.Energy <= 0.9*maxE {
-					c.GainEnergy(params.FoodEnergyFraction * maxE)
+				// Only eat if not nearly full; prevents wasting food that others could use.
+				if c.Energy <= 0.9*c.MaxEnergy(params) {
+					c.GainEnergy(params.FoodCalories, params)
 					w.RemoveFood(closestID)
 				}
 			}
 
-			// Eat the closest corpse within interaction radius.
+			// Consume the nearest corpse within interaction radius.
 			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
 			if len(creatureIDs) > 0 {
 				closestCreatureID := -1
 				closestDist := math.MaxFloat64
 				for _, cid := range creatureIDs {
-					if c, ok := p.Creatures[cid]; ok {
-						if c.Alive {
+					if cr, ok := p.Creatures[cid]; ok {
+						if cr.Alive {
 							continue
 						}
 					}
@@ -149,14 +150,9 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 				}
 				if closestCreatureID != -1 {
 					if target, ok := p.Creatures[closestCreatureID]; ok {
-						maxE := float32(c.Genome.MaxEnergy)
-
-						massRatio := target.Mass / float32(params.MaxMass)
-						gain := massRatio * maxE
-
-						c.GainEnergy(gain)
-
-						// Scavenger consumes the whole corpse
+						// Corpse energy = mass * EnergyPerMassUnit (tissue is stored energy).
+						gain := target.Mass * params.EnergyPerMassUnit
+						c.GainEnergy(gain, params)
 						w.RemoveCreature(closestCreatureID)
 						delete(p.Creatures, closestCreatureID)
 					}
@@ -164,7 +160,6 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 			}
 		}
 
-		// Move the creature.
 		w.MoveCreature(c.Id, newPos)
 		c.Loc = newPos
 	}
@@ -172,7 +167,6 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 }
 
 // ProcessEatQueue resolves EAT-action predation queued during the current tick.
-// Only living targets are consumed.
 func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
 	for _, instruction := range p.EatQueue {
 		predator := instruction.Predator
@@ -184,17 +178,16 @@ func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
 			continue
 		}
 
-		var meatAmount float32
+		var meatMass float32
 		if target.Alive {
-			meatAmount = target.CurrentMass(params)
+			meatMass = target.CurrentMass(params)
 		} else {
-			meatAmount = target.Mass
+			meatMass = target.Mass
 		}
 
-		maxE := float32(predator.Genome.MaxEnergy)
-		gain := meatAmount / float32(params.MaxMass) * maxE
-
-		predator.GainEnergy(gain)
+		// Energy gained equals the caloric value of the consumed tissue.
+		gain := meatMass * params.EnergyPerMassUnit
+		predator.GainEnergy(gain, params)
 		target.Alive = false
 		w.RemoveCreature(instruction.TargetID)
 		delete(p.Creatures, instruction.TargetID)
@@ -202,8 +195,8 @@ func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
 	p.EatQueue = []EatInstruction{}
 }
 
-// ProcessDeathQueue marks queued creatures as dead and sets their energy to their
-// mass-based food value. Corpses remain in the world and decay over time.
+// ProcessDeathQueue marks queued creatures as dead. Corpses remain in the world
+// and decay over time, preserving their mass as a food source.
 func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 	for _, di := range p.DeathQueue {
 		di.Creature.Alive = false
@@ -213,7 +206,7 @@ func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 	p.DeathQueue = []DeathInstruction{}
 }
 
-// ProcessCorpseDecay drains energy from every dead creature. Fully decayed
+// ProcessCorpseDecay drains mass from every dead creature. Fully decayed
 // corpses are removed from both the world and the population map.
 func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 	for id, c := range p.Creatures {
@@ -230,6 +223,7 @@ func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 
 // ProcessReproductionQueue spawns offspring near queued parents.
 // Requires the parent to be at full mass and above the energy threshold.
+// Energy cost scales with offspring mass (tissue = stored energy).
 // On reproduction the parent loses energy and half its body mass; the child
 // is created at that half-mass size and grows back to full mass over time.
 func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters, nextID func() int) {
@@ -242,18 +236,14 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 			continue
 		}
 
-		// Re-check energy threshold (creature may have spent energy since queueing).
-		if parent.Energy < params.ReproductionEnergyThreshold*float32(parent.Genome.MaxEnergy) {
+		if parent.Energy < params.ReproductionEnergyThreshold*parent.MaxEnergy(params) {
 			continue
 		}
 
-		// Parent must be fully grown before it can split its mass.
 		if parent.Mass < float32(parent.Genome.Mass) {
 			continue
 		}
 
-		// MinMass must be strictly less than half of Mass to guarantee the child
-		// starts above the creature's minimum viable size.
 		if float32(parent.Genome.MinMass)*2 >= float32(parent.Genome.Mass) {
 			continue
 		}
@@ -263,17 +253,17 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 			continue
 		}
 
-		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
-		parent.DrainEnergy(cost)
-		parent.GainDopamine(cost / float32(parent.Genome.MaxEnergy))
-
-		// Halve parent's body mass; the parent must regrow before reproducing again.
 		halfMass := parent.Mass / 2
+		// Energy cost = mass being given to offspring × caloric value × reproduction efficiency.
+		cost := halfMass * params.EnergyPerMassUnit * params.ReproductionEfficiency
+		parent.DrainEnergy(cost)
+		parent.GainDopamine(cost / utils.MaxFloat32(parent.MaxEnergy(params), 1))
+
 		parent.Mass = halfMass
 
 		childGenome := AsexualReproduction(parent.Genome, params)
 		id := nextID()
-		child := NewCreature(id, offspringLoc, childGenome)
+		child := NewCreature(id, offspringLoc, childGenome, params)
 		child.Mass = halfMass
 		child.Energy = cost / 2
 		p.Creatures[id] = child

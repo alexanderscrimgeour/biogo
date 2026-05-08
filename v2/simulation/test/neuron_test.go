@@ -41,7 +41,7 @@ func TestNewCreature(t *testing.T) {
 	p := defaultParams()
 	genome := simulation.MakeRandomGenome(p)
 	loc := grid.Position{X: 5, Y: 5}
-	c := simulation.NewCreature(1, loc, genome)
+	c := simulation.NewCreature(1, loc, genome, p)
 	if c == nil {
 		t.Fatal("NewCreature returned nil")
 	}

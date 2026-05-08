@@ -18,8 +18,9 @@ func TestMakeRandomGene(t *testing.T) {
 	if gene.SourceType > 1 {
 		t.Errorf("SourceType must be 0 or 1, got %d", gene.SourceType)
 	}
-	if gene.SinkType > 1 {
-		t.Errorf("SinkType must be 0 or 1, got %d", gene.SinkType)
+	// SinkType 0 = neuron, 2 = action; both are valid.
+	if gene.SinkType != 0 && gene.SinkType != 2 {
+		t.Errorf("SinkType must be 0 or 2, got %d", gene.SinkType)
 	}
 }
 

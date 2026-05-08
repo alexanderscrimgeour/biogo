@@ -28,7 +28,6 @@ type geneData struct {
 
 type genomeData struct {
 	OscPeriod        byte       `json:"osc_period"`
-	MaxEnergy        byte       `json:"max_energy"`
 	SightDistance    byte       `json:"sight_distance"`
 	FieldOfView      byte       `json:"field_of_view"`
 	Responsiveness   byte       `json:"responsiveness"`
@@ -56,7 +55,6 @@ func toGenomeData(g *Genome) genomeData {
 	}
 	return genomeData{
 		OscPeriod:        g.OscPeriod,
-		MaxEnergy:        g.MaxEnergy,
 		SightDistance:    g.SightDistance,
 		FieldOfView:      g.FieldOfView,
 		Responsiveness:   g.Responsiveness,
@@ -96,7 +94,6 @@ func fromGenomeData(gd genomeData) *Genome {
 	}
 	return &Genome{
 		OscPeriod:        gd.OscPeriod,
-		MaxEnergy:        gd.MaxEnergy,
 		SightDistance:    gd.SightDistance,
 		FieldOfView:      gd.FieldOfView,
 		Responsiveness:   gd.Responsiveness,

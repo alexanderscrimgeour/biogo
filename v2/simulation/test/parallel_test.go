@@ -58,8 +58,7 @@ func TestAliveIDs(t *testing.T) {
 
 func TestParallelStepMatchesExpectedBehaviour(t *testing.T) {
 	p := defaultParams()
-	p.MinMetabolicRate = 10000
-	p.MaxMetabolicRate = 10000
+	p.BaseBMR = 10000
 	p.FoodSpawnInterval = 999999
 	p.CorpseDecayRate = 0
 	p.MinPopulation = 0

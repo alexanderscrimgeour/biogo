@@ -10,7 +10,6 @@ import (
 
 const (
 	OSC_PERIOD = iota
-	MAX_ENERGY
 	SIGHT_DISTANCE
 	FIELD_OF_VIEW
 	RESPONSIVENESS
@@ -38,7 +37,6 @@ type Gene struct {
 // All data must be expressed via a byte
 type Genome struct {
 	OscPeriod        byte
-	MaxEnergy        byte
 	SightDistance    byte
 	FieldOfView      byte // total FOV angle in degrees (0–180)
 	Responsiveness   byte
@@ -58,7 +56,7 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
 	for _, gene := range g.Brain {
 		str += gene.String()
 	}
@@ -70,7 +68,7 @@ func (g Gene) BinaryString() string {
 }
 
 func (g Genome) BinaryString() string {
-	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
 	for _, gene := range g.Brain {
 		str += gene.BinaryString()
 	}
@@ -80,7 +78,6 @@ func (g Genome) BinaryString() string {
 func (g Genome) ToByteArray() []byte {
 	arr := []byte{}
 	arr = append(arr, g.OscPeriod)
-	arr = append(arr, g.MaxEnergy)
 	arr = append(arr, g.SightDistance)
 	arr = append(arr, g.FieldOfView)
 	arr = append(arr, g.Responsiveness)
@@ -106,7 +103,7 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08d|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b", g.OscPeriod, g.MaxEnergy, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
+	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate)
 	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
@@ -118,12 +115,10 @@ func genomeColor(g *Genome, p *Parameters) (uint8, uint8, uint8, uint8) {
 		return 0, 0, 0, 255
 	}
 
-	// Helper to ensure visibility: Maps 0-255 stats to 70-255 brightness
 	scale := func(val, min, max float64) uint8 {
 		if max == min {
 			return 70
 		}
-		// Normalize to 0.0 - 1.0
 		t := (val - min) / (max - min)
 		if t < 0 {
 			t = 0
@@ -131,33 +126,26 @@ func genomeColor(g *Genome, p *Parameters) (uint8, uint8, uint8, uint8) {
 		if t > 1 {
 			t = 1
 		}
-		// Map to visibility range [70, 255]
 		return uint8(t*185 + 70)
 	}
 
-	// 1. Red: Physicality (Mass & Metabolism)
+	// Red: Physicality (Mass & Metabolism)
 	redMass := float64(g.Mass)
-	redMeta := float64(g.MetabolicRate) / float64(p.MaxMetabolicRate)
+	redMeta := float64(g.MetabolicRate) / 255.0
 	rVal := (redMass/255.0 + redMeta) / 2.0
 	red := uint8(rVal*185 + 70)
 
-	// 2. Green: Intelligence (Neuron Count & Brain Complexity)
+	// Green: Intelligence (Neuron Count & Brain Complexity)
 	layerScore := scale(float64(g.NeuronCount+2), 2, float64(p.MaxHiddenLayerCount+2))
-
-	// B. Brain Complexity (Gene Count)
-	// Max length for genes is often capped at a reasonable limit like 128 or 255
 	geneScore := scale(float64(len(g.Brain)), 0, 50)
-
-	// Average the four intelligence dimensions
 	green := uint8(uint16(layerScore) + uint16(geneScore)/2)
 
-	// 3. Blue: Perception (Sight & FOV)
+	// Blue: Perception (Sight & FOV)
 	blueSight := scale(float64(g.SightDistance), float64(p.MinSightDistance), float64(p.MaxSightDistance))
 	blueFOV := scale(float64(g.FieldOfView), float64(p.MinFieldOfView), float64(p.MaxFieldOfView))
 	blue := uint8((uint16(blueSight) + uint16(blueFOV)) / 2)
 
-	// 4. Alpha: 50% to 100% based on MutationRate
-	// 0 Mutation = 255 Alpha, 255 Mutation = 128 Alpha
+	// Alpha: 50% to 100% based on MutationRate
 	alpha := 255 - uint8((uint16(g.MutationRate)*127)/255)
 
 	return red, green, blue, alpha
@@ -181,7 +169,7 @@ func MakeRandomGene() *Gene {
 	return &Gene{
 		SourceType: utils.MakeRandomByte() & 1,
 		SourceID:   utils.MakeRandomByte(),
-		SinkType:   utils.MakeRandomByte() & 1,
+		SinkType:   byte(rand.Intn(2) * 2),
 		SinkID:     utils.MakeRandomByte(),
 		Weight:     utils.MakeRandomByte(),
 	}
@@ -190,11 +178,9 @@ func MakeRandomGene() *Gene {
 func MakeRandomGenome(p *Parameters) *Genome {
 	// Mass must be >= 3 to guarantee a valid MinMass (MinMass < Mass/2 requires Mass > 2).
 	mass := utils.ClampByte(3, p.MaxMass, utils.MakeRandomByte())
-	// MaxMinMass = (mass-1)/2 ensures MinMass is strictly less than mass/2.0.
 	maxMinMass := (mass - 1) / 2
 	g := Genome{
 		OscPeriod:        utils.ClampByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		MaxEnergy:        utils.ClampByte(p.MinEnergy, p.MaxEnergy, utils.MakeRandomByte()),
 		SightDistance:    utils.ClampByte(p.MinSightDistance, p.MaxSightDistance, utils.MakeRandomByte()),
 		FieldOfView:      utils.ClampByte(p.MinFieldOfView, p.MaxFieldOfView, utils.MakeRandomByte()),
 		Responsiveness:   utils.MakeRandomByte(),
@@ -203,7 +189,7 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		MinMass:          utils.ClampByte(1, maxMinMass, utils.MakeRandomByte()),
 		ReproductionType: makeRandomBool(),
 		NeuronCount:      utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, utils.MakeRandomByte()),
-		BrainLength:      utils.ClampByte(p.MinStartNeuronCount, p.MaxStartNeuronCount, utils.MakeRandomByte()),
+		BrainLength:      utils.ClampByte(p.MinSpawnNeuronCount, p.MaxSpawnNeuronCount, utils.MakeRandomByte()),
 		JuvenilePeriod:   utils.MakeRandomByte(),
 		MetabolicRate:    utils.MakeRandomByte(),
 	}
@@ -241,10 +227,6 @@ func Mutate(g *Genome, p *Parameters) {
 			switch i {
 			case OSC_PERIOD:
 				g.OscPeriod ^= byte(1 << (rand.Uint32() >> 29))
-			case MAX_ENERGY:
-				new := g.MaxEnergy
-				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.MaxEnergy = utils.ClampByte(p.MinEnergy, p.MaxEnergy, new)
 			case SIGHT_DISTANCE:
 				new := g.SightDistance
 				new ^= byte(1 << (rand.Uint32() >> 29))
@@ -262,7 +244,6 @@ func Mutate(g *Genome, p *Parameters) {
 				new := g.Mass
 				new ^= byte(1 << (rand.Uint32() >> 29))
 				g.Mass = utils.ClampByte(3, p.MaxMass, new)
-				// Re-enforce MinMass < Mass/2 after mass may have decreased.
 				maxMinMass := (g.Mass - 1) / 2
 				if maxMinMass < 1 {
 					maxMinMass = 1
@@ -303,7 +284,11 @@ func Mutate(g *Genome, p *Parameters) {
 			case chance < 0.2:
 				g.Brain[j].SourceType ^= 1
 			case chance < 0.4:
-				g.Brain[j].SinkType ^= 1
+				if g.Brain[j].SinkType == 2 {
+					g.Brain[j].SinkType = 0
+				} else {
+					g.Brain[j].SinkType = 2
+				}
 			case chance < 0.6:
 				g.Brain[j].SourceID ^= byte(1 << (rand.Uint32() >> 29))
 			case chance < 0.8:

@@ -29,7 +29,7 @@ func TestProcessMoveQueue(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 
 	startPos := grid.Position{X: 5, Y: 5}
-	creature := simulation.NewCreature(1, startPos, genome)
+	creature := simulation.NewCreature(1, startPos, genome, params)
 	w.AddCreature(1, startPos)
 
 	pop := simulation.NewPopulation(params)
@@ -50,20 +50,22 @@ func TestProcessMoveQueue(t *testing.T) {
 
 func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	params := defaultParams()
-	params.FoodEnergyFraction = 0.3
 	params.FoodInteractionRadius = 2.0
 	params.PredationRadius = 0.1
 
 	w := grid.NewWorld(20, 20, 0)
 	genome := simulation.MakeRandomGenome(params)
+	genome.Mass = 100
+	genome.MinMass = 10
 
 	startPos := grid.Position{X: 5, Y: 5}
 	destPos := grid.Position{X: 6, Y: 5}
-	foodPos := grid.Position{X: 7, Y: 5} // within FoodInteractionRadius of destPos, not at exact position
+	foodPos := grid.Position{X: 7, Y: 5}
 
-	creature := simulation.NewCreature(1, startPos, genome)
+	creature := simulation.NewCreature(1, startPos, genome, params)
 	creature.Heading = 0 // east, so food at (7,5) is in the forward cone
-	creature.Energy = float32(creature.Genome.MaxEnergy) * 0.5
+	// Start at 50% of MaxEnergy so the creature is hungry enough to eat.
+	creature.Energy = creature.Mass * params.EnergyPerMassUnit * 0.5
 	energyBefore := creature.Energy
 
 	w.AddCreature(1, startPos)
@@ -91,7 +93,7 @@ func TestProcessDeathQueue(t *testing.T) {
 
 	genome := simulation.MakeRandomGenome(params)
 	loc := grid.Position{X: 3, Y: 3}
-	creature := simulation.NewCreature(1, loc, genome)
+	creature := simulation.NewCreature(1, loc, genome, params)
 	w.AddCreature(1, loc)
 
 	pop := simulation.NewPopulation(params)
@@ -114,7 +116,7 @@ func TestProcessCorpseDecay(t *testing.T) {
 
 	genome := simulation.MakeRandomGenome(params)
 	loc := grid.Position{X: 3, Y: 3}
-	corpse := simulation.NewCreature(1, loc, genome)
+	corpse := simulation.NewCreature(1, loc, genome, params)
 	corpse.Alive = false
 	corpse.Mass = 60
 	w.AddCreature(1, loc)
@@ -137,7 +139,7 @@ func TestProcessCorpseDecay(t *testing.T) {
 	}
 }
 
-// TestCorpseEnergySetOnDeath verifies that ProcessDeathQueue initializes corpse energy
+// TestCorpseEnergySetOnDeath verifies that ProcessDeathQueue initializes corpse mass
 // from the creature's actual body mass at time of death.
 func TestCorpseEnergySetOnDeath(t *testing.T) {
 	params := defaultParams()
@@ -146,9 +148,8 @@ func TestCorpseEnergySetOnDeath(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 	genome.Mass = 120
 	loc := grid.Position{X: 3, Y: 3}
-	// NewAdultCreature sets Mass = genome.Mass so CurrentMass == genome.Mass.
 	creature := simulation.NewAdultCreature(1, loc, genome, params)
-	creature.Energy = 5 // very low — should not affect corpse food value
+	creature.Energy = 5
 	w.AddCreature(creature.Id, loc)
 
 	pop := simulation.NewPopulation(params)
@@ -173,7 +174,7 @@ func TestOldestGenomeDeadOnly(t *testing.T) {
 	params := defaultParams()
 	pop := simulation.NewPopulation(params)
 	genome := simulation.MakeRandomGenome(params)
-	dead := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome)
+	dead := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome, params)
 	dead.Alive = false
 	pop.Creatures[1] = dead
 	if pop.OldestGenome() != nil {
@@ -186,9 +187,9 @@ func TestOldestGenomeReturnsOldest(t *testing.T) {
 	pop := simulation.NewPopulation(params)
 	genome := simulation.MakeRandomGenome(params)
 
-	young := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome)
+	young := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome, params)
 	young.Age = 10
-	old := simulation.NewCreature(2, grid.Position{X: 2, Y: 2}, genome)
+	old := simulation.NewCreature(2, grid.Position{X: 2, Y: 2}, genome, params)
 	old.Age = 100
 
 	pop.Creatures[1] = young
@@ -210,7 +211,7 @@ func TestGeneticDiversity(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id := i + 1
 		genome := simulation.MakeRandomGenome(params)
-		pop.Creatures[id] = simulation.NewCreature(id, grid.Position{X: float64(i), Y: 0}, genome)
+		pop.Creatures[id] = simulation.NewCreature(id, grid.Position{X: float64(i), Y: 0}, genome, params)
 	}
 
 	diversity := pop.GeneticDiversity()
@@ -222,15 +223,16 @@ func TestGeneticDiversity(t *testing.T) {
 func TestReproductionCreatesOffspring(t *testing.T) {
 	params := defaultParams()
 	params.MaxPopulation = 100
-	params.ReproductionEnergyCost = 0.1
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params)
-	genome.MaxEnergy = 255
+	genome.Mass = 200
+	genome.MinMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
-	parent.Energy = float32(genome.MaxEnergy)
+	// Start at full energy so reproduction threshold is met.
+	parent.Energy = parent.Mass * params.EnergyPerMassUnit
 	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
@@ -255,13 +257,12 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params)
-	genome.MaxEnergy = 200
 	genome.Mass = 100
 	genome.MinMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
-	parent.Energy = float32(genome.MaxEnergy)
+	parent.Energy = parent.Mass * params.EnergyPerMassUnit
 	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
@@ -287,14 +288,13 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params)
-	genome.MaxEnergy = 200
 	genome.Mass = 100
 	genome.MinMass = 10
 	genome.MutationRate = 0 // suppress mutations so child inherits same Mass
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
-	parent.Energy = float32(genome.MaxEnergy)
+	parent.Energy = parent.Mass * params.EnergyPerMassUnit
 	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
@@ -324,11 +324,13 @@ func TestReproductionSkipsWhenEnergyBelowThreshold(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params)
-	genome.MaxEnergy = 200
+	genome.Mass = 200
+	genome.MinMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
-	parent.Energy = params.ReproductionEnergyThreshold*float32(genome.MaxEnergy) - 1
+	// Set energy just below the reproduction threshold.
+	parent.Energy = params.ReproductionEnergyThreshold*float32(genome.Mass)*params.EnergyPerMassUnit - 1
 	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
@@ -353,13 +355,12 @@ func TestReproductionSkipsWhenMinMassConstraintViolated(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params)
-	genome.MaxEnergy = 200
 	genome.Mass = 10
 	genome.MinMass = 6 // 6*2=12 >= 10: violates MinMass < Mass/2
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
-	parent.Energy = float32(genome.MaxEnergy)
+	parent.Energy = parent.Mass * params.EnergyPerMassUnit
 	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
@@ -382,7 +383,7 @@ func TestGeneticDiversitySingleCreature(t *testing.T) {
 	params := defaultParams()
 	pop := simulation.NewPopulation(params)
 	genome := simulation.MakeRandomGenome(params)
-	pop.Creatures[1] = simulation.NewCreature(1, grid.Position{}, genome)
+	pop.Creatures[1] = simulation.NewCreature(1, grid.Position{}, genome, params)
 
 	diversity := pop.GeneticDiversity()
 	if diversity != 0 {
@@ -395,8 +396,8 @@ func TestAliveCount(t *testing.T) {
 	pop := simulation.NewPopulation(params)
 	genome := simulation.MakeRandomGenome(params)
 
-	alive := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome)
-	dead := simulation.NewCreature(2, grid.Position{X: 2, Y: 2}, genome)
+	alive := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome, params)
+	dead := simulation.NewCreature(2, grid.Position{X: 2, Y: 2}, genome, params)
 	dead.Alive = false
 
 	pop.Creatures[1] = alive

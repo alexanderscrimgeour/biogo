@@ -66,7 +66,7 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			}
 			correlation := inputVal * sinkOutput
 
-			energyThreshold := float32(c.Genome.MaxEnergy) * 0.6
+			energyThreshold := c.MaxEnergy(params) * 0.6
 
 			if c.Energy > energyThreshold && c.Dopamine > 0.1 {
 

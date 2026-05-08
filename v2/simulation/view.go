@@ -9,6 +9,7 @@ type CreatureView struct {
 	SightDistance byte
 	FieldOfView   byte
 	Mass          byte
+	CurrentMass   float64
 }
 
 // FoodView is a read-only snapshot of a food item's position for rendering.
@@ -29,7 +30,7 @@ type CorpseView struct {
 type CreatureDetailView struct {
 	ID             int
 	Energy         float32
-	MaxEnergy      byte
+	MaxEnergy      float32
 	Age            int
 	IsJuvenile     bool
 	JuvenilePeriod int
@@ -58,7 +59,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	return CreatureDetailView{
 		ID:             c.Id,
 		Energy:         c.Energy,
-		MaxEnergy:      c.Genome.MaxEnergy,
+		MaxEnergy:      c.MaxEnergy(s.Params),
 		Age:            c.Age,
 		IsJuvenile:     c.IsJuvenile(s.Params),
 		JuvenilePeriod: c.JuvenilePeriod(s.Params),
@@ -97,6 +98,7 @@ func (s *Simulation) CreatureViews() map[int]CreatureView {
 			SightDistance: c.Genome.SightDistance,
 			FieldOfView:   c.Genome.FieldOfView,
 			Mass:          c.Genome.Mass,
+			CurrentMass:   float64(c.Mass),
 		}
 	}
 	return views
@@ -122,10 +124,10 @@ func (s *Simulation) CorpseViews() []CorpseView {
 		if c.Alive {
 			continue
 		}
-		sizeE := float32(c.Genome.Mass)
+		// Decay fraction: remaining mass relative to genome adult mass.
 		frac := float32(0)
-		if sizeE > 0 {
-			frac = c.Energy / sizeE
+		if c.Genome.Mass > 0 {
+			frac = c.Mass / float32(c.Genome.Mass)
 		}
 		if frac > 1 {
 			frac = 1
