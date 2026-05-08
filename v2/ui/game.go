@@ -2,6 +2,7 @@ package ui
 
 import (
 	"biogo/v2/simulation"
+	"biogo/v2/ui/components"
 	"fmt"
 	"image/color"
 	"math"
@@ -46,25 +47,6 @@ type histSample struct {
 }
 
 const (
-	fovBtnX = 10
-	fovBtnY = 10
-	fovBtnW = 70
-	fovBtnH = 24
-
-	pauseBtnX = 90
-	pauseBtnY = 10
-	pauseBtnW = 80
-	pauseBtnH = 24
-
-	newGameBtnX = 180
-	newGameBtnY = 10
-	newGameBtnW = 90
-	newGameBtnH = 24
-
-	themeBtnX = 280
-	themeBtnY = 10
-	themeBtnW = 100
-	themeBtnH = 24
 
 	// Spawn mutation rate slider
 	spawnMutSliderX = 395
@@ -95,6 +77,10 @@ const (
 	graphTextH  = 36
 	graphPad    = 4
 )
+
+type Component interface {
+	Draw(screen *ebiten.Image, x, y float32) (float32, float32)
+}
 
 type creatureAnim struct {
 	prevX, prevY float64
@@ -127,6 +113,12 @@ type Game struct {
 	history            [historyLen]histSample
 	histHead           int
 	histCount          int
+	pauseBtn           *components.Button
+	newGameBtn         *components.Button
+	themeBtn           *components.Button
+	fovBtn             *components.Button
+	spawnMutSlider     *components.Slider
+	detailsPanel       *components.Panel
 }
 
 var BlockSize int = 2
@@ -155,7 +147,80 @@ func NewGame(sim SimulationState) *Game {
 		selectedCreatureID: -1,
 		spawnMutRate:       0.01,
 	}
-
+	g.pauseBtn = &components.Button{
+		X: 90, Y: 10, W: 80, H: 24,
+		Label:      "Pause",
+		Color:      components.ColorButtonRed,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.paused = !g.paused
+			// Update label dynamically based on state
+			if g.paused {
+				g.pauseBtn.Label = "Resume"
+				g.pauseBtn.Color = components.ColorButtonGreen
+			} else {
+				g.pauseBtn.Label = "Pause"
+				g.pauseBtn.Color = components.ColorButtonRed
+			}
+		},
+	}
+	g.newGameBtn = &components.Button{
+		X: 180, Y: 10, W: 90, H: 24,
+		Label:      "Restart",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.sim.Reset()
+			g.animByID = make(map[int]*creatureAnim)
+			for _, b := range g.foodBlobsByKey {
+				g.renderGrid.RemoveFoodBlob(b)
+			}
+			g.foodBlobsByKey = make(map[string]*Blob)
+			for _, b := range g.corpseBlobsByID {
+				g.renderGrid.RemoveBlob(b)
+			}
+			g.corpseBlobsByID = make(map[int]*Blob)
+			g.selectedCreatureID = -1
+			g.lastTickTime = time.Time{}
+			g.histHead = 0
+			g.histCount = 0
+		},
+	}
+	g.fovBtn = &components.Button{
+		X: 10, Y: 10, W: 70, H: 24,
+		Label:      "FOV",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.showFOV = !g.showFOV
+		},
+	}
+	g.themeBtn = &components.Button{
+		X: 280, Y: 10, W: 100, H: 24,
+		Label:      "Theme",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.isDarkBackground = !g.isDarkBackground
+		},
+	}
+	g.spawnMutSlider = &components.Slider{
+		X: 395, Y: 10, W: 240, H: 24,
+		TrackX: 530, TrackW: 100,
+		Label:      "Mutation Rate",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		Min:        0.0001, Max: 0.2,
+		Value: 0.01,
+	}
+	g.detailsPanel = &components.Panel{
+		X:         float32(detailPanelX),
+		Y:         float32(detailPanelY),
+		W:         float32(detailPanelW),
+		H:         float32(detailPanelH),
+		BaseColor: color.RGBA{8, 10, 22, 215},   // Dark translucent navy
+		Border:    color.RGBA{90, 90, 150, 255}, // Muted blue-gray
+	}
 	wallThickness := 10.0
 	cx := float64(sim.GridWidth()) / 2
 	bs := float64(BlockSize)
@@ -167,9 +232,58 @@ func NewGame(sim SimulationState) *Game {
 	return g
 }
 
+func (g *Game) handleContinuousInput() {
+	if g.spawnMutSlider.Dragging {
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			mx, _ := ebiten.CursorPosition()
+			g.spawnMutSlider.UpdateValue(mx)
+			g.sim.SetSpawnMutationRate(float32(g.spawnMutSlider.Value))
+		} else {
+			g.spawnMutSlider.Dragging = false
+		}
+	}
+}
+
+func (g *Game) handleInput() bool {
+	isClick := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
+	mx, my := ebiten.CursorPosition()
+	if isClick {
+		if g.pauseBtn.IsClicked(mx, my) {
+			g.pauseBtn.OnClick()
+			return true
+		}
+
+		if g.newGameBtn.IsClicked(mx, my) {
+			g.newGameBtn.OnClick()
+			return true
+		}
+
+		if g.newGameBtn.IsClicked(mx, my) {
+			g.fovBtn.OnClick()
+			return true
+		}
+
+		if g.spawnMutSlider.InBounds(mx, my) {
+			g.spawnMutSlider.Dragging = true
+			g.spawnMutSlider.UpdateValue(mx)
+			g.sim.SetSpawnMutationRate(float32(g.spawnMutSlider.Value))
+			return true
+		}
+	}
+	return false
+
+}
+
 func (g *Game) Update() error {
+	g.handleContinuousInput()
 	mx, my := ebiten.CursorPosition()
 	now := time.Now()
+
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if !g.handleInput() {
+			g.trySelectCreature(mx, my)
+		}
+	}
 
 	if !g.paused {
 		prevByID := make(map[int][2]float64, len(g.animByID))
@@ -271,68 +385,6 @@ func (g *Game) Update() error {
 		g.lastTickTime = now
 	}
 
-	// UI Interaction
-	if g.spawnMutDragging {
-		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-			g.applySpawnMutSlider(mx)
-		} else {
-			g.spawnMutDragging = false
-		}
-	}
-
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		clickedButton := false
-		if mx >= spawnMutSliderX && mx < spawnMutSliderX+spawnMutSliderW &&
-			my >= spawnMutSliderY && my < spawnMutSliderY+spawnMutSliderH {
-			g.spawnMutDragging = true
-			g.applySpawnMutSlider(mx)
-			clickedButton = true
-		}
-		if mx >= fovBtnX && mx < fovBtnX+fovBtnW && my >= fovBtnY && my < fovBtnY+fovBtnH {
-			g.showFOV = !g.showFOV
-			clickedButton = true
-		}
-		if mx >= pauseBtnX && mx < pauseBtnX+pauseBtnW && my >= pauseBtnY && my < pauseBtnY+pauseBtnH {
-			g.paused = !g.paused
-			clickedButton = true
-		}
-		if mx >= newGameBtnX && mx < newGameBtnX+newGameBtnW && my >= newGameBtnY && my < newGameBtnY+newGameBtnH {
-			g.sim.Reset()
-			g.animByID = make(map[int]*creatureAnim)
-			for _, b := range g.foodBlobsByKey {
-				g.renderGrid.RemoveFoodBlob(b)
-			}
-			g.foodBlobsByKey = make(map[string]*Blob)
-			for _, b := range g.corpseBlobsByID {
-				g.renderGrid.RemoveBlob(b)
-			}
-			g.corpseBlobsByID = make(map[int]*Blob)
-			g.selectedCreatureID = -1
-			g.lastTickTime = time.Time{}
-			g.histHead = 0
-			g.histCount = 0
-			clickedButton = true
-		}
-		if mx >= themeBtnX && mx < themeBtnX+themeBtnW && my >= themeBtnY && my < themeBtnY+themeBtnH {
-			g.isDarkBackground = !g.isDarkBackground
-			clickedButton = true
-		}
-		if g.selectedCreatureID != -1 {
-			saveBtnX, saveBtnY := detailPanelX+detailTpad, detailPanelY+detailPanelH-detailTpad-detailSaveBtnH
-			if mx >= saveBtnX && mx < saveBtnX+(detailPanelW-detailTpad*2) && my >= saveBtnY && my < saveBtnY+detailSaveBtnH {
-				if err := g.sim.SaveCreature(g.selectedCreatureID); err != nil {
-					g.saveFeedback = "Save failed"
-				} else {
-					g.saveFeedback = "Saved!"
-				}
-				g.saveFeedbackAt = time.Now()
-				clickedButton = true
-			}
-		}
-		if !clickedButton {
-			g.trySelectCreature(mx, my)
-		}
-	}
 	return nil
 }
 
@@ -402,12 +454,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			g.selectedCreatureID = -1
 		}
 	}
-
-	g.drawFOVButton(screen)
-	g.drawPauseButton(screen)
-	g.drawNewGameButton(screen)
-	g.drawThemeButton(screen)
-	g.drawSpawnMutSlider(screen)
+	g.pauseBtn.Draw(screen, g.statFont)
+	g.themeBtn.Draw(screen, g.statFont)
+	g.newGameBtn.Draw(screen, g.statFont)
+	g.fovBtn.Draw(screen, g.statFont)
+	if g.spawnMutSlider != nil {
+		g.drawSpawnMutSlider(screen)
+	}
 
 	g.addStatLine(screen, "Population", fmt.Sprintf("%d", g.sim.PopulationCount()), 1)
 	g.addStatLine(screen, "Food", fmt.Sprintf("%d", g.sim.FoodCount()), 2)
@@ -416,40 +469,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		tickRate := 1.0 / g.tickDuration.Seconds()
 		g.addStatLine(screen, "Tick Rate", fmt.Sprintf("%.0f/s", tickRate), 4)
 	}
-}
-
-func (g *Game) drawPauseButton(screen *ebiten.Image) {
-	var bg color.RGBA
-	label := "Pause"
-	if g.paused {
-		bg = color.RGBA{50, 140, 80, 220}
-		label = "Resume"
-	} else {
-		bg = color.RGBA{80, 80, 50, 220}
-	}
-	vector.DrawFilledRect(screen, pauseBtnX, pauseBtnY, pauseBtnW, pauseBtnH, bg, false)
-	text.Draw(screen, label, g.statFont, pauseBtnX+10, pauseBtnY+17, color.White)
-}
-
-func (g *Game) drawNewGameButton(screen *ebiten.Image) {
-	bg := color.RGBA{80, 50, 50, 220}
-	vector.DrawFilledRect(screen, newGameBtnX, newGameBtnY, newGameBtnW, newGameBtnH, bg, false)
-	text.Draw(screen, "New Game", g.statFont, newGameBtnX+5, newGameBtnY+17, color.White)
-}
-
-func (g *Game) drawThemeButton(screen *ebiten.Image) {
-	bg := color.RGBA{60, 60, 60, 220}
-	vector.DrawFilledRect(screen, themeBtnX, themeBtnY, themeBtnW, themeBtnH, bg, false)
-	text.Draw(screen, "Theme", g.statFont, themeBtnX+12, themeBtnY+17, color.White)
-}
-
-func (g *Game) drawFOVButton(screen *ebiten.Image) {
-	bg := color.RGBA{50, 50, 70, 220}
-	if g.showFOV {
-		bg = color.RGBA{80, 120, 200, 220}
-	}
-	vector.DrawFilledRect(screen, fovBtnX, fovBtnY, fovBtnW, fovBtnH, bg, false)
-	text.Draw(screen, "FOV", g.statFont, fovBtnX+8, fovBtnY+17, color.White)
 }
 
 func (g *Game) drawFOVCones(screen *ebiten.Image, views []simulation.CreatureView, t float64) {
@@ -511,129 +530,255 @@ func (g *Game) drawSelectionHighlight(screen *ebiten.Image) {
 		vector.StrokeCircle(screen, float32(anim.curX)+float32(BlockSize)/2, float32(anim.curY)+float32(BlockSize)/2, float32(BlockSize)*5, 1.5, color.RGBA{255, 240, 80, 210}, false)
 	}
 }
-
 func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDetailView) {
-	const tpad = detailTpad
-	px, py, pw, ph := float32(detailPanelX), float32(detailPanelY), float32(detailPanelW), float32(detailPanelH)
+	p := g.detailsPanel
+	p.Draw(screen, false) // The main panel background
 
-	vector.DrawFilledRect(screen, px, py, pw, ph, color.RGBA{8, 10, 22, 215}, false)
-	vector.StrokeRect(screen, px, py, pw, ph, 1, color.RGBA{90, 90, 150, 255}, false)
+	currX, currY := p.X+detailTpad, p.Y+16
 
-	tx, ty := int(px)+tpad, int(py)+16
+	// Title
+	title := &components.Label{Text: fmt.Sprintf("Creature #%d", d.ID), Font: g.statFont, Color: color.RGBA{255, 220, 80, 255}}
+	_, h := title.Draw(screen, currX, currY)
+	currY += h + 4
 
-	text.Draw(screen, fmt.Sprintf("Creature #%d", d.ID), g.statFont, tx, ty, color.RGBA{255, 220, 80, 255})
-	ty += 22
+	// Energy Section
+	energyTxt := &components.Label{Text: fmt.Sprintf("Energy %.f/%d", d.Energy, d.MaxEnergy), Font: g.statFont, Color: color.White}
+	energyTxt.Draw(screen, currX, currY)
+	currY += 5
 
-	frac := d.Energy / float32(d.MaxEnergy)
-	if frac < 0 {
-		frac = 0
-	} else if frac > 1 {
-		frac = 1
+	eBar := &components.EnergyBar{Value: d.Energy, Max: float32(d.MaxEnergy), Width: p.W - (detailTpad * 2)}
+	_, h = eBar.Draw(screen, currX, currY)
+	currY += h + 15
+
+	// Action Line
+	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %d", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
+	mass.Draw(screen, currX, currY)
+	currY += h + 15
+	sight := &components.Label{Text: fmt.Sprintf("Sight: %d  FOV: %d°", d.SightDistance, d.FieldOfView), Font: g.statFont, Color: color.White}
+	sight.Draw(screen, currX, currY)
+	currY += h + 15
+	layers := &components.Label{Text: fmt.Sprintf("Layers: %d  Genes: %d", d.NeuronCount, d.BrainLength), Font: g.statFont, Color: color.White}
+	layers.Draw(screen, currX, currY)
+	currY += h + 15
+	mutation := &components.Label{Text: fmt.Sprintf("Mutation:  %.2f%%", d.MutationPct), Font: g.statFont, Color: color.White}
+	mutation.Draw(screen, currX, currY)
+	currY += h + 15
+	age := &components.Label{Text: fmt.Sprintf("Age  %d", d.Age), Font: g.statFont, Color: color.White}
+	age.Draw(screen, currX, currY)
+	currY += h + 25
+	// Colour swatch + lab
+
+	// Draw the chart at the fixed location
+	g.drawPhenotypeChart(screen, d, currX, currY)
+
+	// Save Button anchored to the bottom
+	sBtn := &components.Button{
+		Label: "Save Genome",
+		X:     int(currX),
+		Y:     int(currY) + 150,
+		W:     int(p.W - (detailTpad * 2)),
+		H:     int(detailSaveBtnH),
+		Color: color.RGBA{40, 100, 60, 220},
+		OnClick: func() {
+			if err := g.sim.SaveCreature(g.selectedCreatureID); err != nil {
+				g.saveFeedback = "Save failed"
+			} else {
+				g.saveFeedback = "Saved!"
+			}
+			g.saveFeedbackAt = time.Now()
+		},
 	}
-	text.Draw(screen, fmt.Sprintf("Energy  %.0f / %.0f", d.Energy, float32(d.MaxEnergy)), g.statFont, tx, ty, color.White)
-	barX, barW, barY := px+float32(tpad), pw-float32(tpad)*2, float32(ty+2)
-	vector.DrawFilledRect(screen, barX, barY, barW, 6, color.RGBA{35, 35, 35, 255}, false)
-	vector.DrawFilledRect(screen, barX, barY, barW*frac, 6, creatureEnergyBarColor(frac), false)
-	ty += 26
+	sBtn.Draw(screen, g.statFont)
+}
 
-	text.Draw(screen, fmt.Sprintf("Age  %d", d.Age), g.statFont, tx, ty, color.White)
-	ty += 18
-	text.Draw(screen, fmt.Sprintf("Action  %s", d.LastAction), g.statFont, tx, ty, color.RGBA{160, 220, 160, 255})
-	ty += 20
-	vector.DrawFilledRect(screen, px+4, float32(ty)-6, pw-8, 1, color.RGBA{70, 70, 100, 255}, false)
+func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDetailView, x, y float32) {
+	const chartSize = 64.0
+	const barWidth = 10.0
+	const spacing = 14.0
+	const barLabelOffset = 14.0
 
-	text.Draw(screen, fmt.Sprintf("Mass  %.0f / %d", d.CurrentMass, d.AdultMass), g.statFont, tx, ty, color.White)
-	ty += 18
-	text.Draw(screen, fmt.Sprintf("Sight %d  FOV %d°", d.SightDistance, d.FieldOfView), g.statFont, tx, ty, color.White)
-	ty += 18
-	text.Draw(screen, fmt.Sprintf("Layers %d  Genes %d", d.NeuronCount, d.BrainLength), g.statFont, tx, ty, color.White)
-	ty += 18
-	text.Draw(screen, fmt.Sprintf("Mutation  %.2f%%", d.MutationPct), g.statFont, tx, ty, color.White)
-	ty += 20
+	// 1. Draw Title
+	text.Draw(screen, "GENETIC PROFILE", g.statFont, int(x), int(y)-12, color.RGBA{120, 120, 180, 255})
 
-	// Colour swatch + label
-	text.Draw(screen, "Color", g.statFont, tx, ty, color.White)
-	vector.DrawFilledRect(screen, float32(tx+52), float32(ty-11), 18, 14, color.RGBA{d.R, d.G, d.B, 255}, false)
-	ty += 18
-
-	// Metabolic rate
-	text.Draw(screen, fmt.Sprintf("Metab  %.2f/t", d.MetabolicRate), g.statFont, tx, ty, color.White)
-	ty += 18
-
-	// Max age
-	text.Draw(screen, fmt.Sprintf("Max Age  %d", d.MaxAge), g.statFont, tx, ty, color.White)
-
-	ty += 50
-	chartSize := float32(64)
-	chartX, chartY := float32(tx)+5, float32(ty)
-	text.Draw(screen, "GENETIC PROFILE", g.statFont, tx, int(chartY)-12, color.RGBA{120, 120, 180, 255})
-
+	// 2. Draw Gradient Square
 	step := float32(2)
 	for gy := float32(0); gy < chartSize; gy += step {
+		// Y-axis: Intelligence (Green). 1.0 (Top) to 0.0 (Bottom)
 		gVal := uint8((1.0-(gy/chartSize))*185) + 70
 		for rx := float32(0); rx < chartSize; rx += step {
+			// X-axis: Physicality (Red). 0.0 (Left) to 1.0 (Right)
 			rVal := uint8((rx/chartSize)*185) + 70
-			vector.DrawFilledRect(screen, chartX+rx, chartY+gy, step, step, color.RGBA{rVal, gVal, d.B, 255}, false)
+			vector.DrawFilledRect(screen, x+rx, y+gy, step, step, color.RGBA{rVal, gVal, d.B, 255}, false)
 		}
 	}
 
-	rPerc := (float32(d.R-70) / 185.0)
-	gPerc := (float32(d.G-70) / 185.0)
-	if rPerc < 0 {
-		rPerc = 0
-	} else if rPerc > 1 {
-		rPerc = 1
-	}
-	if gPerc < 0 {
-		gPerc = 0
-	} else if gPerc > 1 {
-		gPerc = 1
-	}
+	// 3. Draw Crosshair
+	rPerc := clamp((float32(d.R) - 70) / 185)
+	gPerc := clamp((float32(d.G) - 70) / 185)
 
-	cx, cy := chartX+(rPerc*chartSize), chartY+(chartSize-(gPerc*chartSize))
-	vector.StrokeLine(screen, cx, chartY, cx, chartY+chartSize, 1, color.White, false)
-	vector.StrokeLine(screen, chartX, cy, chartX+chartSize, cy, 1, color.White, false)
+	cx := x + (rPerc * chartSize)
+	cy := y + (chartSize - (gPerc * chartSize))
 
-	mx, mw, spc := chartX+chartSize+15, float32(10), float32(14)
-	stats := []struct {
+	vector.StrokeLine(screen, cx, y, cx, y+chartSize, 1, color.White, false)
+	vector.StrokeLine(screen, x, cy, x+chartSize, cy, 1, color.White, false)
+
+	// 4. Draw Quad-Bar Meter Group (I, P, S, M)
+	mx := x + chartSize + 15
+	meters := []struct {
 		val float32
 		clr color.RGBA
 		lbl string
 	}{
-		{float32(d.G-70) / 185, color.RGBA{100, 255, 100, 255}, "I"},
-		{float32(d.R-70) / 185, color.RGBA{255, 100, 100, 255}, "P"},
-		{float32(d.B-70) / 185, color.RGBA{100, 150, 255, 255}, "S"},
-		{d.MutationPct / 100, color.RGBA{255, 100, 255, 255}, "M"},
+		{gPerc, color.RGBA{100, 255, 100, 255}, "I"},
+		{rPerc, color.RGBA{255, 100, 100, 255}, "P"},
+		{clamp((float32(d.B) - 70) / 185), color.RGBA{100, 150, 255, 255}, "S"},
+		{clamp(d.MutationPct / 100.0), color.RGBA{255, 100, 255, 255}, "M"},
 	}
 
-	for i, s := range stats {
-		currX := mx + float32(i)*spc
-		v := s.val
-		if v < 0 {
-			v = 0
-		} else if v > 1 {
-			v = 1
-		}
-		vector.DrawFilledRect(screen, currX, chartY, mw, chartSize, color.RGBA{20, 20, 25, 255}, false)
-		vector.DrawFilledRect(screen, currX, chartY+(chartSize-(v*chartSize)), mw, v*chartSize, s.clr, false)
-		text.Draw(screen, s.lbl, g.statFont, int(currX)+2, int(chartY+chartSize)+14, s.clr)
-	}
-
-	btnH, btnW := float32(detailSaveBtnH), pw-float32(tpad)*2
-	btnX, btnY := px+float32(tpad), py+ph-float32(detailSaveBtnH)-float32(tpad)
-
-	vector.DrawFilledRect(screen, btnX, btnY, btnW, btnH, color.RGBA{40, 100, 60, 220}, false)
-	msg := "Save Genome"
-	b, _ := font.BoundString(g.statFont, msg)
-	tw, th := (b.Max.X - b.Min.X).Ceil(), (b.Max.Y - b.Min.Y).Ceil()
-	text.Draw(screen, msg, g.statFont, int(btnX+btnW/2)-tw/2, int(btnY+btnH/2)+th/2, color.White)
-
-	if !g.saveFeedbackAt.IsZero() && time.Since(g.saveFeedbackAt) < 3*time.Second {
-		fb, _ := font.BoundString(g.statFont, g.saveFeedback)
-		fw := (fb.Max.X - fb.Min.X).Ceil()
-		text.Draw(screen, g.saveFeedback, g.statFont, int(btnX+btnW/2)-fw/2, int(btnY)-10, color.RGBA{255, 255, 255, 180})
+	for i, m := range meters {
+		currX := mx + float32(i)*spacing
+		// Background track
+		vector.DrawFilledRect(screen, currX, y, barWidth, chartSize, color.RGBA{20, 20, 25, 255}, false)
+		// Foreground fill
+		vector.DrawFilledRect(screen, currX, y+(chartSize-(m.val*chartSize)), barWidth, m.val*chartSize, m.clr, false)
+		// Label
+		text.Draw(screen, m.lbl, g.statFont, int(currX)+2, int(y+chartSize)+barLabelOffset, m.clr)
 	}
 }
+
+// Helper to keep logic clean
+func clamp(v float32) float32 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDetailView) {
+// 	const tpad = detailTpad
+// 	px, py, pw, ph := float32(detailPanelX), float32(detailPanelY), float32(detailPanelW), float32(detailPanelH)
+
+// 	vector.DrawFilledRect(screen, px, py, pw, ph, color.RGBA{8, 10, 22, 215}, false)
+// 	vector.StrokeRect(screen, px, py, pw, ph, 1, color.RGBA{90, 90, 150, 255}, false)
+
+// 	tx, ty := int(px)+tpad, int(py)+16
+
+// 	text.Draw(screen, fmt.Sprintf("Creature #%d", d.ID), g.statFont, tx, ty, color.RGBA{255, 220, 80, 255})
+// 	ty += 22
+
+// 	frac := d.Energy / float32(d.MaxEnergy)
+// 	if frac < 0 {
+// 		frac = 0
+// 	} else if frac > 1 {
+// 		frac = 1
+// 	}
+// 	text.Draw(screen, fmt.Sprintf("Energy  %.0f / %.0f", d.Energy, float32(d.MaxEnergy)), g.statFont, tx, ty, color.White)
+// 	barX, barW, barY := px+float32(tpad), pw-float32(tpad)*2, float32(ty+2)
+// 	vector.DrawFilledRect(screen, barX, barY, barW, 6, color.RGBA{35, 35, 35, 255}, false)
+// 	vector.DrawFilledRect(screen, barX, barY, barW*frac, 6, creatureEnergyBarColor(frac), false)
+// 	ty += 26
+
+// 	text.Draw(screen, fmt.Sprintf("Age  %d", d.Age), g.statFont, tx, ty, color.White)
+// 	ty += 18
+// 	text.Draw(screen, fmt.Sprintf("Action  %s", d.LastAction), g.statFont, tx, ty, color.RGBA{160, 220, 160, 255})
+// 	ty += 20
+// 	vector.DrawFilledRect(screen, px+4, float32(ty)-6, pw-8, 1, color.RGBA{70, 70, 100, 255}, false)
+
+// 	text.Draw(screen, fmt.Sprintf("Mass  %.0f / %d", d.CurrentMass, d.AdultMass), g.statFont, tx, ty, color.White)
+// 	ty += 18
+// 	text.Draw(screen, fmt.Sprintf("Sight %d  FOV %d°", d.SightDistance, d.FieldOfView), g.statFont, tx, ty, color.White)
+// 	ty += 18
+// 	text.Draw(screen, fmt.Sprintf("Layers %d  Genes %d", d.NeuronCount, d.BrainLength), g.statFont, tx, ty, color.White)
+// 	ty += 18
+// 	text.Draw(screen, fmt.Sprintf("Mutation  %.2f%%", d.MutationPct), g.statFont, tx, ty, color.White)
+// 	ty += 20
+
+// 	// Colour swatch + label
+// 	text.Draw(screen, "Color", g.statFont, tx, ty, color.White)
+// 	vector.DrawFilledRect(screen, float32(tx+52), float32(ty-11), 18, 14, color.RGBA{d.R, d.G, d.B, 255}, false)
+// 	ty += 18
+
+// 	// Metabolic rate
+// 	text.Draw(screen, fmt.Sprintf("Metab  %.2f/t", d.MetabolicRate), g.statFont, tx, ty, color.White)
+// 	ty += 18
+
+// 	// Max age
+// 	text.Draw(screen, fmt.Sprintf("Max Age  %d", d.MaxAge), g.statFont, tx, ty, color.White)
+
+// 	ty += 50
+// 	chartSize := float32(64)
+// 	chartX, chartY := float32(tx)+5, float32(ty)
+// 	text.Draw(screen, "GENETIC PROFILE", g.statFont, tx, int(chartY)-12, color.RGBA{120, 120, 180, 255})
+
+// 	step := float32(2)
+// 	for gy := float32(0); gy < chartSize; gy += step {
+// 		gVal := uint8((1.0-(gy/chartSize))*185) + 70
+// 		for rx := float32(0); rx < chartSize; rx += step {
+// 			rVal := uint8((rx/chartSize)*185) + 70
+// 			vector.DrawFilledRect(screen, chartX+rx, chartY+gy, step, step, color.RGBA{rVal, gVal, d.B, 255}, false)
+// 		}
+// 	}
+
+// 	rPerc := (float32(d.R-70) / 185.0)
+// 	gPerc := (float32(d.G-70) / 185.0)
+// 	if rPerc < 0 {
+// 		rPerc = 0
+// 	} else if rPerc > 1 {
+// 		rPerc = 1
+// 	}
+// 	if gPerc < 0 {
+// 		gPerc = 0
+// 	} else if gPerc > 1 {
+// 		gPerc = 1
+// 	}
+
+// 	cx, cy := chartX+(rPerc*chartSize), chartY+(chartSize-(gPerc*chartSize))
+// 	vector.StrokeLine(screen, cx, chartY, cx, chartY+chartSize, 1, color.White, false)
+// 	vector.StrokeLine(screen, chartX, cy, chartX+chartSize, cy, 1, color.White, false)
+
+// 	mx, mw, spc := chartX+chartSize+15, float32(10), float32(14)
+// 	stats := []struct {
+// 		val float32
+// 		clr color.RGBA
+// 		lbl string
+// 	}{
+// 		{float32(d.G-70) / 185, color.RGBA{100, 255, 100, 255}, "I"},
+// 		{float32(d.R-70) / 185, color.RGBA{255, 100, 100, 255}, "P"},
+// 		{float32(d.B-70) / 185, color.RGBA{100, 150, 255, 255}, "S"},
+// 		{d.MutationPct / 100, color.RGBA{255, 100, 255, 255}, "M"},
+// 	}
+
+// 	for i, s := range stats {
+// 		currX := mx + float32(i)*spc
+// 		v := s.val
+// 		if v < 0 {
+// 			v = 0
+// 		} else if v > 1 {
+// 			v = 1
+// 		}
+// 		vector.DrawFilledRect(screen, currX, chartY, mw, chartSize, color.RGBA{20, 20, 25, 255}, false)
+// 		vector.DrawFilledRect(screen, currX, chartY+(chartSize-(v*chartSize)), mw, v*chartSize, s.clr, false)
+// 		text.Draw(screen, s.lbl, g.statFont, int(currX)+2, int(chartY+chartSize)+14, s.clr)
+// 	}
+
+// 	btnH, btnW := float32(detailSaveBtnH), pw-float32(tpad)*2
+// 	btnX, btnY := px+float32(tpad), py+ph-float32(detailSaveBtnH)-float32(tpad)
+
+// 	vector.DrawFilledRect(screen, btnX, btnY, btnW, btnH, color.RGBA{40, 100, 60, 220}, false)
+// 	msg := "Save Genome"
+// 	b, _ := font.BoundString(g.statFont, msg)
+// 	tw, th := (b.Max.X - b.Min.X).Ceil(), (b.Max.Y - b.Min.Y).Ceil()
+// 	text.Draw(screen, msg, g.statFont, int(btnX+btnW/2)-tw/2, int(btnY+btnH/2)+th/2, color.White)
+
+// 	if !g.saveFeedbackAt.IsZero() && time.Since(g.saveFeedbackAt) < 3*time.Second {
+// 		fb, _ := font.BoundString(g.statFont, g.saveFeedback)
+// 		fw := (fb.Max.X - fb.Min.X).Ceil()
+// 		text.Draw(screen, g.saveFeedback, g.statFont, int(btnX+btnW/2)-fw/2, int(btnY)-10, color.RGBA{255, 255, 255, 180})
+// 	}
+// }
 
 func (g *Game) applySpawnMutSlider(mx int) {
 	t := float32(mx-spawnMutTrackX) / float32(spawnMutTrackW)
@@ -652,16 +797,6 @@ func (g *Game) drawSpawnMutSlider(screen *ebiten.Image) {
 	t := (float64(g.spawnMutRate) - spawnMutRateMin) / (spawnMutRateMax - spawnMutRateMin)
 	vector.DrawFilledRect(screen, float32(spawnMutTrackX), float32(spawnMutTrackY), float32(spawnMutTrackW)*float32(t), float32(spawnMutTrackH), color.RGBA{80, 140, 210, 255}, false)
 	text.Draw(screen, fmt.Sprintf("Mut: %.4f", g.spawnMutRate), g.statFont, spawnMutSliderX+5, spawnMutSliderY+17, color.White)
-}
-
-func creatureEnergyBarColor(frac float32) color.RGBA {
-	if frac > 0.65 {
-		return color.RGBA{55, 185, 55, 255}
-	}
-	if frac > 0.33 {
-		return color.RGBA{190, 175, 45, 255}
-	}
-	return color.RGBA{190, 55, 55, 255}
 }
 
 // drawHistoryGraph renders a semi-transparent line graph of population and food
