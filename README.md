@@ -8,7 +8,7 @@ Heavily inspired by https://github.com/davidrmiller/biosim4/tree/main/src
 
 This project simulates natural selection and genetic inheritence.
 
-![Screenshot of the simulation.](,/images/screen-capture.PNG)
+![Screenshot of the simulation.](./images/screen-capture.PNG)
 
 Creatures in this simulation have:
 - A set of possible sensors for the world (Population ahead, last move direction, boundaries...)
