@@ -147,7 +147,7 @@ func NewGame(sim SimulationState) *Game {
 		isDarkBackground:   true,
 	}
 	g.pauseBtn = &components.Button{
-		X: 90, Y: 10, W: 80, H: 24,
+		X: 10, Y: 10, W: 80, H: 24,
 		Label:      "Pause",
 		Color:      components.ColorButtonRed,
 		LabelColor: color.White,
@@ -164,7 +164,7 @@ func NewGame(sim SimulationState) *Game {
 		},
 	}
 	g.newGameBtn = &components.Button{
-		X: 180, Y: 10, W: 90, H: 24,
+		X: 100, Y: 10, W: 90, H: 24,
 		Label:      "Restart",
 		Color:      components.ColorDefault,
 		LabelColor: color.White,
@@ -186,7 +186,7 @@ func NewGame(sim SimulationState) *Game {
 		},
 	}
 	g.themeBtn = &components.Button{
-		X: 280, Y: 10, W: 100, H: 24,
+		X: 200, Y: 10, W: 100, H: 24,
 		Label:      "Theme",
 		Color:      components.ColorDefault,
 		LabelColor: color.White,
@@ -195,7 +195,7 @@ func NewGame(sim SimulationState) *Game {
 		},
 	}
 	g.spawnMutSlider = &components.Slider{
-		X: 395, Y: 10, W: 240, H: 24,
+		X: 315, Y: 10, W: 240, H: 24,
 		TrackX: 530, TrackW: 100,
 		Label:      "Mutation Rate",
 		Color:      components.ColorDefault,
@@ -211,13 +211,20 @@ func NewGame(sim SimulationState) *Game {
 		BaseColor: color.RGBA{8, 10, 22, 215},   // Dark translucent navy
 		Border:    color.RGBA{90, 90, 150, 255}, // Muted blue-gray
 	}
-	wallThickness := 10.0
-	cx := float64(sim.GridWidth()) / 2
+	const wallThickness = 10.0
 	bs := float64(BlockSize)
+	cx := float64(sim.GridWidth()) / 2
+	cy := float64(sim.GridHeight()) / 2
 
+	// Vertical bar of the cross
 	g.renderGrid.AddLine(
 		(cx-wallThickness/2)*bs, float64(sim.GridHeight())/4*bs,
-		(cx+wallThickness/2)*bs, (float64(sim.GridHeight())/4+float64(sim.GridHeight())/2)*bs,
+		(cx+wallThickness/2)*bs, float64(sim.GridHeight())*3/4*bs,
+	)
+	// Horizontal bar of the cross
+	g.renderGrid.AddLine(
+		float64(sim.GridWidth())/4*bs, (cy-wallThickness/2)*bs,
+		float64(sim.GridWidth())*3/4*bs, (cy+wallThickness/2)*bs,
 	)
 	return g
 }
