@@ -87,7 +87,7 @@ func DefaultParams() *Parameters {
 		SexualReproductionSimilarityMax: 0.98,
 		ResponseCurveKFactor:            2,
 		MaxExpectedAge:                  50000,
-		BaseMaxAge:                      30000,
+		BaseMaxAge:                      5000,
 		MinJuvenilePeriod:               300,
 		MaxJuvenilePeriod:               1000,
 		MaxFood:                         15000,
