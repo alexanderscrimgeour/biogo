@@ -47,15 +47,23 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		}
 
 		currentWeight := c.Nnet.Weights[i]
+		isAction := gene.SinkType == ACTION
+		isNeuron := gene.SinkType == NEURON
 
-		if gene.SinkType == ACTION {
+		if isAction {
 			actionLevels[gene.SinkID] += inputVal * currentWeight
 		} else {
 			neuronAccumulators[gene.SinkID] += inputVal * currentWeight
 		}
 
-		if gene.SinkType == NEURON {
-			sinkOutput := c.Nnet.HiddenNeurons[gene.SinkID].Output
+		if isNeuron || (isAction && len(c.Nnet.HiddenNeurons) == 0) {
+			var sinkOutput float32
+			if isNeuron {
+				sinkOutput = c.Nnet.HiddenNeurons[gene.SinkID].Output
+			} else {
+				// For Actions, we use the current accumulated signal as the "output"
+				sinkOutput = actionLevels[gene.SinkID]
+			}
 			correlation := inputVal * sinkOutput
 
 			energyThreshold := float32(c.Genome.MaxEnergy) * 0.6

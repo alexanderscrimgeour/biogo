@@ -6,7 +6,7 @@ const (
 	// Neurons are treated differently to sensors/actions.
 	NEURON = 0
 	SENSOR = 1
-	ACTION = 1
+	ACTION = 2
 )
 
 type Neuron struct {
@@ -235,7 +235,7 @@ func convertGenesToNeuronIDs(genes []*Gene, neuronCount byte) []*Gene {
 			new.SourceID %= neuronCount
 		} else {
 			// Reset the type in case of Neurons with neuronCount == 0
-			new.SourceType = 1
+			new.SourceType = SENSOR
 			new.SourceID %= SENSOR_COUNT
 		}
 
@@ -244,7 +244,7 @@ func convertGenesToNeuronIDs(genes []*Gene, neuronCount byte) []*Gene {
 			new.SinkID %= neuronCount
 		} else {
 			// Reset the type in case of Neurons with neuronCount == 0
-			new.SinkType = 1
+			new.SinkType = ACTION
 			new.SinkID %= ACTION_COUNT
 		}
 		newGenes[i] = &new
