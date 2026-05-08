@@ -164,7 +164,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	c.Age++
 	c.GrowMass(s.Params)
 	c.LastAction = ""
-	c.Energy -= c.MetabolicRate(s.Params)
+	c.DrainEnergy(c.MetabolicRate(s.Params))
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
 		pending.death = append(pending.death, DeathInstruction{c})
 		return
@@ -189,7 +189,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	if IsActionEnabled(DO_NOTHING) {
 		level := actionLevels[DO_NOTHING]
 		if level > 0 && prob2Bool(float64(level)) == 1 {
-			c.Energy += c.MetabolicRate(s.Params)
+			c.DrainEnergy(c.MetabolicRate(s.Params) / 2)
 			c.LastAction = appendActionString(c.LastAction, "Resting")
 			return
 		}
@@ -233,12 +233,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	}
 	rotateAmount := math.Tanh(rotateLeft-rotateRight) * float64(responseAdjust) * s.Params.MaxRotationPerStep
 	if rotateAmount != 0 {
-		rotationCostFactor := 0.5
-		maxE := float32(c.Genome.MaxEnergy)
-		c.Energy -= s.Params.MoveCost * float32(math.Abs(rotateAmount)) * float32(rotationCostFactor)
-		if c.Energy > maxE {
-			c.Energy = maxE
-		}
+		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5)
 		c.LastAction = appendActionString(c.LastAction, "Rotating")
 	}
 	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
@@ -271,7 +266,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 	if !s.World.IsWall(newPos) {
-		c.Energy -= s.Params.MoveCost * float32(math.Abs(moveAmount))
+		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)))
 		c.LastAction = appendActionString(c.LastAction, "Moving")
 		pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
 	}

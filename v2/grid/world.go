@@ -8,6 +8,14 @@ import (
 // StartingCreatureID is the first valid creature ID; 0 is reserved for "empty".
 const StartingCreatureID = 1
 
+type FoodSpawnMode int
+
+const (
+	SpawnRandom FoodSpawnMode = iota
+	SpawnClustered
+	SpawnTrail
+)
+
 // Wall is an axis-aligned rectangular obstacle in world-space.
 type Wall struct {
 	X, Y, W, H float64
@@ -22,11 +30,13 @@ type World struct {
 	creaturePos map[int]Position
 	cBuckets    map[[2]int]map[int]bool
 
-	foodPos    map[int]Position
-	fBuckets   map[[2]int]map[int]bool
-	nextFoodID int
-
-	bucketSize float64
+	foodPos      map[int]Position
+	fBuckets     map[[2]int]map[int]bool
+	nextFoodID   int
+	spawnMode    FoodSpawnMode
+	lastPatchPos Position
+	lastAngle    float64
+	bucketSize   float64
 }
 
 func NewWorld(width, height float64, wallType int) *World {
@@ -38,6 +48,7 @@ func NewWorld(width, height float64, wallType int) *World {
 		foodPos:     make(map[int]Position),
 		fBuckets:    make(map[[2]int]map[int]bool),
 		bucketSize:  20.0,
+		spawnMode:   SpawnTrail,
 	}
 	w.createWalls(wallType)
 	return w
@@ -264,31 +275,92 @@ func (w *World) FindEmptyLocation() (Position, bool) {
 	return Position{}, false
 }
 
-// SpawnFood places n food items in the world using a clustered patch distribution.
-// patchRadius controls the spread of each cluster; patchSize limits items per cluster.
-// Bounds-clamped sampling eliminates per-item retries while guaranteeing in-bounds placement.
+// SpawnFood is now a high-level dispatcher
 func (w *World) SpawnFood(n int, patchRadius float64, patchSize int) {
+	switch w.spawnMode {
+	case SpawnRandom:
+		w.spawnRandom(n)
+	case SpawnClustered:
+		w.spawnClustered(n, patchRadius, patchSize)
+	case SpawnTrail:
+		w.spawnTrail(n, patchRadius, patchSize)
+	}
+}
+func (w *World) spawnTrail(n int, patchRadius float64, patchSize int) {
+	totalSpawned := 0
+	stepDist := patchRadius * 1.5
+
+	for totalSpawned < n {
+		var nextCenter Position
+
+		if w.lastPatchPos.X == 0 && w.lastPatchPos.Y == 0 {
+			nextCenter, _ = w.FindEmptyLocation()
+			w.lastAngle = rand.Float64() * 2 * math.Pi
+		} else {
+			foundValid := false
+			for attempts := 0; attempts < 15; attempts++ {
+				angleOffset := (rand.Float64() * math.Pi) - (math.Pi / 2)
+				currentAngle := w.lastAngle + angleOffset
+
+				candidate := Position{
+					X: w.lastPatchPos.X + math.Cos(currentAngle)*stepDist,
+					Y: w.lastPatchPos.Y + math.Sin(currentAngle)*stepDist,
+				}
+
+				if w.IsInBounds(candidate) && !w.IsWall(candidate) {
+					nextCenter = candidate
+					w.lastAngle = currentAngle
+					foundValid = true
+					break
+				}
+
+				w.lastAngle += math.Pi / 4
+			}
+
+			if !foundValid {
+				nextCenter, _ = w.FindEmptyLocation()
+				w.lastAngle = rand.Float64() * 2 * math.Pi
+			}
+		}
+
+		w.lastPatchPos = nextCenter
+		totalSpawned += w.placeClusterAt(nextCenter, n-totalSpawned, patchRadius, patchSize)
+	}
+}
+
+func (w *World) placeClusterAt(center Position, remainingN int, radius float64, size int) int {
+	spawned := 0
+	for i := 0; i < size && spawned < remainingN; i++ {
+		angle := rand.Float64() * 2 * math.Pi
+		dist := radius * math.Sqrt(rand.Float64())
+		pos := Position{
+			X: center.X + math.Cos(angle)*dist,
+			Y: center.Y + math.Sin(angle)*dist,
+		}
+		if w.IsInBounds(pos) && !w.IsWall(pos) {
+			w.AddFood(pos)
+			spawned++
+		}
+	}
+	return spawned
+}
+
+func (w *World) spawnRandom(n int) {
+	for i := 0; i < n; i++ {
+		pos, ok := w.FindEmptyLocation()
+		if ok {
+			w.AddFood(pos)
+		}
+	}
+}
+
+func (w *World) spawnClustered(n int, patchRadius float64, patchSize int) {
 	totalSpawned := 0
 	for totalSpawned < n {
 		seed, ok := w.FindEmptyLocation()
 		if !ok {
 			break
 		}
-		minX := math.Max(0, seed.X-patchRadius)
-		maxX := math.Min(w.Width, seed.X+patchRadius)
-		minY := math.Max(0, seed.Y-patchRadius)
-		maxY := math.Min(w.Height, seed.Y+patchRadius)
-		rangeX := maxX - minX
-		rangeY := maxY - minY
-		for i := 0; i < patchSize && totalSpawned < n; i++ {
-			pos := Position{
-				X: minX + rand.Float64()*rangeX,
-				Y: minY + rand.Float64()*rangeY,
-			}
-			if !w.IsWall(pos) {
-				w.AddFood(pos)
-				totalSpawned++
-			}
-		}
+		totalSpawned += w.placeClusterAt(seed, n-totalSpawned, patchRadius, patchSize)
 	}
 }

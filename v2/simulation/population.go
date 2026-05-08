@@ -118,8 +118,10 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 					}
 				}
 				maxE := float32(c.Genome.MaxEnergy)
-				c.Energy = utils.MinFloat32(maxE, c.Energy+params.FoodEnergyFraction*maxE)
-				w.RemoveFood(closestID)
+				if c.Energy <= 0.9*maxE {
+					c.GainEnergy(params.FoodEnergyFraction * maxE)
+					w.RemoveFood(closestID)
+				}
 			}
 
 			// Eat the closest corpse within interaction radius.
@@ -152,7 +154,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 						massRatio := target.Mass / float32(params.MaxMass)
 						gain := massRatio * maxE
 
-						c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
+						c.GainEnergy(gain)
 
 						// Scavenger consumes the whole corpse
 						w.RemoveCreature(closestCreatureID)
@@ -189,11 +191,10 @@ func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
 			meatAmount = target.Mass
 		}
 
-		massRatio := meatAmount / float32(params.MaxMass)
 		maxE := float32(predator.Genome.MaxEnergy)
-		gain := massRatio * maxE
+		gain := meatAmount / float32(params.MaxMass) * maxE
 
-		predator.Energy = utils.MinFloat32(maxE, predator.Energy+gain)
+		predator.GainEnergy(gain)
 		target.Alive = false
 		w.RemoveCreature(instruction.TargetID)
 		delete(p.Creatures, instruction.TargetID)
@@ -263,7 +264,7 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 		}
 
 		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
-		parent.Energy -= cost
+		parent.DrainEnergy(cost)
 
 		// Halve parent's body mass; the parent must regrow before reproducing again.
 		halfMass := parent.Mass / 2

@@ -62,6 +62,7 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	foodPos := grid.Position{X: 7, Y: 5} // within FoodInteractionRadius of destPos, not at exact position
 
 	creature := simulation.NewCreature(1, startPos, genome)
+	creature.Heading = 0 // east, so food at (7,5) is in the forward cone
 	creature.Energy = float32(creature.Genome.MaxEnergy) * 0.5
 	energyBefore := creature.Energy
 
