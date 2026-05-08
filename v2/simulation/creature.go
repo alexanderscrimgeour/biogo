@@ -11,6 +11,7 @@ import (
 type Creature struct {
 	Id             int
 	Energy         float32
+	LastTickEnergy float32
 	Responsiveness float32
 	Age            int
 	Alive          bool
@@ -22,6 +23,7 @@ type Creature struct {
 	LastAction     string
 	Genome         *Genome
 	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
+	Dopamine       float32
 }
 
 func NewCreature(id int, loc grid.Position, g *Genome) *Creature {
@@ -134,6 +136,12 @@ func (c *Creature) DrainEnergy(amount float32) {
 func (c *Creature) GainEnergy(amount float32) {
 	maxE := float32(c.Genome.MaxEnergy)
 	c.Energy = utils.MinFloat32(maxE, c.Energy+amount)
+	gainRatio := amount / maxE
+	spike := gainRatio * 10
+	c.Dopamine += spike
+	if c.Dopamine > 1.2 {
+		c.Dopamine = 1.2
+	}
 }
 
 // MetabolicRate returns the energy drained per tick. The genome byte scales into

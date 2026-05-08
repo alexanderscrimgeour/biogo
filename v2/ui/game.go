@@ -565,6 +565,12 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %d", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
 	mass.Draw(screen, currX, currY)
 	currY += h + 15
+	dopamine := &components.Label{Text: fmt.Sprintf("Dopamine:  %.02f", d.Dopamine), Font: g.statFont, Color: color.White}
+	dopamine.Draw(screen, currX, currY)
+	currY += 5
+	dopBar := &components.EnergyBar{Value: d.Dopamine, Max: float32(1.2), Width: p.W - (detailTpad * 2)}
+	_, h = dopBar.Draw(screen, currX, currY)
+	currY += h + 15
 	sight := &components.Label{Text: fmt.Sprintf("Sight: %d  FOV: %d°", d.SightDistance, d.FieldOfView), Font: g.statFont, Color: color.White}
 	sight.Draw(screen, currX, currY)
 	currY += h + 15

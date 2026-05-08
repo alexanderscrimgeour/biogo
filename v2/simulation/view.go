@@ -40,6 +40,7 @@ type CreatureDetailView struct {
 	FieldOfView    byte
 	NeuronCount    byte
 	BrainLength    int
+	Dopamine       float32
 	MutationPct    float32 // actual per-gene mutation probability as a percentage
 	R, G, B, A     uint8   // genome-derived display colour
 	MetabolicRate  float32 // energy drained per tick
@@ -68,6 +69,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		FieldOfView:    c.Genome.FieldOfView,
 		NeuronCount:    c.Genome.NeuronCount,
 		BrainLength:    len(c.Genome.Brain),
+		Dopamine:       c.Dopamine,
 		MutationPct:    s.Params.MinMutationRate * float32(c.Genome.MutationRate) * 100,
 		R:              r,
 		G:              g,

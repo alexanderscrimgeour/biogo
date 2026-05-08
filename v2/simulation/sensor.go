@@ -28,8 +28,12 @@ const (
 	RANDOM
 	POPULATION_FOV
 	SATIATION
+	REWARD_SIGNAL
 
 	SENSOR_COUNT
+
+	// Used for reinforcement learning
+	PUNISH_SIGNAL
 )
 
 func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep int, params *Parameters) float32 {
@@ -107,6 +111,13 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 			output = (c.Energy - minE) / (maxE - minE)
 		}
 
+	case REWARD_SIGNAL:
+		delta := c.Energy - c.LastTickEnergy
+		if delta > 0 {
+			return float32(math.Min(1.0, float64(delta*10)))
+		}
+	case PUNISH_SIGNAL:
+		output = 0
 	case RANDOM:
 		fallthrough
 	default:

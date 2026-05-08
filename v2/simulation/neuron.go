@@ -17,6 +17,7 @@ type Neuron struct {
 type NeuralNet struct {
 	Edges         []*Gene
 	HiddenNeurons map[byte]*Neuron
+	Weights       []float32
 }
 
 type Node struct {
@@ -74,9 +75,11 @@ func CreateNeuralNetworkFromGenome(genes []*Gene, neuronCount byte) *NeuralNet {
 
 func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 	nnet := NeuralNet{}
+	nnet.Weights = make([]float32, len(g))
 
 	// We do this in two phases, first we add the -> neurons, then we add the -> actions. This
 	// Improves the performance of the fforward
+	edgeIndex := 0
 	for _, gene := range g {
 		if gene.SinkType == NEURON {
 			// Create gene copy
@@ -90,6 +93,9 @@ func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 			}
 			// Add the new gene to the nnet
 			nnet.Edges = append(nnet.Edges, &new)
+			// Initialise weights
+			nnet.Weights[edgeIndex] = new.WeightAsFloat32()
+			edgeIndex++
 		}
 	}
 	for _, gene := range g {
@@ -99,6 +105,8 @@ func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 				new.SourceID = n[gene.SourceID].NewID
 			}
 			nnet.Edges = append(nnet.Edges, &new)
+			nnet.Weights[edgeIndex] = new.WeightAsFloat32()
+			edgeIndex++
 		}
 
 	}
