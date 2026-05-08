@@ -4,9 +4,9 @@ import "fmt"
 
 const (
 	// Neurons are treated differently to sensors/actions.
-	NEURON = 0
-	SENSOR = 1
-	ACTION = 2
+	NEURON = iota
+	SENSOR
+	ACTION
 )
 
 type Neuron struct {
