@@ -542,15 +542,21 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	currY += h + 4
 
 	// Energy Section
-	energyTxt := &components.Label{Text: fmt.Sprintf("Energy %.f/%d", d.Energy, d.MaxEnergy), Font: g.statFont, Color: color.White}
+	energyTxt := &components.Label{Text: fmt.Sprintf("Energy: %.f/%d", d.Energy, d.MaxEnergy), Font: g.statFont, Color: color.White}
 	energyTxt.Draw(screen, currX, currY)
 	currY += 5
 
 	eBar := &components.EnergyBar{Value: d.Energy, Max: float32(d.MaxEnergy), Width: p.W - (detailTpad * 2)}
 	_, h = eBar.Draw(screen, currX, currY)
 	currY += h + 15
-
-	action := &components.Label{Text: fmt.Sprintf("Actions: %s", d.LastAction), Font: g.statFont, Color: color.White}
+	juvenileStr := "Adult"
+	if d.IsJuvenile {
+		juvenileStr = fmt.Sprintf("Juvenile(%d)", d.JuvenilePeriod-d.Age)
+	}
+	age := &components.Label{Text: fmt.Sprintf("Age:  %d, %s", d.Age, juvenileStr), Font: g.statFont, Color: color.White}
+	age.Draw(screen, currX, currY)
+	currY += h + 15
+	action := &components.Label{Text: fmt.Sprintf("Actions: %s", d.LastAction), Font: g.statFont, Color: components.ColorButtonGreen}
 	action.Draw(screen, currX, currY)
 	currY += h + 15
 	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %d", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
@@ -564,16 +570,10 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	currY += h + 15
 	mutation := &components.Label{Text: fmt.Sprintf("Mutation:  %.2f%%", d.MutationPct), Font: g.statFont, Color: color.White}
 	mutation.Draw(screen, currX, currY)
-	currY += h + 15
-	age := &components.Label{Text: fmt.Sprintf("Age  %d", d.Age), Font: g.statFont, Color: color.White}
-	age.Draw(screen, currX, currY)
 	currY += h + 25
-	// Colour swatch + lab
 
-	// Draw the chart at the fixed location
 	g.drawPhenotypeChart(screen, d, currX, currY)
 
-	// Save Button anchored to the bottom
 	sBtn := &components.Button{
 		Label: "Save Genome",
 		X:     int(currX),
