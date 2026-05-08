@@ -136,8 +136,12 @@ func (c *Creature) DrainEnergy(amount float32) {
 func (c *Creature) GainEnergy(amount float32) {
 	maxE := float32(c.Genome.MaxEnergy)
 	c.Energy = utils.MinFloat32(maxE, c.Energy+amount)
-	gainRatio := amount / maxE
-	spike := gainRatio * 10
+	c.GainDopamine(amount / maxE)
+
+}
+
+func (c *Creature) GainDopamine(ratio float32) {
+	spike := ratio * 10
 	c.Dopamine += spike
 	if c.Dopamine > 1.2 {
 		c.Dopamine = 1.2

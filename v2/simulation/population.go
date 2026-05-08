@@ -265,6 +265,7 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 
 		cost := params.ReproductionEnergyCost * float32(parent.Genome.MaxEnergy)
 		parent.DrainEnergy(cost)
+		parent.GainDopamine(cost / float32(c.Genome.MaxEnergy))
 
 		// Halve parent's body mass; the parent must regrow before reproducing again.
 		halfMass := parent.Mass / 2
