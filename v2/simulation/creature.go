@@ -97,13 +97,43 @@ func (c *Creature) GrowMass(params *Parameters) {
 		c.Mass = maxMass
 		return
 	}
+	survivalBuffer := float32(c.Genome.MaxEnergy) * 0.10
+	if c.Energy <= survivalBuffer {
+		return
+	}
+
 	jp := c.JuvenilePeriod(params)
 	if jp <= 0 {
 		c.Mass = maxMass
 		return
 	}
-	growthPerTick := (maxMass - float32(c.Genome.MinMass)) / float32(jp)
-	c.Mass = utils.MinFloat32(maxMass, c.Mass+growthPerTick)
+
+	potentialGrowth := (maxMass - float32(c.Genome.MinMass)) / float32(jp)
+	energyCost := potentialGrowth * params.GrowthEnergyCostFactor
+
+	disposableEnergy := c.Energy - survivalBuffer
+
+	actualGrowth := potentialGrowth
+	if energyCost > disposableEnergy {
+		actualGrowth = disposableEnergy / params.GrowthEnergyCostFactor
+		energyCost = disposableEnergy
+	}
+
+	c.Mass = utils.MinFloat32(maxMass, c.Mass+actualGrowth)
+	c.DrainEnergy(energyCost)
+
+}
+
+func (c *Creature) DrainEnergy(amount float32) {
+	c.Energy -= amount
+	if c.Energy < 0 {
+		c.Energy = 0
+	}
+}
+
+func (c *Creature) GainEnergy(amount float32) {
+	maxE := float32(c.Genome.MaxEnergy)
+	c.Energy = utils.MinFloat32(maxE, c.Energy+amount)
 }
 
 // MetabolicRate returns the energy drained per tick. The genome byte scales into

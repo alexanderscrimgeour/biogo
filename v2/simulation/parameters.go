@@ -48,6 +48,7 @@ type Parameters struct {
 	// Reproduction
 	ReproductionEnergyThreshold float32
 	ReproductionEnergyCost      float32
+	GrowthEnergyCostFactor      float32
 	// Predation and corpses
 	CorpseDecayRate float32
 	// Continuous-space movement
@@ -92,6 +93,7 @@ func DefaultParams() *Parameters {
 		MaxJuvenilePeriod:               1000,
 		MaxFood:                         15000,
 		FoodSpawnInterval:               20,
+		GrowthEnergyCostFactor:          0.2,
 		FoodPerSpawn:                    1000,
 		FoodEnergyFraction:              0.1,
 		FoodPatchRadius:                 20.0,
@@ -100,7 +102,7 @@ func DefaultParams() *Parameters {
 		MaxMetabolicRate:                0.1,
 		MoveCost:                        0.05,
 		ReproductionEnergyThreshold:     0.85,
-		ReproductionEnergyCost:          0.2,
+		ReproductionEnergyCost:          0.4,
 		CorpseDecayRate:                 0.05,
 		MaxSpeedPerStep:                 2.0,
 		MaxRotationPerStep:              math.Pi / 4,

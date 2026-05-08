@@ -115,6 +115,7 @@ type Game struct {
 	pauseBtn           *components.Button
 	newGameBtn         *components.Button
 	themeBtn           *components.Button
+	saveBtn            *components.Button
 	spawnMutSlider     *components.Slider
 	detailsPanel       *components.Panel
 }
@@ -259,6 +260,13 @@ func (g *Game) handleInput() bool {
 		if g.themeBtn.IsClicked(mx, my) {
 			g.themeBtn.OnClick()
 			return true
+		}
+
+		if g.saveBtn != nil {
+			if g.saveBtn.IsClicked(mx, my) {
+				g.saveBtn.OnClick()
+				return true
+			}
 		}
 
 		if g.spawnMutSlider.InBounds(mx, my) {
@@ -585,7 +593,8 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 			g.saveFeedbackAt = time.Now()
 		},
 	}
-	sBtn.Draw(screen, g.statFont)
+	g.saveBtn = sBtn
+	g.saveBtn.Draw(screen, g.statFont)
 }
 
 func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDetailView, x, y float32) {
