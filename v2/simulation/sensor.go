@@ -36,7 +36,7 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 	var output float32
 	switch sensorID {
 	case AGE:
-		output = float32(c.Age) / float32(params.MaxExpectedAge)
+		output = float32(c.Age) / float32(c.MaxAge(params))
 
 	case ENERGY:
 		output = c.Energy / float32(c.Genome.MaxEnergy)

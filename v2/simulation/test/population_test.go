@@ -36,7 +36,7 @@ func TestProcessMoveQueue(t *testing.T) {
 	pop.Creatures[1] = creature
 
 	newPos := grid.Position{X: 6, Y: 5}
-	pop.QueueForMove(creature, newPos)
+	pop.QueueForMove(creature, newPos, 1.0)
 	pop.ProcessMoveQueue(w, params)
 
 	if creature.Loc != newPos {
@@ -58,7 +58,8 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 
 	startPos := grid.Position{X: 5, Y: 5}
-	foodPos := grid.Position{X: 6, Y: 5}
+	destPos := grid.Position{X: 6, Y: 5}
+	foodPos := grid.Position{X: 7, Y: 5} // within FoodInteractionRadius of destPos, not at exact position
 
 	creature := simulation.NewCreature(1, startPos, genome)
 	creature.Energy = float32(creature.Genome.MaxEnergy) * 0.5
@@ -69,11 +70,11 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[1] = creature
-	pop.QueueForMove(creature, foodPos)
+	pop.QueueForMove(creature, destPos, 1.0)
 	pop.ProcessMoveQueue(w, params)
 
-	if creature.Loc != foodPos {
-		t.Errorf("creature should move to food location, got %v", creature.Loc)
+	if creature.Loc != destPos {
+		t.Errorf("creature should move to destination, got %v", creature.Loc)
 	}
 	if w.FoodCount() != 0 {
 		t.Error("food should be consumed after creature moves onto it")
@@ -114,7 +115,7 @@ func TestProcessCorpseDecay(t *testing.T) {
 	loc := grid.Position{X: 3, Y: 3}
 	corpse := simulation.NewCreature(1, loc, genome)
 	corpse.Alive = false
-	corpse.Energy = 60
+	corpse.Mass = 60
 	w.AddCreature(1, loc)
 
 	pop := simulation.NewPopulation(params)
@@ -122,11 +123,11 @@ func TestProcessCorpseDecay(t *testing.T) {
 
 	pop.ProcessCorpseDecay(w, params)
 
-	if corpse.Energy >= 60 {
-		t.Error("corpse energy should decrease after decay")
+	if corpse.Mass >= 60 {
+		t.Error("corpse mass should decrease after decay")
 	}
 	if _, ok := pop.Creatures[1]; !ok {
-		t.Error("corpse with remaining energy should still be in map")
+		t.Error("corpse with remaining mass should still be in map")
 	}
 
 	pop.ProcessCorpseDecay(w, params)
@@ -154,8 +155,8 @@ func TestCorpseEnergySetOnDeath(t *testing.T) {
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(w, params)
 
-	if creature.Energy != float32(genome.Mass) {
-		t.Errorf("corpse energy should equal genome.Mass (%d), got %f", genome.Mass, creature.Energy)
+	if creature.Mass != float32(genome.Mass) {
+		t.Errorf("corpse mass should equal genome.Mass (%d), got %f", genome.Mass, creature.Mass)
 	}
 }
 

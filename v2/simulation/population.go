@@ -24,8 +24,9 @@ type ReproductionInstruction struct {
 }
 
 type MoveInstruction struct {
-	Creature *Creature
-	Loc      grid.Position
+	Creature   *Creature
+	Loc        grid.Position
+	MoveAmount float64
 }
 
 type EatInstruction struct {
@@ -52,8 +53,8 @@ func NewPopulation(p *Parameters) *Population {
 	}
 }
 
-func (p *Population) QueueForMove(creature *Creature, newLoc grid.Position) {
-	p.MoveQueue = append(p.MoveQueue, MoveInstruction{creature, newLoc})
+func (p *Population) QueueForMove(creature *Creature, newLoc grid.Position, moveAmount float64) {
+	p.MoveQueue = append(p.MoveQueue, MoveInstruction{creature, newLoc, moveAmount})
 }
 
 func (p *Population) QueueForDeath(creature *Creature) {
@@ -99,56 +100,64 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		}
 		newPos := instruction.Loc
 
-		// Eat the closest food within interaction radius.
-		halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
-		foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
-		if len(foodIDs) > 0 {
-			closestID := foodIDs[0]
-			closestDist := math.MaxFloat64
-			for _, fid := range foodIDs {
-				fpos := w.GetFoodPos(fid)
-				dx := fpos.X - newPos.X
-				dy := fpos.Y - newPos.Y
-				d := math.Sqrt(dx*dx + dy*dy)
-				if d < closestDist {
-					closestDist = d
-					closestID = fid
-				}
-			}
-			maxE := float32(c.Genome.MaxEnergy)
-			c.Energy = utils.MinFloat32(maxE, c.Energy+params.FoodEnergyFraction*maxE)
-			w.RemoveFood(closestID)
-		}
-
-		// Eat the closest Corpse within interaction radius
-		creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
-		if len(creatureIDs) > 0 {
-			closestCreatureID := -1
-			closestDist := math.MaxFloat64
-			for _, cid := range creatureIDs {
-				if c, ok := p.Creatures[cid]; ok {
-					if c.Alive {
-						continue
+		if instruction.MoveAmount > 0 {
+			// Eat the closest food within interaction radius.
+			halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+			foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
+			if len(foodIDs) > 0 {
+				closestID := foodIDs[0]
+				closestDist := math.MaxFloat64
+				for _, fid := range foodIDs {
+					fpos := w.GetFoodPos(fid)
+					dx := fpos.X - newPos.X
+					dy := fpos.Y - newPos.Y
+					d := math.Sqrt(dx*dx + dy*dy)
+					if d < closestDist {
+						closestDist = d
+						closestID = fid
 					}
 				}
-				cpos, ok := w.GetCreaturePos(cid)
-				if !ok {
-					continue
-				}
-				dx := cpos.X - newPos.X
-				dy := cpos.Y - newPos.Y
-				d := math.Sqrt(dx*dx + dy*dy)
-				if d < closestDist {
-					closestDist = d
-					closestCreatureID = cid
-				}
+				maxE := float32(c.Genome.MaxEnergy)
+				c.Energy = utils.MinFloat32(maxE, c.Energy+params.FoodEnergyFraction*maxE)
+				w.RemoveFood(closestID)
 			}
-			if closestCreatureID != -1 {
-				if target, ok := p.Creatures[closestCreatureID]; ok {
-					maxE := float32(c.Genome.MaxEnergy)
-					c.Energy = utils.MinFloat32(maxE, c.Energy+target.Energy)
-					w.RemoveCreature(closestCreatureID)
-					delete(p.Creatures, closestCreatureID)
+
+			// Eat the closest corpse within interaction radius.
+			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
+			if len(creatureIDs) > 0 {
+				closestCreatureID := -1
+				closestDist := math.MaxFloat64
+				for _, cid := range creatureIDs {
+					if c, ok := p.Creatures[cid]; ok {
+						if c.Alive {
+							continue
+						}
+					}
+					cpos, ok := w.GetCreaturePos(cid)
+					if !ok {
+						continue
+					}
+					dx := cpos.X - newPos.X
+					dy := cpos.Y - newPos.Y
+					d := math.Sqrt(dx*dx + dy*dy)
+					if d < closestDist {
+						closestDist = d
+						closestCreatureID = cid
+					}
+				}
+				if closestCreatureID != -1 {
+					if target, ok := p.Creatures[closestCreatureID]; ok {
+						maxE := float32(c.Genome.MaxEnergy)
+
+						massRatio := target.Mass / float32(params.MaxMass)
+						gain := massRatio * maxE
+
+						c.Energy = utils.MinFloat32(maxE, c.Energy+gain)
+
+						// Scavenger consumes the whole corpse
+						w.RemoveCreature(closestCreatureID)
+						delete(p.Creatures, closestCreatureID)
+					}
 				}
 			}
 		}
@@ -169,15 +178,25 @@ func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
 			continue
 		}
 		target, ok := p.Creatures[instruction.TargetID]
-		if !ok || !target.Alive {
+		if !ok {
 			continue
 		}
-		targetMass := target.CurrentMass(params)
-		gain := targetMass * float32(target.Genome.MaxEnergy) / float32(params.MaxMass)
+
+		var meatAmount float32
+		if target.Alive {
+			meatAmount = target.CurrentMass(params)
+		} else {
+			meatAmount = target.Mass
+		}
+
+		massRatio := meatAmount / float32(params.MaxMass)
 		maxE := float32(predator.Genome.MaxEnergy)
+		gain := massRatio * maxE
+
 		predator.Energy = utils.MinFloat32(maxE, predator.Energy+gain)
 		target.Alive = false
-		target.Energy = targetMass
+		w.RemoveCreature(instruction.TargetID)
+		delete(p.Creatures, instruction.TargetID)
 	}
 	p.EatQueue = []EatInstruction{}
 }
@@ -187,7 +206,8 @@ func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
 func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 	for _, di := range p.DeathQueue {
 		di.Creature.Alive = false
-		di.Creature.Energy = di.Creature.CurrentMass(params)
+		di.Creature.Mass = di.Creature.CurrentMass(params)
+		di.Creature.Energy = 0
 	}
 	p.DeathQueue = []DeathInstruction{}
 }
@@ -199,8 +219,8 @@ func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 		if c.Alive {
 			continue
 		}
-		c.Energy -= params.CorpseDecayRate
-		if c.Energy <= 0 {
+		c.Mass -= params.CorpseDecayRate
+		if c.Mass <= 0 {
 			w.RemoveCreature(id)
 			delete(p.Creatures, id)
 		}
