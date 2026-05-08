@@ -136,6 +136,22 @@ func (s *Simulation) step() {
 	s.Population.ProcessCorpseDecay(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params, s.allocateID)
 
+	// Reward decay
+	for _, c := range s.Population.Creatures {
+		if !c.Alive {
+			continue
+		}
+
+		// Decay the dopamine signal
+		c.Dopamine *= 0.7
+
+		if c.Dopamine < 0.01 {
+			c.Dopamine = 0
+		}
+		// Energy baseline for REWARD_SENSOr
+		c.LastTickEnergy = c.Energy
+	}
+
 	spawnParams := *s.Params
 	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
 		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
