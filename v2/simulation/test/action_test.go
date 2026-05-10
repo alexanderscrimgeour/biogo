@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestDoNothingHalvesMetabolicCost(t *testing.T) {
+func TestDoNothingReducesMetabolicCost(t *testing.T) {
 	p := defaultParams()
 	p.BaseBMR = 5
 	p.MoveCost = 0
@@ -43,8 +43,8 @@ func TestDoNothingHalvesMetabolicCost(t *testing.T) {
 	rate := c.MetabolicRate(p)
 	sim.Update()
 
-	// Resting refunds the full metabolic drain and charges half — net cost = rate/2.
-	expectedEnergy := energyBefore - rate/2
+	// Resting refunds the full metabolic drain and charges 10% — net cost = rate * 0.1.
+	expectedEnergy := energyBefore - rate*0.1
 	tolerance := float32(0.01)
 	if math.Abs(float64(c.Energy-expectedEnergy)) > float64(tolerance) {
 		t.Errorf("REST should charge half metabolic rate: before=%f expected=%f got=%f (rate=%f)",

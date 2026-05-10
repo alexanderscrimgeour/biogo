@@ -187,90 +187,75 @@ func (g *Genome) Copy() *Genome {
 	return &new
 }
 
+// nudgeByte moves the value a small distance
+func nudgeByte(val byte, strength int) byte {
+	delta := rand.Intn(strength*2+1) - strength
+	newVal := int(val) + delta
+	if newVal < 0 {
+		return 0
+	}
+	if newVal > 255 {
+		return 255
+	}
+	return byte(newVal)
+}
+
 // Mutate randomly flips bits in the genome at a rate of p.MinMutationRate * g.MutationRate
 func Mutate(g *Genome, p *Parameters) {
 	mutationRate := p.MinMutationRate * float32(g.MutationRate)
 
-	for i := 0; i < GENOME_STRUCTURE_COUNT; i++ {
-		r := rand.Float32()
-		if r < mutationRate {
-			switch i {
-			case OSC_PERIOD:
-				g.OscPeriod ^= byte(1 << (rand.Uint32() >> 29))
-			case SIGHT_DISTANCE:
-				new := g.SightDistance
-				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.SightDistance = utils.ClampByte(p.MinSightDistance, p.MaxSightDistance, new)
-			case FIELD_OF_VIEW:
-				new := g.FieldOfView
-				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.FieldOfView = utils.ClampByte(p.MinFieldOfView, p.MaxFieldOfView, new)
-			case RESPONSIVENESS:
-				g.Responsiveness ^= byte(1 << (rand.Uint32() >> 29))
-			case MUTATION_RATE:
-				g.MutationRate ^= byte(1 << (rand.Uint32() >> 29))
-				g.MutationRate = utils.ClampByte(1, math.MaxUint8, g.MutationRate)
-			case MASS:
-				new := g.Mass
-				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.Mass = utils.ClampByte(3, p.MaxMass, new)
-				maxMinMass := (g.Mass - 1) / 2
-				if maxMinMass < 1 {
-					maxMinMass = 1
-				}
-				if g.MinMass > maxMinMass {
-					g.MinMass = maxMinMass
-				}
-			case MIN_MASS:
-				new := g.MinMass
-				new ^= byte(1 << (rand.Uint32() >> 29))
-				maxMinMass := (g.Mass - 1) / 2
-				if maxMinMass < 1 {
-					maxMinMass = 1
-				}
-				g.MinMass = utils.ClampByte(1, maxMinMass, new)
-			case REPRODUCTION_TYPE:
-				g.ReproductionType ^= 1
-			case NEURON_COUNT:
-				new := g.NeuronCount
-				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.NeuronCount = utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, new)
-			case NEUROLOGY_LENGTH:
-				new := g.BrainLength
-				new ^= byte(1 << (rand.Uint32() >> 29))
-				g.BrainLength = utils.ClampByte(p.MinNeuronCount, p.MaxNeuronCount, new)
-			case JUVENILE_PERIOD:
-				g.JuvenilePeriod ^= byte(1 << (rand.Uint32() >> 29))
-			case METABOLIC_RATE:
-				g.MetabolicRate ^= byte(1 << (rand.Uint32() >> 29))
-			case STOMACH_SIZE:
-				g.StomachSize ^= byte(1 << (rand.Uint32() >> 29))
-			case LEARNING_RATE:
-				g.LearningRate ^= byte(1 << (rand.Uint32() >> 29))
-			case LEARNING_THRESHOLD:
-				g.LearningThreshold ^= byte(1 << (rand.Uint32() >> 29))
-			}
+	mutateTarget := func(val *byte, min, max byte, strength int) {
+		if rand.Float32() < mutationRate {
+			*val = utils.ClampByte(min, max, nudgeByte(*val, strength))
 		}
 	}
+
+	mutateTarget(&g.OscPeriod, 1, 255, 15)
+	mutateTarget(&g.SightDistance, p.MinSightDistance, p.MaxSightDistance, 10)
+	mutateTarget(&g.FieldOfView, p.MinFieldOfView, p.MaxFieldOfView, 10)
+	mutateTarget(&g.Responsiveness, 0, 255, 20)
+	mutateTarget(&g.MutationRate, 1, 255, 5)
+	mutateTarget(&g.Mass, 3, p.MaxMass, 12)
+
+	maxMinMass := (g.Mass - 1) / 2
+	if maxMinMass < 1 {
+		maxMinMass = 1
+	}
+	if g.MinMass > maxMinMass {
+		g.MinMass = maxMinMass
+	}
+	mutateTarget(&g.MinMass, 1, maxMinMass, 8)
+
+	if rand.Float32() < mutationRate {
+		g.ReproductionType ^= 1
+	}
+
+	mutateTarget(&g.NeuronCount, p.MinHiddenLayerCount, p.MaxHiddenLayerCount, 5)
+	mutateTarget(&g.BrainLength, p.MinNeuronCount, p.MaxNeuronCount, 5)
+	mutateTarget(&g.JuvenilePeriod, 0, 255, 15)
+	mutateTarget(&g.MetabolicRate, 0, 255, 15)
+	mutateTarget(&g.StomachSize, 0, 255, 15)
+	mutateTarget(&g.LearningRate, 0, 255, 10)
+	mutateTarget(&g.LearningThreshold, 0, 255, 10)
+
 	for j := 0; j < len(g.Brain); j++ {
-		r := rand.Float32()
-		if r < mutationRate {
+		if rand.Float32() < mutationRate {
 			chance := rand.Float32()
 			switch {
-			case chance < 0.2:
+			case chance < 0.05:
 				g.Brain[j].SourceType ^= 1
-			case chance < 0.4:
+			case chance < 0.10:
 				if g.Brain[j].SinkType == 2 {
 					g.Brain[j].SinkType = 0
 				} else {
 					g.Brain[j].SinkType = 2
 				}
-			case chance < 0.6:
-				g.Brain[j].SourceID ^= byte(1 << (rand.Uint32() >> 29))
-			case chance < 0.8:
-				g.Brain[j].SinkID ^= byte(1 << (rand.Uint32() >> 29))
+			case chance < 0.15:
+				g.Brain[j].SourceID = utils.MakeRandomByte()
+			case chance < 0.20:
+				g.Brain[j].SinkID = utils.MakeRandomByte()
 			default:
-				g.Brain[j].Weight ^= byte(1 << (rand.Uint32() >> 29))
+				g.Brain[j].Weight = nudgeByte(g.Brain[j].Weight, 25)
 			}
 		}
 	}
