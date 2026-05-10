@@ -48,7 +48,7 @@ func NewWorld(width, height float64, wallType int) *World {
 		foodPos:     make(map[int]Position),
 		fBuckets:    make(map[[2]int]map[int]bool),
 		bucketSize:  20.0,
-		spawnMode:   SpawnTrail,
+		spawnMode:   SpawnClustered,
 	}
 	w.createWalls(wallType)
 	return w

@@ -1,0 +1,89 @@
+{
+  "osc_period": 66,
+  "sight_distance": 22,
+  "field_of_view": 164,
+  "responsiveness": 4,
+  "mutation_rate": 248,
+  "mass": 40,
+  "min_mass": 2,
+  "reproduction_type": 0,
+  "neuron_count": 6,
+  "brain_length": 10,
+  "juvenile_period": 167,
+  "metabolic_rate": 242,
+  "stomach_size": 234,
+  "learning_rate": 211,
+  "learning_threshold": 233,
+  "brain": [
+    {
+      "source_type": 1,
+      "source_id": 231,
+      "sink_type": 2,
+      "sink_id": 63,
+      "weight": 242
+    },
+    {
+      "source_type": 1,
+      "source_id": 173,
+      "sink_type": 2,
+      "sink_id": 204,
+      "weight": 254
+    },
+    {
+      "source_type": 0,
+      "source_id": 89,
+      "sink_type": 0,
+      "sink_id": 254,
+      "weight": 45
+    },
+    {
+      "source_type": 0,
+      "source_id": 114,
+      "sink_type": 2,
+      "sink_id": 62,
+      "weight": 31
+    },
+    {
+      "source_type": 1,
+      "source_id": 132,
+      "sink_type": 2,
+      "sink_id": 114,
+      "weight": 171
+    },
+    {
+      "source_type": 1,
+      "source_id": 161,
+      "sink_type": 2,
+      "sink_id": 133,
+      "weight": 219
+    },
+    {
+      "source_type": 0,
+      "source_id": 36,
+      "sink_type": 0,
+      "sink_id": 240,
+      "weight": 8
+    },
+    {
+      "source_type": 0,
+      "source_id": 215,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 55
+    },
+    {
+      "source_type": 0,
+      "source_id": 133,
+      "sink_type": 0,
+      "sink_id": 67,
+      "weight": 19
+    },
+    {
+      "source_type": 1,
+      "source_id": 201,
+      "sink_type": 2,
+      "sink_id": 252,
+      "weight": 133
+    }
+  ]
+}

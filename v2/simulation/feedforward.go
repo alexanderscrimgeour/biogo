@@ -10,10 +10,22 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 	actionLevels := make([]float32, ACTION_COUNT)
 	neuronAccumulators := map[byte]float32{}
 	neuronOutputsEvaluated := false
-	const decayRate = 0.0005 // Tiny constant decay
-	const learningRate = 0.01
-	const learningThreshold = 0.1
+	lastSensorVals := map[byte]float32{}
+	const decayRate = 0.0005
 	const energyCostOfLearning = 0.005
+
+	genomeLearningRate := params.MinLearningRate + float32(c.Genome.LearningRate)/255.0*(params.MaxLearningRate-params.MinLearningRate)
+	learningThreshold := params.MinLearningThreshold + float32(c.Genome.LearningThreshold)/255.0*(params.MaxLearningThreshold-params.MinLearningThreshold)
+
+	// Modulate learning rate from previous tick's SET_LEARNING_RATE output; tanh maps to [-1, 1] so rate scales in [0, 2x].
+	var learningRateMod float32
+	if len(c.Nnet.LastActionValues) > int(SET_LEARNING_RATE) {
+		learningRateMod = float32(math.Tanh(float64(c.Nnet.LastActionValues[SET_LEARNING_RATE])))
+	}
+	learningRate := genomeLearningRate * (1 + learningRateMod)
+	if learningRate < 0 {
+		learningRate = 0
+	}
 
 	for i, gene := range c.Nnet.Edges {
 		instinctWeight := gene.WeightAsFloat32()
@@ -35,6 +47,7 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		var inputVal float32
 		if gene.SourceType == SENSOR {
 			inputVal = c.GetSensor(gene.SourceID, w, p, step, params)
+			lastSensorVals[gene.SourceID] = inputVal
 		} else {
 			if _, ok := c.Nnet.HiddenNeurons[gene.SourceID]; !ok {
 				fmt.Printf("\n\nNot okay, trying to see %d of type %d, %s", gene.SourceID, gene.SourceType, c.Nnet.String())
@@ -89,5 +102,7 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			}
 		}
 	}
+	c.Nnet.LastSensorValues = lastSensorVals
+	c.Nnet.LastActionValues = actionLevels
 	return actionLevels
 }

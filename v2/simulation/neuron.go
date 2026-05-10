@@ -15,9 +15,11 @@ type Neuron struct {
 }
 
 type NeuralNet struct {
-	Edges         []*Gene
-	HiddenNeurons map[byte]*Neuron
-	Weights       []float32
+	Edges            []*Gene
+	HiddenNeurons    map[byte]*Neuron
+	Weights          []float32
+	LastSensorValues map[byte]float32
+	LastActionValues []float32
 }
 
 type Node struct {
@@ -159,7 +161,7 @@ func removeConnectionsToGene(genes []*Gene, n NodeMap, key byte) []*Gene {
 	for _, gene := range genes {
 		if gene.SinkType == NEURON && gene.SinkID == key {
 			if gene.SourceType == NEURON {
-				if n[gene.SourceID].OutputCount >= 0 {
+				if n[gene.SourceID].OutputCount > 0 {
 					n[gene.SourceID].OutputCount--
 				}
 			}
