@@ -16,18 +16,18 @@ type Parameters struct {
 	StartingPopulation int
 
 	// Genome constraints — byte ranges the genome is clamped to at birth and mutation
-	MinEnergy           byte // energy floor used in SATIATION sensor
-	MaxMass             byte
-	MinSpawnNeuronCount byte // brain gene count at birth
-	MaxSpawnNeuronCount byte
-	MinNeuronCount      byte // brain gene count bounds during mutation
-	MaxNeuronCount      byte
-	MinHiddenLayerCount byte
-	MaxHiddenLayerCount byte
-	MinSightDistance    byte
-	MaxSightDistance    byte
-	MinFieldOfView      byte
-	MaxFieldOfView      byte
+	MinEnergy            byte // energy floor used in SATIATION sensor
+	MaxMass              byte
+	MinSpawnNeuronCount  byte // brain gene count at birth
+	MaxSpawnNeuronCount  byte
+	MinNeuronCount       byte // brain gene count bounds during mutation
+	MaxNeuronCount       byte
+	MinHiddenLayerCount  byte
+	MaxHiddenLayerCount  byte
+	MinSightDistance     byte
+	MaxSightDistance     byte
+	MinFieldOfView       byte
+	MaxFieldOfView       byte
 	ResponseCurveKFactor float32
 
 	// Mutation
@@ -43,18 +43,23 @@ type Parameters struct {
 	MaxFood               int
 	FoodSpawnInterval     int
 	FoodPerSpawn          int
-	FoodCalories          float32 // fixed energy gained per food item consumed
+	FoodMass              float32 // mass of each food item consumed
 	FoodPatchRadius       float64
 	FoodPatchSize         int
 	FoodInteractionRadius float64
 
+	// Stomach / digestion
+	MinStomachSize float32 // stomach capacity at StomachSize gene = 0
+	MaxStomachSize float32 // stomach capacity at StomachSize gene = 255
+	DigestionRate  float32 // stomach mass converted to energy per tick
+
 	// Energy / metabolism
-	BaseBMR             float32 // basal metabolic rate at MaxMass (Kleiber-scaled down for smaller mass)
-	EnergyPerMassUnit   float32 // MaxEnergy = currentMass * EnergyPerMassUnit
-	MoveCost            float32
-	MaxSpeedPerStep     float64
-	MaxRotationPerStep  float64
-	MaxGrowthRatePerTick float32 // peak mass units gained per tick (von Bertalanffy)
+	BaseBMR                float32 // basal metabolic rate at MaxMass (Kleiber-scaled down for smaller mass)
+	EnergyPerMassUnit      float32 // MaxEnergy = currentMass * EnergyPerMassUnit
+	MoveCost               float32
+	MaxSpeedPerStep        float64
+	MaxRotationPerStep     float64
+	MaxGrowthRatePerTick   float32 // peak mass units gained per tick (von Bertalanffy)
 	GrowthEnergyCostFactor float32
 
 	// Reproduction
@@ -62,8 +67,16 @@ type Parameters struct {
 	ReproductionEfficiency      float32 // energy cost = offspringMass * EnergyPerMassUnit * Efficiency
 
 	// Predation
-	PredationRadius float64
-	CorpseDecayRate float32
+	BaseBiteSize          float32 // mass consumed per eating interaction for a max-mass creature; scales linearly with body mass
+	CorpseDecayRate       float32
+	MinPredationMassRatio float32 // attacker must be >= this fraction of prey mass to initiate an attack
+	AttackEnergyCost      float32 // energy drained from attacker per successful bite on a live creature
+
+	// Learning
+	MinLearningRate      float32 // learning rate at LearningRate gene = 0
+	MaxLearningRate      float32 // learning rate at LearningRate gene = 255
+	MinLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 0
+	MaxLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 255
 
 	// Misc
 	SavedGenomeProportion  float64
@@ -75,14 +88,14 @@ func DefaultParams() *Parameters {
 		GridWidth:                   1000,
 		GridHeight:                  600,
 		MaxPopulation:               20000,
-		MinPopulation:               10,
+		MinPopulation:               100,
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
 		MaxMass:                     255,
-		MinSpawnNeuronCount:         15,
-		MaxSpawnNeuronCount:         50,
-		MinNeuronCount:              10,
-		MaxNeuronCount:              50,
+		MinSpawnNeuronCount:         5,
+		MaxSpawnNeuronCount:         40,
+		MinNeuronCount:              5,
+		MaxNeuronCount:              40,
 		MinHiddenLayerCount:         3,
 		MaxHiddenLayerCount:         8,
 		MinSightDistance:            5,
@@ -92,27 +105,36 @@ func DefaultParams() *Parameters {
 		ResponseCurveKFactor:        2,
 		MinMutationRate:             0.0001,
 		SpawnMutationRate:           0.01,
-		BaseMaxAge:                  5000,
+		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
 		MaxFood:                     30000,
 		FoodSpawnInterval:           100,
 		FoodPerSpawn:                1000,
-		FoodCalories:                15.0,
+		FoodMass:                    10.0,
+		MinStomachSize:              5.0,
+		MaxStomachSize:              100.0,
+		DigestionRate:               0.5,
 		FoodPatchRadius:             20.0,
 		FoodPatchSize:               200,
 		FoodInteractionRadius:       3.0,
-		BaseBMR:                     0.6,
+		BaseBMR:                     0.5,
 		EnergyPerMassUnit:           1.0,
-		MoveCost:                    0.05,
+		MoveCost:                    0.01,
 		MaxSpeedPerStep:             2.0,
 		MaxRotationPerStep:          math.Pi / 4,
 		MaxGrowthRatePerTick:        1.0,
 		GrowthEnergyCostFactor:      0.2,
 		ReproductionEnergyThreshold: 0.85,
 		ReproductionEfficiency:      0.7,
-		PredationRadius:             2.0,
+		BaseBiteSize:                100.0,
 		CorpseDecayRate:             0.05,
+		MinPredationMassRatio:       0.25,
+		AttackEnergyCost:            0.5,
+		MinLearningRate:             0.001,
+		MaxLearningRate:             0.05,
+		MinLearningThreshold:        0.05,
+		MaxLearningThreshold:        0.5,
 		SavedGenomeProportion:       0.1,
 		PopulationSensorRadius:      6,
 	}

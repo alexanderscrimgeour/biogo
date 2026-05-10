@@ -11,7 +11,6 @@ type Population struct {
 	Creatures         map[int]*Creature
 	DeathQueue        []DeathInstruction
 	MoveQueue         []MoveInstruction
-	EatQueue          []EatInstruction
 	ReproductionQueue []ReproductionInstruction
 }
 
@@ -29,17 +28,11 @@ type MoveInstruction struct {
 	MoveAmount float64
 }
 
-type EatInstruction struct {
-	Predator *Creature
-	TargetID int
-}
-
 // pendingInstructions accumulates instructions produced by a single goroutine's
 // creature batch before they are merged into the shared Population queues.
 type pendingInstructions struct {
 	death        []DeathInstruction
 	move         []MoveInstruction
-	eat          []EatInstruction
 	reproduction []ReproductionInstruction
 }
 
@@ -48,7 +41,6 @@ func NewPopulation(p *Parameters) *Population {
 		Creatures:         make(map[int]*Creature, p.StartingPopulation),
 		DeathQueue:        []DeathInstruction{},
 		MoveQueue:         []MoveInstruction{},
-		EatQueue:          []EatInstruction{},
 		ReproductionQueue: []ReproductionInstruction{},
 	}
 }
@@ -63,10 +55,6 @@ func (p *Population) QueueForDeath(creature *Creature) {
 
 func (p *Population) QueueForReproduction(creature *Creature) {
 	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{creature})
-}
-
-func (p *Population) QueueForEat(predator *Creature, targetID int) {
-	p.EatQueue = append(p.EatQueue, EatInstruction{predator, targetID})
 }
 
 // AliveIDs returns the IDs of all currently alive creatures.
@@ -103,38 +91,53 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		if instruction.MoveAmount > 0 {
 			halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
 
+			bite := c.BiteSize(params)
+			stomachSpace := c.StomachCapacity(params) - c.Stomach
+			massRatio := float64(c.Mass / float32(params.MaxMass))
+			if massRatio > 1.0 {
+				massRatio = 1.0
+			}
+			interactionRadius := params.FoodInteractionRadius * (1.0 + massRatio)
+
 			// Consume the nearest food item within interaction radius.
-			foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
-			if len(foodIDs) > 0 {
-				closestID := foodIDs[0]
-				closestDist := math.MaxFloat64
-				for _, fid := range foodIDs {
-					fpos := w.GetFoodPos(fid)
-					dx := fpos.X - newPos.X
-					dy := fpos.Y - newPos.Y
-					d := math.Sqrt(dx*dx + dy*dy)
-					if d < closestDist {
-						closestDist = d
-						closestID = fid
+			if stomachSpace > 0 {
+				foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, interactionRadius)
+				if len(foodIDs) > 0 {
+					closestID := foodIDs[0]
+					closestDist := math.MaxFloat64
+					for _, fid := range foodIDs {
+						fpos := w.GetFoodPos(fid)
+						dx := fpos.X - newPos.X
+						dy := fpos.Y - newPos.Y
+						d := math.Sqrt(dx*dx + dy*dy)
+						if d < closestDist {
+							closestDist = d
+							closestID = fid
+						}
 					}
-				}
-				// Only eat if not nearly full; prevents wasting food that others could use.
-				if c.Energy <= 0.9*c.MaxEnergy(params) {
-					c.GainEnergy(params.FoodCalories, params)
+					eaten := bite
+					if eaten > params.FoodMass {
+						eaten = params.FoodMass
+					}
+					if eaten > stomachSpace {
+						eaten = stomachSpace
+					}
+					c.Stomach += eaten
+					stomachSpace -= eaten
 					w.RemoveFood(closestID)
 				}
 			}
 
-			// Consume the nearest corpse within interaction radius.
-			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, params.FoodInteractionRadius)
+			// Eat the nearest corpse and/or the nearest live creature within interaction radius.
+			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, interactionRadius)
 			if len(creatureIDs) > 0 {
-				closestCreatureID := -1
-				closestDist := math.MaxFloat64
+				closestCorpseID := -1
+				closestPreyID := -1
+				closestCorpseDist := math.MaxFloat64
+				closestPreyDist := math.MaxFloat64
 				for _, cid := range creatureIDs {
-					if cr, ok := p.Creatures[cid]; ok {
-						if cr.Alive {
-							continue
-						}
+					if cid == c.Id {
+						continue
 					}
 					cpos, ok := w.GetCreaturePos(cid)
 					if !ok {
@@ -143,18 +146,64 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 					dx := cpos.X - newPos.X
 					dy := cpos.Y - newPos.Y
 					d := math.Sqrt(dx*dx + dy*dy)
-					if d < closestDist {
-						closestDist = d
-						closestCreatureID = cid
+					cr, ok := p.Creatures[cid]
+					if !ok {
+						continue
+					}
+					if cr.Alive {
+						if d < closestPreyDist {
+							closestPreyDist = d
+							closestPreyID = cid
+						}
+					} else {
+						if d < closestCorpseDist {
+							closestCorpseDist = d
+							closestCorpseID = cid
+						}
 					}
 				}
-				if closestCreatureID != -1 {
-					if target, ok := p.Creatures[closestCreatureID]; ok {
-						// Corpse energy = mass * EnergyPerMassUnit (tissue is stored energy).
-						gain := target.Mass * params.EnergyPerMassUnit
-						c.GainEnergy(gain, params)
-						w.RemoveCreature(closestCreatureID)
-						delete(p.Creatures, closestCreatureID)
+
+				if closestCorpseID != -1 && stomachSpace > 0 {
+					if target, ok := p.Creatures[closestCorpseID]; ok {
+						eaten := bite
+						if eaten > target.Mass {
+							eaten = target.Mass
+						}
+						if eaten > stomachSpace {
+							eaten = stomachSpace
+						}
+						c.Stomach += eaten
+						stomachSpace -= eaten
+						target.Mass -= eaten
+						if target.Mass <= 0 {
+							w.RemoveCreature(closestCorpseID)
+							delete(p.Creatures, closestCorpseID)
+						}
+					}
+				}
+
+				if closestPreyID != -1 && stomachSpace > 0 {
+					if target, ok := p.Creatures[closestPreyID]; ok {
+						// Attacker must be at least MinPredationMassRatio of prey mass.
+						if c.Mass >= target.Mass*params.MinPredationMassRatio {
+							// Damage scales with attacker/prey mass ratio: larger attacker = full bite, smaller = reduced.
+							massRatio := utils.MinFloat32(1.0, c.Mass/target.Mass)
+							effectiveBite := bite * massRatio
+							eaten := effectiveBite
+							if eaten > target.Mass {
+								eaten = target.Mass
+							}
+							if eaten > stomachSpace {
+								eaten = stomachSpace
+							}
+							c.Stomach += eaten
+							target.Mass -= eaten
+							c.DrainEnergy(params.AttackEnergyCost)
+							if target.Mass <= 0 {
+								target.Alive = false
+								target.Energy = 0
+							}
+						}
 					}
 				}
 			}
@@ -164,35 +213,6 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		c.Loc = newPos
 	}
 	p.MoveQueue = []MoveInstruction{}
-}
-
-// ProcessEatQueue resolves EAT-action predation queued during the current tick.
-func (p *Population) ProcessEatQueue(w *grid.World, params *Parameters) {
-	for _, instruction := range p.EatQueue {
-		predator := instruction.Predator
-		if !predator.Alive {
-			continue
-		}
-		target, ok := p.Creatures[instruction.TargetID]
-		if !ok {
-			continue
-		}
-
-		var meatMass float32
-		if target.Alive {
-			meatMass = target.CurrentMass(params)
-		} else {
-			meatMass = target.Mass
-		}
-
-		// Energy gained equals the caloric value of the consumed tissue.
-		gain := meatMass * params.EnergyPerMassUnit
-		predator.GainEnergy(gain, params)
-		target.Alive = false
-		w.RemoveCreature(instruction.TargetID)
-		delete(p.Creatures, instruction.TargetID)
-	}
-	p.EatQueue = []EatInstruction{}
 }
 
 // ProcessDeathQueue marks queued creatures as dead. Corpses remain in the world

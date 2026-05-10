@@ -81,7 +81,7 @@ func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
 	}
 }
 
-func TestSightPopForward_EmptyWorldReturnsOne(t *testing.T) {
+func TestSightPopForward_EmptyWorldReturnsZero(t *testing.T) {
 	w := makeWorld(200, 200)
 	loc := grid.Position{X: 100, Y: 100}
 	c := makeCreatureAt(loc, 4, 90)
@@ -89,8 +89,8 @@ func TestSightPopForward_EmptyWorldReturnsOne(t *testing.T) {
 
 	params := defaultParams()
 	val := c.GetSensor(simulation.SIGHT_POPULATION_FORWARD, w, nil, 0, params)
-	if val <= 0 {
-		t.Errorf("expected positive value for empty world ahead, got %f", val)
+	if val != 0 {
+		t.Errorf("expected 0 for empty world ahead, got %f", val)
 	}
 }
 
@@ -116,132 +116,47 @@ func TestSightFoodForward_ScalesWithDistance(t *testing.T) {
 	}
 }
 
-func TestPopulationFOV_DetectsCreatureInRange(t *testing.T) {
-	w := makeWorld(200, 200)
-	loc := grid.Position{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 10, 90)
-	c.Heading = 0 // facing east
-	w.AddCreature(c.Id, loc)
-
-	// Place another creature just ahead and within radius 2.
-	other := makeCreatureAt(grid.Position{X: 101.5, Y: 100}, 10, 90)
-	other.Id = 2
-	w.AddCreature(other.Id, other.Loc)
-
-	params := defaultParams()
-	val := c.GetSensor(simulation.POPULATION_FOV, w, nil, 0, params)
-	if val <= 0 {
-		t.Errorf("expected POPULATION_FOV > 0 for creature ahead in range, got %f", val)
-	}
-}
-
-func TestPopulationFOV_IgnoresCreatureBehind(t *testing.T) {
-	w := makeWorld(200, 200)
-	loc := grid.Position{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 10, 90)
-	c.Heading = 0 // facing east
-	w.AddCreature(c.Id, loc)
-
-	// Place creature behind (west), still within radius 2.
-	other := makeCreatureAt(grid.Position{X: 98.5, Y: 100}, 10, 90)
-	other.Id = 2
-	w.AddCreature(other.Id, other.Loc)
-
-	params := defaultParams()
-	val := c.GetSensor(simulation.POPULATION_FOV, w, nil, 0, params)
-	if val != 0 {
-		t.Errorf("expected POPULATION_FOV = 0 for creature behind, got %f", val)
-	}
-}
-
-func TestPopulationFOV_IgnoresCreatureTooFar(t *testing.T) {
-	w := makeWorld(200, 200)
-	loc := grid.Position{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 10, 90)
-	c.Heading = 0 // facing east
-	w.AddCreature(c.Id, loc)
-
-	// Place creature ahead but outside eat radius (> 2).
-	other := makeCreatureAt(grid.Position{X: 105, Y: 100}, 10, 90)
-	other.Id = 2
-	w.AddCreature(other.Id, other.Loc)
-
-	params := defaultParams()
-	val := c.GetSensor(simulation.POPULATION_FOV, w, nil, 0, params)
-	if val != 0 {
-		t.Errorf("expected POPULATION_FOV = 0 for creature outside eat radius, got %f", val)
-	}
-}
-
-func TestSatiation_FullEnergy(t *testing.T) {
+func TestSatiation_FullStomach(t *testing.T) {
 	params := defaultParams()
 	loc := grid.Position{X: 50, Y: 50}
 	c := makeCreatureAt(loc, 1, 90)
 	w := makeWorld(200, 200)
 	w.AddCreature(c.Id, loc)
 
-	// Fix mass so MaxEnergy (= mass * EperM) is well above MinEnergy.
-	c.Mass = 100
-	c.Energy = c.Mass * params.EnergyPerMassUnit
+	cap := c.StomachCapacity(params)
+	c.Stomach = cap
 	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
 	if math.Abs(float64(val)-1.0) > 0.01 {
-		t.Errorf("SATIATION at full energy should be ~1.0, got %f", val)
+		t.Errorf("SATIATION at full stomach should be ~1.0, got %f", val)
 	}
 }
 
-func TestSatiation_MinEnergy(t *testing.T) {
+func TestSatiation_EmptyStomach(t *testing.T) {
 	params := defaultParams()
 	loc := grid.Position{X: 50, Y: 50}
 	c := makeCreatureAt(loc, 1, 90)
 	w := makeWorld(200, 200)
 	w.AddCreature(c.Id, loc)
 
-	c.Energy = float32(params.MinEnergy)
+	c.Stomach = 0
 	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
 	if math.Abs(float64(val)) > 0.01 {
-		t.Errorf("SATIATION at min energy should be ~0.0, got %f", val)
+		t.Errorf("SATIATION at empty stomach should be ~0.0, got %f", val)
 	}
 }
 
-func TestSatiation_MidEnergy(t *testing.T) {
+func TestSatiation_HalfStomach(t *testing.T) {
 	params := defaultParams()
 	loc := grid.Position{X: 50, Y: 50}
 	c := makeCreatureAt(loc, 1, 90)
 	w := makeWorld(200, 200)
 	w.AddCreature(c.Id, loc)
 
-	// Fix mass so MaxEnergy = 100 (EnergyPerMassUnit = 1.0 by default).
-	c.Mass = 100
-	maxE := c.Mass * params.EnergyPerMassUnit // = 100
-	// Energy halfway between min and max → satiation ≈ 0.5.
-	c.Energy = float32(params.MinEnergy) + (maxE-float32(params.MinEnergy))/2
+	cap := c.StomachCapacity(params)
+	c.Stomach = cap / 2
 	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
 	if math.Abs(float64(val)-0.5) > 0.01 {
-		t.Errorf("SATIATION at mid energy should be ~0.5, got %f", val)
+		t.Errorf("SATIATION at half stomach should be ~0.5, got %f", val)
 	}
 }
 
-func TestHeadingSensor(t *testing.T) {
-	params := defaultParams()
-	loc := grid.Position{X: 50, Y: 50}
-
-	// Facing east: cos(0)=1 → LAST_MOVE_DIR_X should be 1.0 (normalized to 1.0)
-	cEast := makeCreatureAt(loc, 1, 90)
-	cEast.Heading = 0
-	w := makeWorld(200, 200)
-	w.AddCreature(cEast.Id, loc)
-
-	xVal := cEast.GetSensor(simulation.LAST_MOVE_DIR_X, w, nil, 0, params)
-	if math.Abs(float64(xVal)-1.0) > 0.01 {
-		t.Errorf("LAST_MOVE_DIR_X facing east should be ~1.0, got %f", xVal)
-	}
-
-	// Facing west: cos(π)=-1 → normalized to 0.0
-	cWest := makeCreatureAt(loc, 1, 90)
-	cWest.Heading = math.Pi
-	w.AddCreature(cWest.Id, loc)
-	xValW := cWest.GetSensor(simulation.LAST_MOVE_DIR_X, w, nil, 0, params)
-	if math.Abs(float64(xValW)-0.0) > 0.01 {
-		t.Errorf("LAST_MOVE_DIR_X facing west should be ~0.0, got %f", xValW)
-	}
-}

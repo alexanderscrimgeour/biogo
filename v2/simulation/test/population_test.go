@@ -23,7 +23,6 @@ func TestNewPopulation(t *testing.T) {
 func TestProcessMoveQueue(t *testing.T) {
 	params := defaultParams()
 	params.FoodInteractionRadius = 0.1
-	params.PredationRadius = 0.1
 
 	w := grid.NewWorld(20, 20, 0)
 	genome := simulation.MakeRandomGenome(params)
@@ -51,7 +50,6 @@ func TestProcessMoveQueue(t *testing.T) {
 func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	params := defaultParams()
 	params.FoodInteractionRadius = 2.0
-	params.PredationRadius = 0.1
 
 	w := grid.NewWorld(20, 20, 0)
 	genome := simulation.MakeRandomGenome(params)
@@ -66,7 +64,6 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	creature.Heading = 0 // east, so food at (7,5) is in the forward cone
 	// Start at 50% of MaxEnergy so the creature is hungry enough to eat.
 	creature.Energy = creature.Mass * params.EnergyPerMassUnit * 0.5
-	energyBefore := creature.Energy
 
 	w.AddCreature(1, startPos)
 	w.AddFood(foodPos)
@@ -82,8 +79,8 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	if w.FoodCount() != 0 {
 		t.Error("food should be consumed after creature moves onto it")
 	}
-	if creature.Energy <= energyBefore {
-		t.Error("creature energy should increase after eating food")
+	if creature.Stomach <= 0 {
+		t.Error("creature stomach should be filled after eating food")
 	}
 }
 

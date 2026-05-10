@@ -9,6 +9,8 @@ import (
 
 type EnergyBar struct {
 	Value, Max float32
+	MinColor   color.Color
+	MaxColor   color.Color
 	Width      float32
 }
 
@@ -21,17 +23,23 @@ func (e *EnergyBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) 
 	}
 
 	vector.DrawFilledRect(screen, x, y, e.Width, 6, color.RGBA{35, 35, 35, 255}, false)
-	vector.DrawFilledRect(screen, x, y, e.Width*frac, 6, energyBarColor(frac), false)
+	vector.DrawFilledRect(screen, x, y, e.Width*frac, 6, e.energyBarColor(frac), false)
 	return e.Width, 10
 }
 
-// TODO: Move these color definitions to the Bar itself
-func energyBarColor(frac float32) color.RGBA {
-	if frac > 0.65 {
-		return color.RGBA{55, 185, 55, 255}
+func (e *EnergyBar) energyBarColor(frac float32) color.RGBA {
+	return lerpColor(e.MinColor, e.MaxColor, frac)
+}
+
+func lerpColor(c1, c2 color.Color, t float32) color.RGBA {
+	// Extract values as uint32 (0-65535)
+	r1, g1, b1, a1 := c1.RGBA()
+	r2, g2, b2, a2 := c2.RGBA()
+
+	return color.RGBA{
+		R: uint8(float32(r1>>8) + t*(float32(r2>>8)-float32(r1>>8))),
+		G: uint8(float32(g1>>8) + t*(float32(g2>>8)-float32(g1>>8))),
+		B: uint8(float32(b1>>8) + t*(float32(b2>>8)-float32(b1>>8))),
+		A: uint8(float32(a1>>8) + t*(float32(a2>>8)-float32(a1>>8))),
 	}
-	if frac > 0.33 {
-		return color.RGBA{190, 175, 45, 255}
-	}
-	return color.RGBA{190, 55, 55, 255}
 }

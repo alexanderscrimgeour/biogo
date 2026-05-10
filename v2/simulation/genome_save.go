@@ -39,6 +39,9 @@ type genomeData struct {
 	BrainLength      byte       `json:"brain_length"`
 	JuvenilePeriod   byte       `json:"juvenile_period"`
 	MetabolicRate    byte       `json:"metabolic_rate"`
+	StomachSize      byte       `json:"stomach_size"`
+	LearningRate     byte       `json:"learning_rate"`
+	LearningThreshold byte      `json:"learning_threshold"`
 	Brain            []geneData `json:"brain"`
 }
 
@@ -65,8 +68,11 @@ func toGenomeData(g *Genome) genomeData {
 		NeuronCount:      g.NeuronCount,
 		BrainLength:      g.BrainLength,
 		JuvenilePeriod:   g.JuvenilePeriod,
-		MetabolicRate:    g.MetabolicRate,
-		Brain:            genes,
+		MetabolicRate:     g.MetabolicRate,
+		StomachSize:       g.StomachSize,
+		LearningRate:      g.LearningRate,
+		LearningThreshold: g.LearningThreshold,
+		Brain:             genes,
 	}
 }
 
@@ -104,8 +110,11 @@ func fromGenomeData(gd genomeData) *Genome {
 		NeuronCount:      gd.NeuronCount,
 		BrainLength:      gd.BrainLength,
 		JuvenilePeriod:   gd.JuvenilePeriod,
-		MetabolicRate:    gd.MetabolicRate,
-		Brain:            genes,
+		MetabolicRate:     gd.MetabolicRate,
+		StomachSize:       gd.StomachSize,
+		LearningRate:      gd.LearningRate,
+		LearningThreshold: gd.LearningThreshold,
+		Brain:             genes,
 	}
 }
 

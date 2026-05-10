@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -77,6 +78,21 @@ const (
 	graphPanelH = 120
 	graphTextH  = 36
 	graphPad    = 4
+
+	// Neural network graph panel — sits below the creature detail panel
+	nnPanelX    = detailPanelX
+	nnPanelY    = detailPanelY + detailPanelH + 4
+	nnPanelW    = 320
+	nnColSensor = 120 // x-offset within panel for sensor nodes
+	nnColAction = 200 // x-offset within panel for action nodes
+	nnInnerPadX = 18  // gap between sensor/action nodes and the nearest neuron column
+	nnNodeSpY   = 15  // vertical space allocated per node
+	nnTitleH    = 20  // height of title row
+	nnPadding   = 6   // internal padding
+	nnNodeR     = 4   // node radius
+	nnBarMaxW   = 18  // max width of sensor/action activity bar in pixels
+	nnBarH      = 3   // height of activity bar in pixels
+	nnFooterH   = 16  // height of footer row below the node graph
 )
 
 type Component interface {
@@ -448,29 +464,58 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	half := float64(BlockSize) / 2
 
 	for _, anim := range g.animByID {
+		// 1. Calculate Interpolated Position
 		lerpX := anim.prevX + (anim.curX-anim.prevX)*t
 		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
 		cx, cy := float32(lerpX+half), float32(lerpY+half)
 
-		var r float64
+		// 2. Calculate Scaled Radius based on Mass
+		var r float32
+		minRadius := float32(BlockSize) * 0.8
+		maxExtraRadius := float32(BlockSize) * 4.0
+
 		if massRange > 0 {
 			massT := (float64(anim.mass) - float64(g.minCreatureMass)) / massRange
-			r = float64(BlockSize) + math.Max(0, math.Min(1, massT))*float64(5*BlockSize)
+			if massT < 0 {
+				massT = 0
+			}
+			if massT > 1 {
+				massT = 1
+			}
+			// Scale r: Starting at 80% BlockSize, growing up to +400% based on mass
+			r = minRadius + (float32(massT) * maxExtraRadius)
 		} else {
-			r = float64(BlockSize)
+			r = minRadius
 		}
 
+		// 3. Prepare Colors
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
+
+		// 4. Generate Circle Vertices (12 segments)
 		baseIdx := uint16(len(creatureVs))
-		for _, offset := range [3]float64{0, 2 * math.Pi / 3, -2 * math.Pi / 3} {
+		const segments = 12
+
+		// Center vertex for the triangle fan
+		creatureVs = append(creatureVs, ebiten.Vertex{
+			DstX: cx, DstY: cy,
+			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+		})
+
+		for i := 0; i <= segments; i++ {
+			angle := float64(i) * 2 * math.Pi / segments
 			creatureVs = append(creatureVs, ebiten.Vertex{
-				DstX:   cx + float32(r)*float32(math.Cos(anim.heading+offset)),
-				DstY:   cy + float32(r)*float32(math.Sin(anim.heading+offset)),
+				DstX:   cx + r*float32(math.Cos(angle)),
+				DstY:   cy + r*float32(math.Sin(angle)),
 				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 			})
 		}
-		creatureIs = append(creatureIs, baseIdx, baseIdx+1, baseIdx+2)
+
+		// 5. Build Indices for the Fan
+		for i := uint16(1); i <= segments; i++ {
+			creatureIs = append(creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
+		}
 	}
+
 	if len(creatureVs) > 0 {
 		screen.DrawTriangles(creatureVs, creatureIs, g.whiteImage, nil)
 	}
@@ -480,6 +525,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawSelectionHighlight(screen)
 		if detail, ok := g.sim.CreatureDetail(g.selectedCreatureID); ok {
 			g.drawCreatureDetail(screen, detail)
+			g.drawNeuralNetGraph(screen, detail)
 			g.drawFOVCones(screen, map[int]simulation.CreatureView{g.selectedCreatureID: g.sim.CreatureViews()[g.selectedCreatureID]}, t)
 		} else {
 			g.selectedCreatureID = -1
@@ -536,7 +582,12 @@ func (g *Game) drawFOVCones(screen *ebiten.Image, views map[int]simulation.Creat
 		path.Arc(cx, cy, r, float32(cv.Heading-halfFOV), float32(cv.Heading+halfFOV), vector.Clockwise)
 		path.Close()
 		vs, is := path.AppendVerticesAndIndicesForFilling(nil, nil)
-		clr := color.RGBA{cv.R, cv.G, cv.B, 40}
+		clr := color.RGBA{
+			R: uint8(cv.R),
+			G: uint8(cv.G),
+			B: uint8(cv.B),
+			A: 40,
+		}
 		for i := range vs {
 			vs[i].ColorR, vs[i].ColorG, vs[i].ColorB, vs[i].ColorA = float32(clr.R)/255, float32(clr.G)/255, float32(clr.B)/255, 0.15
 		}
@@ -592,7 +643,7 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	energyTxt.Draw(screen, currX, currY)
 	currY += 5
 
-	eBar := &components.EnergyBar{Value: d.Energy, Max: d.MaxEnergy, Width: p.W - (detailTpad * 2)}
+	eBar := &components.EnergyBar{Value: d.Energy, Max: d.MaxEnergy, MaxColor: color.RGBA{55, 185, 55, 255}, MinColor: color.RGBA{190, 55, 55, 255}, Width: p.W - (detailTpad * 2)}
 	_, h = eBar.Draw(screen, currX, currY)
 	currY += h + 15
 	juvenileStr := "Adult"
@@ -608,10 +659,16 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %d", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
 	mass.Draw(screen, currX, currY)
 	currY += h + 15
+	stomach := &components.Label{Text: fmt.Sprintf("Stomach: %.0f/%.0f", d.Stomach, d.StomachCapacity), Font: g.statFont, Color: color.White}
+	stomach.Draw(screen, currX, currY)
+	currY += 5
+	stomachBar := &components.EnergyBar{Value: d.Stomach, Max: d.StomachCapacity, MaxColor: color.RGBA{55, 185, 55, 255}, MinColor: color.RGBA{190, 55, 55, 255}, Width: p.W - (detailTpad * 2)}
+	_, h = stomachBar.Draw(screen, currX, currY)
+	currY += h + 15
 	dopamine := &components.Label{Text: fmt.Sprintf("Dopamine:  %.02f", d.Dopamine), Font: g.statFont, Color: color.White}
 	dopamine.Draw(screen, currX, currY)
 	currY += 5
-	dopBar := &components.EnergyBar{Value: d.Dopamine, Max: float32(1.2), Width: p.W - (detailTpad * 2)}
+	dopBar := &components.EnergyBar{Value: d.Dopamine, Max: float32(1.2), MaxColor: color.RGBA{216, 27, 96, 1}, MinColor: color.RGBA{48, 63, 159, 1}, Width: p.W - (detailTpad * 2)}
 	_, h = dopBar.Draw(screen, currX, currY)
 	currY += h + 15
 	sight := &components.Label{Text: fmt.Sprintf("Sight: %d  FOV: %d°", d.SightDistance, d.FieldOfView), Font: g.statFont, Color: color.White}
@@ -629,7 +686,7 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	sBtn := &components.Button{
 		Label: "Save Genome",
 		X:     int(currX),
-		Y:     int(currY) + 150,
+		Y:     int(currY) + 100,
 		W:     int(p.W - (detailTpad * 2)),
 		H:     int(detailSaveBtnH),
 		Color: color.RGBA{40, 100, 60, 220},
@@ -659,7 +716,8 @@ func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDet
 	step := float32(2)
 	for gy := float32(0); gy < chartSize; gy += step {
 		// Y-axis: Intelligence (Green). 1.0 (Top) to 0.0 (Bottom)
-		gVal := uint8((1.0-(gy/chartSize))*185) + 70
+		// gVal := uint8((1.0-(gy/chartSize))*185) + 70
+		gVal := uint8((gy/chartSize)*185) + 70
 		for rx := float32(0); rx < chartSize; rx += step {
 			// X-axis: Physicality (Red). 0.0 (Left) to 1.0 (Right)
 			rVal := uint8((rx/chartSize)*185) + 70
@@ -701,6 +759,291 @@ func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDet
 	}
 }
 
+func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDetailView) {
+	nn := d.NeuralNet
+	if len(nn.Edges) == 0 && len(nn.HiddenNeuronIDs) == 0 {
+		return
+	}
+
+	// Collect unique sensor and action IDs referenced by edges.
+	sensorSet := map[byte]bool{}
+	actionSet := map[byte]bool{}
+	for _, e := range nn.Edges {
+		if e.SourceType == simulation.SENSOR {
+			sensorSet[e.SourceID] = true
+		}
+		if e.SinkType == simulation.ACTION {
+			actionSet[e.SinkID] = true
+		}
+	}
+	sensors := make([]byte, 0, len(sensorSet))
+	for s := range sensorSet {
+		sensors = append(sensors, s)
+	}
+	sort.Slice(sensors, func(i, j int) bool { return sensors[i] < sensors[j] })
+	actions := make([]byte, 0, len(actionSet))
+	for a := range actionSet {
+		actions = append(actions, a)
+	}
+	sort.Slice(actions, func(i, j int) bool { return actions[i] < actions[j] })
+	neurons := nn.HiddenNeuronIDs // already sorted
+
+	// Assign a topological depth to each hidden neuron.
+	// Neurons fed directly by sensors start at depth 1; each neuron→neuron hop adds 1.
+	// Undriven neurons (no sensor or neuron input) sit at depth 0.
+	// Iterative relaxation with a safety cap tolerates cycles.
+	const maxLayerDepth = 8
+	neuronDepth := map[byte]int{}
+	for _, id := range neurons {
+		neuronDepth[id] = 0
+	}
+	for _, e := range nn.Edges {
+		if e.SourceType == simulation.SENSOR && e.SinkType == simulation.NEURON {
+			if neuronDepth[e.SinkID] < 1 {
+				neuronDepth[e.SinkID] = 1
+			}
+		}
+	}
+	for iter := 0; iter < maxLayerDepth; iter++ {
+		changed := false
+		for _, e := range nn.Edges {
+			if e.SourceType == simulation.NEURON && e.SinkType == simulation.NEURON && e.SourceID != e.SinkID {
+				newD := neuronDepth[e.SourceID] + 1
+				if newD > maxLayerDepth {
+					newD = maxLayerDepth
+				}
+				if newD > neuronDepth[e.SinkID] {
+					neuronDepth[e.SinkID] = newD
+					changed = true
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
+	// Group neurons by depth; track the maximum depth present.
+	byDepth := map[int][]byte{}
+	numDepths := 0
+	for _, id := range neurons {
+		dep := neuronDepth[id]
+		byDepth[dep] = append(byDepth[dep], id)
+		if dep+1 > numDepths {
+			numDepths = dep + 1
+		}
+	}
+	for dep := range byDepth {
+		sort.Slice(byDepth[dep], func(i, j int) bool { return byDepth[dep][i] < byDepth[dep][j] })
+	}
+
+	// Map each neuron to a column X: depths are spread evenly within the inner
+	// area, which is inset from the sensor and action nodes by nnInnerPadX on
+	// each side so connection lines have clear breathing room.
+	neuronColX := map[byte]float32{}
+	innerLeft := float32(nnColSensor + nnInnerPadX)
+	innerRight := float32(nnColAction - nnInnerPadX)
+	innerSpan := innerRight - innerLeft
+	for id, dep := range neuronDepth {
+		frac := float32(dep+1) / float32(numDepths+1)
+		neuronColX[id] = innerLeft + innerSpan*frac
+	}
+
+	// Panel height from the densest column across sensors, any neuron layer, actions.
+	maxCount := len(sensors)
+	if len(actions) > maxCount {
+		maxCount = len(actions)
+	}
+	for _, ns := range byDepth {
+		if len(ns) > maxCount {
+			maxCount = len(ns)
+		}
+	}
+	panelH := float32(nnTitleH+nnPadding) + float32(maxCount)*nnNodeSpY + float32(nnPadding) + float32(nnFooterH)
+	if panelH < 40 {
+		panelH = 40
+	}
+
+	px := float32(nnPanelX)
+	py := float32(nnPanelY)
+
+	// Panel background.
+	vector.DrawFilledRect(screen, px, py, nnPanelW, panelH, color.RGBA{8, 10, 22, 215}, false)
+	vector.StrokeRect(screen, px, py, nnPanelW, panelH, 1, color.RGBA{90, 90, 150, 255}, false)
+	text.Draw(screen, "NEURAL NETWORK", g.statFont, int(px)+nnPadding, int(py)+14, color.RGBA{120, 120, 180, 255})
+
+	contentTop := py + float32(nnTitleH+nnPadding)
+	contentH := panelH - float32(nnTitleH+nnPadding*2) - float32(nnFooterH)
+
+	nodeY := func(count, i int) float32 {
+		if count == 0 {
+			return contentTop + contentH/2
+		}
+		step := contentH / float32(count)
+		return contentTop + step*float32(i) + step/2
+	}
+
+	sensorY := map[byte]float32{}
+	for i, s := range sensors {
+		sensorY[s] = nodeY(len(sensors), i)
+	}
+	// Each depth column distributes its own neurons independently.
+	neuronY := map[byte]float32{}
+	for dep, ns := range byDepth {
+		for i, id := range ns {
+			neuronY[id] = nodeY(len(ns), i)
+		}
+		_ = dep
+	}
+	actionY := map[byte]float32{}
+	for i, a := range actions {
+		actionY[a] = nodeY(len(actions), i)
+	}
+
+	// Draw edges, coloured by weight: green = positive, orange-red = negative.
+	for _, e := range nn.Edges {
+		var srcX, srcY, dstX, dstY float32
+
+		switch e.SourceType {
+		case simulation.SENSOR:
+			srcX = px + float32(nnColSensor)
+			srcY = sensorY[e.SourceID]
+		case simulation.NEURON:
+			srcX = px + neuronColX[e.SourceID]
+			srcY = neuronY[e.SourceID]
+		}
+		switch e.SinkType {
+		case simulation.NEURON:
+			dstX = px + neuronColX[e.SinkID]
+			dstY = neuronY[e.SinkID]
+		case simulation.ACTION:
+			dstX = px + float32(nnColAction)
+			dstY = actionY[e.SinkID]
+		}
+
+		// Self-loop: small circle above the neuron node.
+		if e.SourceType == simulation.NEURON && e.SinkType == simulation.NEURON && e.SourceID == e.SinkID {
+			loopX := px + neuronColX[e.SourceID]
+			loopY := neuronY[e.SourceID] - nnNodeR*2
+			var path vector.Path
+			path.Arc(loopX, loopY, nnNodeR*1.5, 0, 2*math.Pi, vector.Clockwise)
+			vs, is := path.AppendVerticesAndIndicesForStroke(nil, nil, &vector.StrokeOptions{Width: 1})
+			lc := nnEdgeColor(e.Weight)
+			cr, cg, cb, ca := float32(lc.R)/255, float32(lc.G)/255, float32(lc.B)/255, float32(lc.A)/255
+			for i := range vs {
+				vs[i].ColorR, vs[i].ColorG, vs[i].ColorB, vs[i].ColorA = cr, cg, cb, ca
+			}
+			screen.DrawTriangles(vs, is, g.whiteImage, nil)
+			continue
+		}
+
+		vector.StrokeLine(screen, srcX, srcY, dstX, dstY, 1, nnEdgeColor(e.Weight), false)
+	}
+
+	// Sensor nodes + right-aligned labels + left-anchored activity bars.
+	for _, s := range sensors {
+		nx := px + float32(nnColSensor)
+		ny := sensorY[s]
+		vector.DrawFilledCircle(screen, nx, ny, nnNodeR, color.RGBA{80, 150, 220, 255}, false)
+		lbl := nnSensorName(s)
+		lblW := float32(len(lbl)) * 8
+		labelX := nx - lblW - 10
+		if labelX < px+2 {
+			labelX = px + 2
+		}
+		text.Draw(screen, lbl, g.statFont, int(labelX), int(ny)+5, color.RGBA{160, 180, 220, 255})
+		if val, ok := nn.SensorValues[s]; ok {
+			barX := px + float32(nnPadding)
+			barY := ny - float32(nnBarH)/2
+			fillW := float32(nnBarMaxW) * clamp(val)
+			vector.DrawFilledRect(screen, barX, barY, float32(nnBarMaxW), float32(nnBarH), color.RGBA{20, 40, 70, 180}, false)
+			if fillW > 0 {
+				vector.DrawFilledRect(screen, barX, barY, fillW, float32(nnBarH), color.RGBA{80, 160, 240, 220}, false)
+			}
+		}
+	}
+
+	// Hidden neuron nodes — one column per depth layer.
+	for _, id := range neurons {
+		nx := px + neuronColX[id]
+		ny := neuronY[id]
+		vector.DrawFilledCircle(screen, nx, ny, nnNodeR, color.RGBA{200, 180, 80, 255}, false)
+	}
+
+	// Action nodes + left-aligned labels + right-anchored activity bars.
+	for _, a := range actions {
+		ax := px + float32(nnColAction)
+		ay := actionY[a]
+		vector.DrawFilledCircle(screen, ax, ay, nnNodeR, color.RGBA{220, 100, 80, 255}, false)
+		lbl := nnActionName(a)
+		text.Draw(screen, lbl, g.statFont, int(ax)+10, int(ay)+5, color.RGBA{220, 160, 150, 255})
+		if val, ok := nn.ActionValues[a]; ok {
+			barX := px + float32(nnPanelW) - float32(nnPadding) - float32(nnBarMaxW)
+			barY := ay - float32(nnBarH)/2
+			norm := float32(math.Tanh(float64(val)))
+			absNorm := norm
+			if absNorm < 0 {
+				absNorm = -absNorm
+			}
+			fillW := float32(nnBarMaxW) * absNorm
+			vector.DrawFilledRect(screen, barX, barY, float32(nnBarMaxW), float32(nnBarH), color.RGBA{60, 25, 15, 180}, false)
+			if fillW > 0 {
+				fc := color.RGBA{240, 130, 80, 220}
+				if norm < 0 {
+					fc = color.RGBA{80, 130, 240, 220}
+				}
+				vector.DrawFilledRect(screen, barX, barY, fillW, float32(nnBarH), fc, false)
+			}
+		}
+	}
+
+	const baseLearningRate = 0.01
+	footerY := int(py+panelH) - nnPadding - 2
+	text.Draw(screen, fmt.Sprintf("Learning Rate: %.4f", baseLearningRate*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
+}
+
+func nnEdgeColor(w float32) color.RGBA {
+	absW := w
+	if absW < 0 {
+		absW = -absW
+	}
+	brightness := absW
+	if brightness > 1 {
+		brightness = 1
+	}
+	if w >= 0 {
+		return color.RGBA{0, uint8(brightness*200 + 30), 0, 180}
+	}
+	return color.RGBA{uint8(brightness*180 + 30), uint8(brightness * 40), 0, 160}
+}
+
+func nnSensorName(id byte) string {
+	names := [...]string{
+		"Age", "Energy", "Loc X", "Loc Y", "Osc 1",
+		"Density", "See Pop", "See Food", "See Corpse",
+		"Random", "Satiety", "Facing", "Food Ang",
+		"Food Dist", "Threat", "Kinship", "Burn Rate",
+		"Mass %", "Blocked", "Prey", "Threat Ang",
+		"Prey Ang", "Wall Prox", "Digest", "Food/Cap",
+		"Juvenile",
+	}
+	if int(id) < len(names) {
+		return names[id]
+	}
+	return fmt.Sprintf("S%d", id)
+}
+
+func nnActionName(id byte) string {
+	names := [...]string{
+		"Move", "Rotate",
+		"SetOsc", "SetResp", "SetLearn", "Rest",
+	}
+	if int(id) < len(names) {
+		return names[id]
+	}
+	return fmt.Sprintf("A%d", id)
+}
+
 // Helper to keep logic clean
 func clamp(v float32) float32 {
 	if v < 0 {
@@ -738,30 +1081,34 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 		return
 	}
 
-	vector.DrawFilledRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH,
-		color.RGBA{8, 10, 22, 160}, false)
-	vector.StrokeRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH, 1,
-		color.RGBA{50, 60, 90, 180}, false)
+	panelFill := color.RGBA{8, 10, 22, 160}
+	panelStroke := color.RGBA{50, 60, 90, 180}
+	vector.DrawFilledRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH, panelFill, false)
+	vector.StrokeRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH, 1, panelStroke, false)
+
+	popColor := color.RGBA{100, 180, 255, 255}
+	foodColor := color.RGBA{80, 210, 100, 255}
 
 	text.Draw(screen, fmt.Sprintf("Pop: %d", g.sim.PopulationCount()), g.statFont,
-		graphPanelX+graphPad, graphPanelY+15, color.RGBA{100, 180, 255, 255})
+		graphPanelX+graphPad, graphPanelY+15, popColor)
 	text.Draw(screen, fmt.Sprintf("Food: %d", g.sim.FoodCount()), g.statFont,
-		graphPanelX+graphPad, graphPanelY+31, color.RGBA{80, 210, 100, 255})
+		graphPanelX+graphPad, graphPanelY+31, foodColor)
 
 	gx := float32(graphPanelX + graphPad)
 	gy := float32(graphPanelY + graphTextH)
 	gw := float32(graphPanelW - graphPad*2)
 	gh := float32(graphPanelH - graphTextH - graphPad)
 
-	maxPop, maxFood := 1, 1
+	globalMax := 1
 	for i := 0; i < g.histCount; i++ {
 		idx := ((g.histHead-1-i)%historyLen + historyLen) % historyLen
 		s := g.history[idx]
-		if s.pop > maxPop {
-			maxPop = s.pop
+
+		if s.pop > globalMax {
+			globalMax = s.pop
 		}
-		if s.food > maxFood {
-			maxFood = s.food
+		if s.food > globalMax {
+			globalMax = s.food
 		}
 	}
 
@@ -770,9 +1117,10 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 		steps = g.histCount
 	}
 
-	g.drawGraphLine(screen, gx, gy, gw, gh, steps, maxFood,
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, globalMax,
 		color.RGBA{80, 210, 100, 200}, func(s histSample) int { return s.food })
-	g.drawGraphLine(screen, gx, gy, gw, gh, steps, maxPop,
+
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, globalMax,
 		color.RGBA{100, 180, 255, 200}, func(s histSample) int { return s.pop })
 }
 

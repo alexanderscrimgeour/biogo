@@ -2,7 +2,6 @@ package simulation
 
 import (
 	"biogo/v2/grid"
-	"biogo/v2/utils"
 	"fmt"
 	"math"
 	"math/rand"
@@ -126,12 +125,10 @@ func (s *Simulation) step() {
 	for i := range results {
 		s.Population.DeathQueue = append(s.Population.DeathQueue, results[i].death...)
 		s.Population.MoveQueue = append(s.Population.MoveQueue, results[i].move...)
-		s.Population.EatQueue = append(s.Population.EatQueue, results[i].eat...)
 		s.Population.ReproductionQueue = append(s.Population.ReproductionQueue, results[i].reproduction...)
 	}
 
 	s.Population.ProcessMoveQueue(s.World, s.Params)
-	s.Population.ProcessEatQueue(s.World, s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
 	s.Population.ProcessCorpseDecay(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params, s.allocateID)
@@ -143,13 +140,13 @@ func (s *Simulation) step() {
 		}
 
 		// Decay the dopamine signal
-		c.Dopamine *= 0.95
+		c.Dopamine *= 0.6
 
 		if c.Dopamine < 0.01 {
 			c.Dopamine = 0
 		}
-		// Energy baseline for REWARD_SENSOr
 		c.LastTickEnergy = c.Energy
+		c.LastStomach = c.Stomach
 	}
 
 	spawnParams := *s.Params
@@ -181,6 +178,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	c.GrowMass(s.Params)
 	c.LastAction = ""
 	c.DrainEnergy(c.MetabolicRate(s.Params))
+	c.Digest(s.Params)
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
 		pending.death = append(pending.death, DeathInstruction{c})
 		return
@@ -216,19 +214,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	}
 
 	if IsActionEnabled(SET_RESPONSIVENESS) {
-		resp := actionLevels[SET_RESPONSIVENESS]
-		resp = (float32(math.Tanh(float64(resp/float32(utils.ClampByteAsFloat32(0, 1, c.Genome.Responsiveness))))) + 1) / 2
-		c.Responsiveness = resp
-	}
-
-	if IsActionEnabled(EAT) {
-		level := actionLevels[EAT]
-		if level > 0 && prob2Bool(float64(level)) == 1 {
-			if targetID := findNearestInFOV(c, s.World, s.Params.PredationRadius); targetID != -1 {
-				pending.eat = append(pending.eat, EatInstruction{c, targetID})
-				c.LastAction = appendActionString(c.LastAction, "Eating")
-			}
-		}
+		c.Responsiveness = (float32(math.Tanh(float64(actionLevels[SET_RESPONSIVENESS]))) + 1) / 2
 	}
 
 	responseAdjust := responseCurve(c.Responsiveness, s.Params.ResponseCurveKFactor)
@@ -242,40 +228,24 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 	}
 
-	// Rotation: ROTATE_LEFT turns CCW, ROTATE_RIGHT turns CW.
-	rotateLeft := float64(0)
-	rotateRight := float64(0)
-	if IsActionEnabled(ROTATE_LEFT) {
-		rotateLeft = float64(actionLevels[ROTATE_LEFT])
+	// Rotation: positive level turns CCW (left), negative turns CW (right).
+	rotateAmount := float64(0)
+	if IsActionEnabled(ROTATE) {
+		rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) * float64(responseAdjust) * s.Params.MaxRotationPerStep
 	}
-	if IsActionEnabled(ROTATE_RIGHT) {
-		rotateRight = float64(actionLevels[ROTATE_RIGHT])
-	}
-	rotateAmount := math.Tanh(rotateLeft-rotateRight) * float64(responseAdjust) * s.Params.MaxRotationPerStep
 	if rotateAmount != 0 {
 		massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
-		massCostMult := 0.5 + massNorm // [0.5 at zero mass, 1.5 at max mass]
+		massCostMult := 0.5 + massNorm
 		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
 		c.LastAction = appendActionString(c.LastAction, "Rotating")
 	}
 	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
 
-	// Forward/backward movement.
-	fwd := float64(0)
-	bwd := float64(0)
-	if IsActionEnabled(MOVE_FORWARD) {
-		fwd = float64(actionLevels[MOVE_FORWARD])
+	// Forward/backward movement: positive = forward, negative = backward.
+	moveAmount := float64(0)
+	if IsActionEnabled(MOVE) {
+		moveAmount = math.Tanh(float64(actionLevels[MOVE])) * float64(responseAdjust)
 	}
-	if IsActionEnabled(MOVE_BACKWARD) {
-		bwd = float64(actionLevels[MOVE_BACKWARD])
-	}
-	if IsActionEnabled(MOVE_RANDOM) {
-		level := float64(actionLevels[MOVE_RANDOM])
-		c.Heading = grid.NormalizeAngle(c.Heading + (rand.Float64()*2-1)*s.Params.MaxRotationPerStep)
-		fwd += level
-	}
-
-	moveAmount := math.Tanh(fwd-bwd) * float64(responseAdjust)
 	massFactor := 1.0 + float64(c.CurrentMass(s.Params))/255.0
 	moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
@@ -353,34 +323,6 @@ func prob2Bool(val float64) int {
 func responseCurve(resp float32, kFactor float32) float32 {
 	k := float64(kFactor)
 	return float32(math.Pow(float64(resp)-2.0, -2*k)) - float32(math.Pow(2.0, -2.0*k))*(1-resp)
-}
-
-// findNearestInFOV returns the ID of the closest creature within the FOV cone
-// and the given radius, or -1 if none is found.
-func findNearestInFOV(c *Creature, w *grid.World, radius float64) int {
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
-	fwdX, fwdY := grid.HeadingToVec(c.Heading)
-
-	bestID := -1
-	bestDist := math.MaxFloat64
-
-	for _, id := range w.GetCreaturesInRadius(c.Loc, radius) {
-		if id == c.Id {
-			continue
-		}
-		pos, _ := w.GetCreaturePos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d == 0 || d >= radius {
-			continue
-		}
-		if grid.CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos && d < bestDist {
-			bestDist = d
-			bestID = id
-		}
-	}
-	return bestID
 }
 
 // partitionIDs splits ids into n roughly equal batches using round-robin assignment.

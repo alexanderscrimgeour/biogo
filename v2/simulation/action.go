@@ -1,17 +1,14 @@
 package simulation
 
 const (
-	MOVE_FORWARD byte = iota
-	MOVE_BACKWARD
-	ROTATE_LEFT
-	ROTATE_RIGHT
+	MOVE byte = iota // positive = forward, negative = backward
+	ROTATE           // positive = left (CCW), negative = right (CW)
 	SET_OSCILLATOR_PERIOD
 	SET_RESPONSIVENESS
-	EAT
+	SET_LEARNING_RATE // modulates per-tick learning rate relative to genome baseline
 	DO_NOTHING
 
 	ACTION_COUNT
-	MOVE_RANDOM
 )
 
 func IsActionEnabled(a byte) bool {

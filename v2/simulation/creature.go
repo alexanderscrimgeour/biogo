@@ -4,6 +4,7 @@ import (
 	"biogo/v2/grid"
 	"biogo/v2/utils"
 	"fmt"
+	"image/color"
 	"math"
 	"math/rand"
 )
@@ -24,6 +25,9 @@ type Creature struct {
 	Genome         *Genome
 	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
 	Dopamine       float32
+	Stomach        float32 // current food mass in stomach; digested into energy each tick
+	LastStomach    float32
+	Color          color.RGBA
 }
 
 func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
@@ -42,6 +46,7 @@ func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature 
 	}
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
+	c.Color = c.CalculateColor(p)
 	return &c
 }
 
@@ -62,6 +67,7 @@ func NewAdultCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Crea
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
 	c.Age = c.JuvenilePeriod(p)
+	c.Color = c.CalculateColor(p)
 	return &c
 }
 
@@ -79,6 +85,36 @@ func (c Creature) String() string {
 // Energy capacity scales linearly with body size (larger creatures can store more energy).
 func (c Creature) MaxEnergy(params *Parameters) float32 {
 	return c.Mass * params.EnergyPerMassUnit
+}
+
+// StomachCapacity returns the maximum food mass this creature's stomach can hold.
+// The gene sets a capacity at adult size; it then scales linearly with current mass
+// so juveniles and starving creatures have proportionally smaller stomachs.
+func (c Creature) StomachCapacity(params *Parameters) float32 {
+	base := params.MinStomachSize + float32(c.Genome.StomachSize)/255.0*(params.MaxStomachSize-params.MinStomachSize)
+	if c.Genome.Mass == 0 {
+		return base
+	}
+	return base * (c.Mass / float32(c.Genome.Mass))
+}
+
+// BiteSize returns the maximum mass this creature consumes in a single eating interaction.
+// Scales linearly with body mass so smaller creatures take smaller bites.
+func (c Creature) BiteSize(params *Parameters) float32 {
+	return params.BaseBiteSize * c.Mass / float32(params.MaxMass)
+}
+
+// Digest converts stomach contents into energy at DigestionRate mass units per tick.
+func (c *Creature) Digest(params *Parameters) {
+	if c.Stomach <= 0 {
+		return
+	}
+	digested := params.DigestionRate
+	if digested > c.Stomach {
+		digested = c.Stomach
+	}
+	c.Stomach -= digested
+	c.GainEnergy(digested*params.EnergyPerMassUnit, params)
 }
 
 // JuvenilePeriod returns the number of ticks before this creature is considered an adult.
@@ -169,8 +205,106 @@ func (c Creature) MetabolicRate(params *Parameters) float32 {
 // Larger creatures live longer (rate-of-living theory); higher metabolic gene shortens life.
 func (c Creature) MaxAge(params *Parameters) int {
 	baseLife := float32(params.BaseMaxAge)
-	sizeMult := 0.5 + float32(c.Genome.Mass)/255.0        // [0.5, 1.5]
+	sizeMult := 0.5 + float32(c.Genome.Mass)/255.0 // [0.5, 1.5]
 	metabolicGeneNorm := float32(c.Genome.MetabolicRate) / 255.0
-	metabolicPenalty := 0.75 + metabolicGeneNorm           // [0.75, 1.75]
+	metabolicPenalty := 0.75 + metabolicGeneNorm // [0.75, 1.75]
 	return int((baseLife * sizeMult) / metabolicPenalty)
+}
+
+func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {
+	if nn == nil || len(nn.Edges) == 0 {
+		return 0
+	}
+
+	// 1. Structural Density (Efficiency)
+	// We look at how many connections (Edges) exist per hidden neuron.
+	// A high connectivity-to-node ratio suggests complex integration.
+	numHidden := float32(len(nn.HiddenNeurons))
+	if numHidden == 0 {
+		numHidden = 1
+	} // Avoid division by zero for reflex-only brains
+
+	density := float32(len(nn.Edges)) / numHidden
+	// Normalize density: 15+ edges per neuron is considered "high complexity"
+	connectivityScore := clamp(density / 15.0)
+
+	// 2. Synaptic Strength (Depth of thought)
+	// We calculate the average absolute weight.
+	// Higher weights suggest "stronger" convictions or more defined behaviors.
+	var weightSum float32
+	for _, w := range nn.Weights {
+		if w < 0 {
+			weightSum -= w
+		} else {
+			weightSum += w
+		}
+	}
+	avgWeight := weightSum / float32(len(nn.Weights))
+	// Standard weights in neural nets often range 0-4.0; we'll normalize to 2.0
+	weightScore := clamp(avgWeight / 2.0)
+
+	// 3. Adaptability (From Genome)
+	// We still pull LearningRate from the genome as it defines the net's potential to change.
+	plasticity := float32(g.LearningRate) / 255.0
+
+	// 4. Signal Resolution (Action/Sensor breadth)
+	// Does the brain handle many inputs/outputs?
+	ioBreadth := clamp(float32(len(nn.LastSensorValues)+len(nn.LastActionValues)) / 20.0)
+
+	// Final Weighted Score
+	// We favor Connectivity and Plasticity as the primary "Intelligence" drivers.
+	iq := (connectivityScore * 0.45) + (plasticity * 0.25) + (weightScore * 0.20) + (ioBreadth * 0.10)
+
+	return iq
+}
+
+func clamp(v float32) float32 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func (c *Creature) CalculateColor(p *Parameters) color.RGBA {
+	g := c.Genome
+	if g == nil {
+		return color.RGBA{0, 0, 0, 255}
+	}
+
+	scale := func(val, min, max float64) uint8 {
+		if max == min {
+			return 70
+		}
+		t := (val - min) / (max - min)
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		return uint8(t*185 + 70)
+	}
+
+	// Red: Physicality (Mass & Metabolism)
+	redMass := float64(g.Mass)
+	redMeta := float64(g.MetabolicRate) / 255.0
+	rVal := (redMass/255.0 + redMeta) / 2.0
+	red := uint8(rVal*185 + 70)
+
+	// Green: Intelligence (Neuron Count & Brain Complexity)
+	iq := calculateFunctionalIntelligence(&c.Nnet, g)
+	green := uint8(255 - (iq * 185))
+
+	// Blue: Perception (Sight & FOV)
+	blueSight := scale(float64(g.SightDistance), float64(p.MinSightDistance), float64(p.MaxSightDistance))
+	blueFOV := scale(float64(g.FieldOfView), float64(p.MinFieldOfView), float64(p.MaxFieldOfView))
+	blue := uint8((uint16(blueSight) + uint16(blueFOV)) / 2)
+
+	// Alpha: 50% to 100% based on MutationRate
+	alpha := 255 - uint8((uint16(g.MutationRate)*127)/255)
+
+	return color.RGBA{red, green, blue, alpha}
 }
