@@ -200,18 +200,22 @@ func (s *Simulation) Print() {
 }
 
 func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pending *pendingInstructions) {
-	if IsActionEnabled(DO_NOTHING) {
-		level := actionLevels[DO_NOTHING]
-		if level > 0 && prob2Bool(float64(level)) == 1 {
-			// Resting pays half the basal metabolic rate: refund the base drain
+	if IsActionEnabled(REST) {
+		level := actionLevels[REST]
+		if math.Abs(float64(level)) > 0.75 {
+			// Resting pays fraction of the basal metabolic rate: refund the base drain
 			// already charged this tick, then re-charge the lower resting rate.
 			rate := c.MetabolicRate(s.Params)
+
 			c.GainEnergy(rate, s.Params)
-			c.DrainEnergy(rate / 2)
+			c.DrainEnergy(rate * 0.1)
+			c.IsResting = true
+
 			c.LastAction = appendActionString(c.LastAction, "Resting")
 			return
 		}
 	}
+	c.IsResting = false
 
 	if IsActionEnabled(SET_RESPONSIVENESS) {
 		c.Responsiveness = (float32(math.Tanh(float64(actionLevels[SET_RESPONSIVENESS]))) + 1) / 2

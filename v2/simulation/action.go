@@ -6,7 +6,7 @@ const (
 	SET_OSCILLATOR_PERIOD
 	SET_RESPONSIVENESS
 	SET_LEARNING_RATE // modulates per-tick learning rate relative to genome baseline
-	DO_NOTHING
+	REST
 
 	ACTION_COUNT
 )

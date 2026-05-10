@@ -27,13 +27,13 @@ func TestDoNothingHalvesMetabolicCost(t *testing.T) {
 	c.Energy = c.Mass * p.EnergyPerMassUnit // start at full MaxEnergy
 	energyBefore := c.Energy
 
-	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into DO_NOTHING so it always fires.
+	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into REST so it always fires.
 	c.Genome.OscPeriod = 1
 	doNothingGene := &simulation.Gene{
 		SourceType: simulation.SENSOR,
 		SourceID:   simulation.OSC1,
 		SinkType:   simulation.ACTION,
-		SinkID:     simulation.DO_NOTHING,
+		SinkID:     simulation.REST,
 		Weight:     255,
 	}
 	c.Genome.Brain = []*simulation.Gene{doNothingGene}
@@ -47,14 +47,14 @@ func TestDoNothingHalvesMetabolicCost(t *testing.T) {
 	expectedEnergy := energyBefore - rate/2
 	tolerance := float32(0.01)
 	if math.Abs(float64(c.Energy-expectedEnergy)) > float64(tolerance) {
-		t.Errorf("DO_NOTHING should charge half metabolic rate: before=%f expected=%f got=%f (rate=%f)",
+		t.Errorf("REST should charge half metabolic rate: before=%f expected=%f got=%f (rate=%f)",
 			energyBefore, expectedEnergy, c.Energy, rate)
 	}
 }
 
 func TestDoNothingIsEnabled(t *testing.T) {
-	if !simulation.IsActionEnabled(simulation.DO_NOTHING) {
-		t.Errorf("DO_NOTHING (action %d) should be enabled", simulation.DO_NOTHING)
+	if !simulation.IsActionEnabled(simulation.REST) {
+		t.Errorf("REST (action %d) should be enabled", simulation.REST)
 	}
 }
 

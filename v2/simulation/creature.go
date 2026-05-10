@@ -27,6 +27,7 @@ type Creature struct {
 	Dopamine       float32
 	Stomach        float32 // current food mass in stomach; digested into energy each tick
 	LastStomach    float32
+	IsResting      bool
 	Color          color.RGBA
 }
 
@@ -109,12 +110,21 @@ func (c *Creature) Digest(params *Parameters) {
 	if c.Stomach <= 0 {
 		return
 	}
-	digested := params.DigestionRate
+	digestionRate := params.DigestionRate
+	efficiency := 1.0
+
+	// If resting, digest faster and more efficiently
+	if c.IsResting {
+		digestionRate *= 1.5 // 50% faster processing
+		efficiency = 1.2     // 20% more energy per unit of food
+	}
+	digested := digestionRate
 	if digested > c.Stomach {
 		digested = c.Stomach
 	}
 	c.Stomach -= digested
-	c.GainEnergy(digested*params.EnergyPerMassUnit, params)
+	energyGained := digested * params.EnergyPerMassUnit * float32(efficiency)
+	c.GainEnergy(energyGained, params)
 }
 
 // JuvenilePeriod returns the number of ticks before this creature is considered an adult.
