@@ -16,19 +16,19 @@ type Parameters struct {
 	StartingPopulation int
 
 	// Genome constraints — byte ranges the genome is clamped to at birth and mutation
-	MinEnergy            byte // energy floor used in SATIATION sensor
-	MaxMass              byte
-	MinSpawnNeuronCount  byte // brain gene count at birth
-	MaxSpawnNeuronCount  byte
-	MinNeuronCount       byte // brain gene count bounds during mutation
-	MaxNeuronCount       byte
-	MinHiddenLayerCount  byte
-	MaxHiddenLayerCount  byte
-	MinSightDistance     byte
-	MaxSightDistance     byte
-	MinFieldOfView       byte
-	MaxFieldOfView       byte
-	ResponseCurveKFactor float32
+	MinEnergy                byte // energy floor used in SATIATION sensor
+	MaxMass                  byte
+	MinSpawnCognitiveBreadth byte // brain gene count at birth
+	MaxSpawnCognitiveBreadth byte
+	MinCognitiveBreadth      byte // brain gene count bounds during mutation
+	MaxCognitiveBreadth      byte
+	MinSynapticDensity       byte
+	MaxSynapticDensity       byte
+	MinSightDistance         byte
+	MaxSightDistance         byte
+	MinFieldOfView           byte
+	MaxFieldOfView           byte
+	ResponseCurveKFactor     float32
 
 	// Mutation
 	BaseMutationRate  float32
@@ -75,8 +75,8 @@ type Parameters struct {
 	AttackEnergyCost      float32 // energy drained from attacker per successful bite on a live creature
 
 	// Learning
-	MinLearningRate      float32 // learning rate at LearningRate gene = 0
-	MaxLearningRate      float32 // learning rate at LearningRate gene = 255
+	MinNeuroplasticity   float32 // learning rate at Neuroplasticity gene = 0
+	MaxNeuroplasticity   float32 // learning rate at Neuroplasticity gene = 255
 	MinLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 0
 	MaxLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 255
 
@@ -94,12 +94,12 @@ func DefaultParams() *Parameters {
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
 		MaxMass:                     255,
-		MinSpawnNeuronCount:         5,
-		MaxSpawnNeuronCount:         40,
-		MinNeuronCount:              5,
-		MaxNeuronCount:              40,
-		MinHiddenLayerCount:         3,
-		MaxHiddenLayerCount:         8,
+		MinSpawnCognitiveBreadth:    10,
+		MaxSpawnCognitiveBreadth:    40,
+		MinCognitiveBreadth:         5,
+		MaxCognitiveBreadth:         64,
+		MinSynapticDensity:          20,
+		MaxSynapticDensity:          100,
 		MinSightDistance:            5,
 		MaxSightDistance:            50,
 		MinFieldOfView:              10,
@@ -120,7 +120,7 @@ func DefaultParams() *Parameters {
 		MinStomachSize:              5.0,
 		MaxStomachSize:              100.0,
 		DigestionRate:               0.5,
-		BaseBMR:                     0.5,
+		BaseBMR:                     0.1,
 		EnergyPerMassUnit:           1.0,
 		MoveCost:                    0.01,
 		MaxSpeedPerStep:             2.0,
@@ -132,13 +132,13 @@ func DefaultParams() *Parameters {
 		BaseBiteSize:                100.0,
 		CorpseDecayRate:             0.05,
 		MinPredationMassRatio:       0.25,
-		AttackEnergyCost:            0.5,
-		MinLearningRate:             0.001,
-		MaxLearningRate:             0.05,
+		AttackEnergyCost:            0.1,
+		MinNeuroplasticity:          0.001,
+		MaxNeuroplasticity:          0.05,
 		MinLearningThreshold:        0.05,
 		MaxLearningThreshold:        0.5,
-		SavedGenomeProportion:       0.1,
-		PopulationSensorRadius:      6,
+		SavedGenomeProportion:       0.01,
+		PopulationSensorRadius:      25,
 	}
 	if err := p.Validate(); err != nil {
 		panic(err)
@@ -173,9 +173,9 @@ func (p *Parameters) Validate() error {
 		name     string
 	}
 	for _, pair := range []bytePair{
-		{p.MinSpawnNeuronCount, p.MaxSpawnNeuronCount, "SpawnNeuronCount"},
-		{p.MinNeuronCount, p.MaxNeuronCount, "NeuronCount"},
-		{p.MinHiddenLayerCount, p.MaxHiddenLayerCount, "HiddenLayerCount"},
+		{p.MinSpawnCognitiveBreadth, p.MaxSpawnCognitiveBreadth, "SpawnCognitiveBreadth"},
+		{p.MinCognitiveBreadth, p.MaxCognitiveBreadth, "CognitiveBreadth"},
+		{p.MinSynapticDensity, p.MaxSynapticDensity, "SynapticDensity"},
 		{p.MinSightDistance, p.MaxSightDistance, "SightDistance"},
 		{p.MinFieldOfView, p.MaxFieldOfView, "FieldOfView"},
 	} {

@@ -4,6 +4,7 @@ import (
 	"biogo/v2/utils"
 	"fmt"
 	"math"
+	"math/bits"
 	"math/rand"
 )
 
@@ -46,14 +47,53 @@ type Genome struct {
 	Mass              byte
 	MinMass           byte // birth mass; scales linearly to Mass over the juvenile period
 	ReproductionType  byte
-	NeuronCount       byte
-	BrainLength       byte
+	CognitiveBreadth  byte
+	SynapticDensity   byte
 	JuvenilePeriod    byte
 	MetabolicRate     byte
 	StomachSize       byte // controls stomach capacity; maps to [MinStomachSize, MaxStomachSize]
-	LearningRate      byte // base learning rate; maps to [MinLearningRate, MaxLearningRate]
+	Neuroplasticity   byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
 	LearningThreshold byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
 	Brain             []*Gene
+
+	// flat byte cache for GenomeSimilarity; recomputed after any mutation or brain change.
+	// Layout: 15 header bytes + 5 bytes per gene (SourceID, SourceType, SinkID, SinkType, Weight).
+	bytes []byte
+}
+
+// recomputeBytes refreshes the flat byte cache used by GenomeSimilarity.
+// Call this after any field change or Brain modification.
+func (g *Genome) recomputeBytes() {
+	need := 15 + len(g.Brain)*5
+	if cap(g.bytes) >= need {
+		g.bytes = g.bytes[:need]
+	} else {
+		g.bytes = make([]byte, need)
+	}
+	b := g.bytes
+	b[0] = g.OscPeriod
+	b[1] = g.SightDistance
+	b[2] = g.FieldOfView
+	b[3] = g.Responsiveness
+	b[4] = g.MutationRate
+	b[5] = g.Mass
+	b[6] = g.MinMass
+	b[7] = g.ReproductionType
+	b[8] = g.CognitiveBreadth
+	b[9] = g.SynapticDensity
+	b[10] = g.JuvenilePeriod
+	b[11] = g.MetabolicRate
+	b[12] = g.StomachSize
+	b[13] = g.Neuroplasticity
+	b[14] = g.LearningThreshold
+	for i, gn := range g.Brain {
+		off := 15 + i*5
+		b[off] = gn.SourceID
+		b[off+1] = gn.SourceType
+		b[off+2] = gn.SinkID
+		b[off+3] = gn.SinkType
+		b[off+4] = gn.Weight
+	}
 }
 
 func (g Gene) String() string {
@@ -61,7 +101,7 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.LearningRate, g.LearningThreshold)
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold)
 	for _, gene := range g.Brain {
 		str += gene.String()
 	}
@@ -73,7 +113,7 @@ func (g Gene) BinaryString() string {
 }
 
 func (g Genome) BinaryString() string {
-	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.LearningRate, g.LearningThreshold)
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold)
 	for _, gene := range g.Brain {
 		str += gene.BinaryString()
 	}
@@ -90,12 +130,12 @@ func (g Genome) ToByteArray() []byte {
 	arr = append(arr, g.Mass)
 	arr = append(arr, g.MinMass)
 	arr = append(arr, g.ReproductionType)
-	arr = append(arr, g.NeuronCount)
-	arr = append(arr, g.BrainLength)
+	arr = append(arr, g.CognitiveBreadth)
+	arr = append(arr, g.SynapticDensity)
 	arr = append(arr, g.JuvenilePeriod)
 	arr = append(arr, g.MetabolicRate)
 	arr = append(arr, g.StomachSize)
-	arr = append(arr, g.LearningRate)
+	arr = append(arr, g.Neuroplasticity)
 	arr = append(arr, g.LearningThreshold)
 	for _, n := range g.Brain {
 		arr = append(arr, n.SourceType)
@@ -111,7 +151,7 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.BrainLength, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.LearningRate, g.LearningThreshold)
+	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold)
 	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
@@ -155,18 +195,19 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		Mass:              mass,
 		MinMass:           utils.ClampByte(1, maxMinMass, utils.MakeRandomByte()),
 		ReproductionType:  makeRandomBool(),
-		NeuronCount:       utils.ClampByte(p.MinHiddenLayerCount, p.MaxHiddenLayerCount, utils.MakeRandomByte()),
-		BrainLength:       utils.ClampByte(p.MinSpawnNeuronCount, p.MaxSpawnNeuronCount, utils.MakeRandomByte()),
+		CognitiveBreadth:  utils.ClampByte(p.MinCognitiveBreadth, p.MaxCognitiveBreadth, utils.MakeRandomByte()),
+		SynapticDensity:   utils.ClampByte(p.MinSynapticDensity, p.MaxSynapticDensity, utils.MakeRandomByte()),
 		JuvenilePeriod:    utils.MakeRandomByte(),
 		MetabolicRate:     utils.MakeRandomByte(),
 		StomachSize:       utils.MakeRandomByte(),
-		LearningRate:      utils.MakeRandomByte(),
+		Neuroplasticity:   utils.MakeRandomByte(),
 		LearningThreshold: utils.MakeRandomByte(),
 	}
-	for i := byte(0); i < g.BrainLength; i++ {
+	for i := byte(0); i < g.SynapticDensity; i++ {
 		gene := MakeRandomGene()
 		g.Brain = append(g.Brain, gene)
 	}
+	g.recomputeBytes()
 	return &g
 }
 
@@ -179,11 +220,15 @@ func (g *Gene) Copy() *Gene {
 // Copy deep copies a genome
 func (g *Genome) Copy() *Genome {
 	new := *g
-	temp := []*Gene{}
-	for _, n := range g.Brain {
-		temp = append(temp, n.Copy())
+	temp := make([]*Gene, len(g.Brain))
+	for i, n := range g.Brain {
+		temp[i] = n.Copy()
 	}
 	new.Brain = temp
+	if len(g.bytes) > 0 {
+		new.bytes = make([]byte, len(g.bytes))
+		copy(new.bytes, g.bytes)
+	}
 	return &new
 }
 
@@ -234,12 +279,12 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool) {
 		g.ReproductionType ^= 1
 	}
 
-	mutateTarget(&g.NeuronCount, p.MinHiddenLayerCount, p.MaxHiddenLayerCount, 5)
-	mutateTarget(&g.BrainLength, p.MinNeuronCount, p.MaxNeuronCount, 5)
+	mutateTarget(&g.CognitiveBreadth, p.MinCognitiveBreadth, p.MaxCognitiveBreadth, 5)
+	mutateTarget(&g.SynapticDensity, p.MinSynapticDensity, p.MaxSynapticDensity, 5)
 	mutateTarget(&g.JuvenilePeriod, 0, 255, 15)
 	mutateTarget(&g.MetabolicRate, 0, 255, 15)
 	mutateTarget(&g.StomachSize, 0, 255, 15)
-	mutateTarget(&g.LearningRate, 0, 255, 10)
+	mutateTarget(&g.Neuroplasticity, 0, 255, 10)
 	mutateTarget(&g.LearningThreshold, 0, 255, 10)
 
 	for j := 0; j < len(g.Brain); j++ {
@@ -263,7 +308,7 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool) {
 			}
 		}
 	}
-	diff := int(g.BrainLength) - len(g.Brain)
+	diff := int(g.SynapticDensity) - len(g.Brain)
 	if diff > 0 {
 		for i := 0; i < diff; i++ {
 			if len(g.Brain) > 0 && rand.Float32() < 0.8 {
@@ -285,6 +330,7 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool) {
 			}
 		}
 	}
+	g.recomputeBytes()
 }
 
 // AsexualReproduction creates a deep copy of the parent genome then mutates it.
@@ -304,28 +350,40 @@ func ArtificialReproduction(parent *Genome, p *Parameters) *Genome {
 // GenomeSimilarity returns a value in [0, 1] based on the normalised Hamming
 // distance between the two genomes' byte arrays. 1 = identical, 0 = maximally
 // different. Length differences are penalised as all-bits-different bytes.
-func GenomeSimilarity(g1, g2 Genome) float32 {
-	b1 := g1.ToByteArray()
-	b2 := g2.ToByteArray()
-	maxLen := len(b1)
-	if len(b2) > maxLen {
-		maxLen = len(b2)
+//
+// Uses the pre-computed flat byte cache (g.bytes) and processes 8 bytes at a
+// time via OnesCount64, avoiding per-gene pointer chasing and reducing the
+// call count by ~8× vs the old byte-at-a-time loop.
+func GenomeSimilarity(g1, g2 *Genome) float32 {
+	b1, b2 := g1.bytes, g2.bytes
+	l1, l2 := len(b1), len(b2)
+	minLen := l1
+	if l2 < minLen {
+		minLen = l2
 	}
-	if maxLen == 0 {
+
+	diff := 0
+	i := 0
+	for ; i+8 <= minLen; i += 8 {
+		v1 := uint64(b1[i]) | uint64(b1[i+1])<<8 | uint64(b1[i+2])<<16 | uint64(b1[i+3])<<24 |
+			uint64(b1[i+4])<<32 | uint64(b1[i+5])<<40 | uint64(b1[i+6])<<48 | uint64(b1[i+7])<<56
+		v2 := uint64(b2[i]) | uint64(b2[i+1])<<8 | uint64(b2[i+2])<<16 | uint64(b2[i+3])<<24 |
+			uint64(b2[i+4])<<32 | uint64(b2[i+5])<<40 | uint64(b2[i+6])<<48 | uint64(b2[i+7])<<56
+		diff += bits.OnesCount64(v1 ^ v2)
+	}
+	for ; i < minLen; i++ {
+		diff += bits.OnesCount(uint(b1[i] ^ b2[i]))
+	}
+
+	absDiff := l1 - l2
+	if absDiff < 0 {
+		absDiff = -absDiff
+	}
+	diff += absDiff * 8
+
+	totalBits := (minLen + absDiff) * 8
+	if totalBits == 0 {
 		return 1.0
 	}
-	minLen := len(b1)
-	if len(b2) < minLen {
-		minLen = len(b2)
-	}
-	diff := 0
-	for i := 0; i < minLen; i++ {
-		x := b1[i] ^ b2[i]
-		for x != 0 {
-			diff += int(x & 1)
-			x >>= 1
-		}
-	}
-	diff += (maxLen - minLen) * 8
-	return 1.0 - float32(diff)/float32(maxLen*8)
+	return 1.0 - float32(diff)/float32(totalBits)
 }

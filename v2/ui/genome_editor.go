@@ -16,19 +16,19 @@ import (
 // ── Panel geometry ────────────────────────────────────────────────────────────
 
 const (
-	gePanW        = 820
-	gePanH        = 670 // +30 for the name-input row in the footer
-	geTitleH      = 28
-	geFooterH     = 66 // two rows: name input (30px) + buttons (36px)
-	gePad         = 10
-	geTraitW      = 240
-	geNNSectionX  = gePad + geTraitW + 16 // 266 — start of NN section within panel
-	geNNW         = gePanW - geNNSectionX - gePad // 544
-	geNNSubtitleH = 22
-	geNNControlH  = 72 // height of the controls strip at the bottom of the NN section
-	geTraitRowH   = 26
-	geTraitLabelW = 98
-	geTraitTrackW = 100
+	gePanW         = 820
+	gePanH         = 670 // +30 for the name-input row in the footer
+	geTitleH       = 28
+	geFooterH      = 66 // two rows: name input (30px) + buttons (36px)
+	gePad          = 10
+	geTraitW       = 240
+	geNNSectionX   = gePad + geTraitW + 16         // 266 — start of NN section within panel
+	geNNW          = gePanW - geNNSectionX - gePad // 544
+	geNNSubtitleH  = 22
+	geNNControlH   = 72 // height of the controls strip at the bottom of the NN section
+	geTraitRowH    = 26
+	geTraitLabelW  = 98
+	geTraitTrackW  = 100
 	geTraitTrackX0 = geTraitLabelW + 6 // x of track within a trait row
 
 	// Node column offsets within the NN section
@@ -127,17 +127,17 @@ func makeTraitDefs() []traitDef {
 		},
 		{
 			label: "Neuron Count",
-			get:   func(g *simulation.Genome) byte { return g.NeuronCount },
-			set:   func(g *simulation.Genome, v byte) { g.NeuronCount = v },
-			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinHiddenLayerCount },
-			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxHiddenLayerCount },
+			get:   func(g *simulation.Genome) byte { return g.CognitiveBreadth },
+			set:   func(g *simulation.Genome, v byte) { g.CognitiveBreadth = v },
+			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinSpawnCognitiveBreadth },
+			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxSpawnCognitiveBreadth },
 		},
 		{
 			label: "Brain Length",
-			get:   func(g *simulation.Genome) byte { return g.BrainLength },
-			set:   func(g *simulation.Genome, v byte) { g.BrainLength = v },
-			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinSpawnNeuronCount },
-			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxSpawnNeuronCount },
+			get:   func(g *simulation.Genome) byte { return g.SynapticDensity },
+			set:   func(g *simulation.Genome, v byte) { g.SynapticDensity = v },
+			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinSynapticDensity },
+			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxSynapticDensity },
 		},
 		{
 			label: "Juvenile",
@@ -162,8 +162,8 @@ func makeTraitDefs() []traitDef {
 		},
 		{
 			label: "Learn Rate",
-			get:   func(g *simulation.Genome) byte { return g.LearningRate },
-			set:   func(g *simulation.Genome, v byte) { g.LearningRate = v },
+			get:   func(g *simulation.Genome) byte { return g.Neuroplasticity },
+			set:   func(g *simulation.Genome, v byte) { g.Neuroplasticity = v },
 			minB:  func(_ *simulation.Genome, _ *simulation.Parameters) byte { return 0 },
 			maxB:  func(_ *simulation.Genome, _ *simulation.Parameters) byte { return 255 },
 		},
@@ -213,7 +213,7 @@ type GenomeEditor struct {
 	onSave  func(*simulation.Genome, string) // genome + user-supplied name
 
 	// Name input
-	name            string
+	name             string
 	nameInputFocused bool
 	nameInputBounds  [4]float32
 
@@ -223,14 +223,14 @@ type GenomeEditor struct {
 	draggingTrait int // -1 = none
 
 	// NN interaction state
-	pendingSrc  *nnNodeRef // non-nil while waiting for a sink node click
-	selEdgeIdx  int        // -1 = no selected edge
+	pendingSrc *nnNodeRef // non-nil while waiting for a sink node click
+	selEdgeIdx int        // -1 = no selected edge
 
 	// Geometry written during Draw, read during HandleInput
-	panX, panY  float32
-	traitSlots  []traitSlotHit
-	nodeHits    []geNodeHit
-	edgeMidPts  []edgeMidPoint
+	panX, panY float32
+	traitSlots []traitSlotHit
+	nodeHits   []geNodeHit
+	edgeMidPts []edgeMidPoint
 
 	// NN controls (x, y, w, h)
 	addNeuronBtn [4]float32
@@ -248,10 +248,10 @@ type GenomeEditor struct {
 
 func newGenomeEditor(onSave func(*simulation.Genome, string)) *GenomeEditor {
 	return &GenomeEditor{
-		traitDefs:    makeTraitDefs(),
+		traitDefs:     makeTraitDefs(),
 		draggingTrait: -1,
-		selEdgeIdx:   -1,
-		onSave:       onSave,
+		selEdgeIdx:    -1,
+		onSave:        onSave,
 	}
 }
 
@@ -289,7 +289,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 
 	// Save
 	if inGeRect(fx, fy, e.saveBtn) {
-		e.genome.BrainLength = byte(len(e.genome.Brain))
+		e.genome.SynapticDensity = byte(len(e.genome.Brain))
 		if e.onSave != nil {
 			e.onSave(e.genome, e.name)
 		}
@@ -306,17 +306,17 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 
 	// Add neuron
 	if inGeRect(fx, fy, e.addNeuronBtn) {
-		if e.genome.NeuronCount < e.params.MaxHiddenLayerCount {
-			e.genome.NeuronCount++
+		if e.genome.CognitiveBreadth < e.params.MaxSynapticDensity {
+			e.genome.CognitiveBreadth++
 		}
 		return true
 	}
 
 	// Remove last neuron and all genes referencing it
 	if inGeRect(fx, fy, e.remNeuronBtn) {
-		if e.genome.NeuronCount > e.params.MinHiddenLayerCount {
-			lastID := e.genome.NeuronCount - 1
-			nc := e.genome.NeuronCount
+		if e.genome.CognitiveBreadth > e.params.MinSynapticDensity {
+			lastID := e.genome.CognitiveBreadth - 1
+			nc := e.genome.CognitiveBreadth
 			var nb []*simulation.Gene
 			for _, gene := range e.genome.Brain {
 				skip := (gene.SourceType == simulation.NEURON && gene.SourceID%nc == lastID) ||
@@ -326,7 +326,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 				}
 			}
 			e.genome.Brain = nb
-			e.genome.NeuronCount--
+			e.genome.CognitiveBreadth--
 			e.selEdgeIdx = -1
 		}
 		return true
@@ -403,7 +403,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 						SinkID:     nh.id,
 						Weight:     128, // neutral
 					})
-					e.genome.BrainLength = byte(len(e.genome.Brain))
+					e.genome.SynapticDensity = byte(len(e.genome.Brain))
 				}
 				e.pendingSrc = nil
 			}
@@ -649,7 +649,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt font.Face) {
 
 	numS := int(simulation.SENSOR_COUNT)
 	numA := int(simulation.ACTION_COUNT)
-	numN := int(e.genome.NeuronCount)
+	numN := int(e.genome.CognitiveBreadth)
 
 	stepS := nodeAreaH / float32(numS)
 	stepA := nodeAreaH / float32(numA)
@@ -828,7 +828,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt font.Face) {
 	vector.DrawFilledRect(screen, bnx+36, bny, 32, 22, color.RGBA{100, 40, 40, 220}, false)
 	text.Draw(screen, "-N", fnt, int(bnx)+41, int(bny)+16, color.White)
 
-	text.Draw(screen, fmt.Sprintf("Neurons: %d/%d", e.genome.NeuronCount, e.params.MaxHiddenLayerCount),
+	text.Draw(screen, fmt.Sprintf("Neurons: %d/%d", e.genome.CognitiveBreadth, e.params.MaxSynapticDensity),
 		fnt, int(bnx)+74, int(bny)+16, color.RGBA{155, 175, 195, 220})
 
 	// Delete-edge button (only visible when edge is selected)

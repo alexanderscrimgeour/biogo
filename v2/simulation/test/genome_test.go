@@ -33,8 +33,8 @@ func TestMakeRandomGenome(t *testing.T) {
 	if len(g.Brain) == 0 {
 		t.Error("genome Brain should not be empty")
 	}
-	if int(g.BrainLength) != len(g.Brain) {
-		t.Errorf("BrainLength %d does not match len(Brain) %d", g.BrainLength, len(g.Brain))
+	if int(g.SynapticDensity) != len(g.Brain) {
+		t.Errorf("SynapticDensity %d does not match len(Brain) %d", g.SynapticDensity, len(g.Brain))
 	}
 }
 
@@ -94,13 +94,13 @@ func TestGenomeSimilarity(t *testing.T) {
 	p := defaultParams()
 	g := simulation.MakeRandomGenome(p)
 	identical := g.Copy()
-	sim := simulation.GenomeSimilarity(*g, *identical)
+	sim := simulation.GenomeSimilarity(g, identical)
 	if sim < 0.99 {
 		t.Errorf("identical genomes similarity = %f, want ~1.0", sim)
 	}
 
 	other := simulation.MakeRandomGenome(p)
-	sim2 := simulation.GenomeSimilarity(*g, *other)
+	sim2 := simulation.GenomeSimilarity(g, other)
 	if sim2 < 0 || sim2 > 1 {
 		t.Errorf("GenomeSimilarity out of [0,1]: %f", sim2)
 	}

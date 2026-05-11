@@ -24,8 +24,11 @@ type World struct {
 	Width, Height float64
 	Walls         []Wall
 
-	creaturePos map[int]Position
-	cBuckets    map[int64][]int // packed bucket key → creature IDs
+	creaturePos     []Position
+	creatureActive  []bool
+	creatureCount   int
+	freeCreatureIDs []int
+	cBuckets        map[int64][]int // packed bucket key → creature IDs
 
 	foodPos     []Position
 	foodMass    []float32
@@ -42,17 +45,21 @@ type World struct {
 
 func NewWorld(width, height float64, wallType int) *World {
 	const initialCapacity = 25000
+	const creatureCapacity = 20000
+	// Pre-allocate slot 0 so that IDs start at StartingCreatureID (1).
 	w := &World{
-		Width:       width,
-		Height:      height,
-		creaturePos: make(map[int]Position),
-		cBuckets:    make(map[int64][]int),
-		foodPos:     make([]Position, 0, initialCapacity),
-		foodMass:    make([]float32, 0, initialCapacity),
-		foodActive:  make([]bool, 0, initialCapacity),
-		freeFoodIDs: make([]int, 0, 100),
-		fBuckets:    make(map[int64][]int),
-		bucketSize:  20.0,
+		Width:           width,
+		Height:          height,
+		creaturePos:     make([]Position, 1, creatureCapacity),
+		creatureActive:  make([]bool, 1, creatureCapacity),
+		freeCreatureIDs: make([]int, 0, 100),
+		cBuckets:        make(map[int64][]int),
+		foodPos:         make([]Position, 0, initialCapacity),
+		foodMass:        make([]float32, 0, initialCapacity),
+		foodActive:      make([]bool, 0, initialCapacity),
+		freeFoodIDs:     make([]int, 0, 100),
+		fBuckets:        make(map[int64][]int),
+		bucketSize:      20.0,
 	}
 	w.createWalls(wallType)
 	return w
@@ -86,34 +93,56 @@ func bucketRemove(slice []int, id int) []int {
 
 // --- Creature spatial operations ---
 
-func (w *World) AddCreature(id int, pos Position) {
-	w.creaturePos[id] = pos
+// AddCreature registers a creature at pos and returns its assigned ID.
+func (w *World) AddCreature(pos Position) int {
+	var id int
+	if len(w.freeCreatureIDs) > 0 {
+		lastIdx := len(w.freeCreatureIDs) - 1
+		id = w.freeCreatureIDs[lastIdx]
+		w.freeCreatureIDs = w.freeCreatureIDs[:lastIdx]
+		w.creaturePos[id] = pos
+		w.creatureActive[id] = true
+	} else {
+		id = len(w.creaturePos)
+		w.creaturePos = append(w.creaturePos, pos)
+		w.creatureActive = append(w.creatureActive, true)
+	}
+	w.creatureCount++
 	key := w.bucketKey(pos)
 	w.cBuckets[key] = append(w.cBuckets[key], id)
+	return id
 }
 
 func (w *World) MoveCreature(id int, newPos Position) {
-	if oldPos, ok := w.creaturePos[id]; ok {
-		oldKey := w.bucketKey(oldPos)
-		w.cBuckets[oldKey] = bucketRemove(w.cBuckets[oldKey], id)
+	if id < 0 || id >= len(w.creatureActive) || !w.creatureActive[id] {
+		return
 	}
+	oldKey := w.bucketKey(w.creaturePos[id])
+	w.cBuckets[oldKey] = bucketRemove(w.cBuckets[oldKey], id)
 	w.creaturePos[id] = newPos
 	key := w.bucketKey(newPos)
 	w.cBuckets[key] = append(w.cBuckets[key], id)
 }
 
 func (w *World) RemoveCreature(id int) {
-	if pos, ok := w.creaturePos[id]; ok {
-		key := w.bucketKey(pos)
-		w.cBuckets[key] = bucketRemove(w.cBuckets[key], id)
-		delete(w.creaturePos, id)
+	if id < 0 || id >= len(w.creatureActive) || !w.creatureActive[id] {
+		return
 	}
+	key := w.bucketKey(w.creaturePos[id])
+	w.cBuckets[key] = bucketRemove(w.cBuckets[key], id)
+	w.creatureActive[id] = false
+	w.creatureCount--
+	w.freeCreatureIDs = append(w.freeCreatureIDs, id)
 }
 
 func (w *World) GetCreaturePos(id int) (Position, bool) {
-	pos, ok := w.creaturePos[id]
-	return pos, ok
+	if id < 0 || id >= len(w.creatureActive) || !w.creatureActive[id] {
+		return Position{}, false
+	}
+	return w.creaturePos[id], true
 }
+
+func (w *World) CreatureCount() int { return w.creatureCount }
 
 func (w *World) GetCreaturesInRadius(center Position, radius float64, buffer []int) []int {
 	buffer = buffer[:0]
@@ -131,6 +160,9 @@ func (w *World) GetCreaturesInRadius(center Position, radius float64, buffer []i
 			bucket := w.cBuckets[packedKey(bx, by)]
 
 			for _, id := range bucket {
+				if !w.creatureActive[id] {
+					continue
+				}
 				pos := w.creaturePos[id]
 
 				dx := pos.X - center.X
@@ -168,8 +200,9 @@ func (w *World) GetCreaturesInCone(center Position, heading float64, halfFOVCos 
 			bucket := w.cBuckets[packedKey(bx, by)]
 
 			for _, id := range bucket {
-				// If you haven't switched creatures to a slice yet,
-				// this is still a map lookup.
+				if !w.creatureActive[id] {
+					continue
+				}
 				pos := w.creaturePos[id]
 
 				dx := pos.X - center.X
@@ -453,14 +486,26 @@ func (w *World) StepFountains(driftSpeed float64) {
 // budget is exhausted the remainder are placed uniformly at random so the requested
 // count is always satisfied.
 func (w *World) SpawnFood(n int, sigma float64, mass float32) {
-	if len(w.Fountains) == 0 || n <= 0 {
-		w.SpawnRandom(n, mass)
+	if n <= 0 {
 		return
 	}
 
-	maxAttempts := n * 20
+	randomScatterFactor := 0.15 // 15% of food spawns anywhere
+	randomCount := int(float64(n) * randomScatterFactor)
+	clusterCount := n - randomCount
+
+	if randomCount > 0 {
+		w.SpawnRandom(randomCount, mass)
+	}
+
+	if len(w.Fountains) == 0 {
+		w.SpawnRandom(clusterCount, mass)
+		return
+	}
+
+	maxAttempts := clusterCount * 20
 	spawned := 0
-	for attempts := 0; spawned < n && attempts < maxAttempts; attempts++ {
+	for attempts := 0; spawned < clusterCount && attempts < maxAttempts; attempts++ {
 		fi := rand.Intn(len(w.Fountains))
 		center := w.Fountains[fi]
 		pos := Position{
@@ -473,9 +518,9 @@ func (w *World) SpawnFood(n int, sigma float64, mass float32) {
 		}
 	}
 
-	// Fallback for any items not placed via Gaussian (e.g. fountain near edge).
-	if spawned < n {
-		w.SpawnRandom(n-spawned, mass)
+	// 4. Fallback for any fountain items that failed geometry checks
+	if spawned < clusterCount {
+		w.SpawnRandom(clusterCount-spawned, mass)
 	}
 }
 

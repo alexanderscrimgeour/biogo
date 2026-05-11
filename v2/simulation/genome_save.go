@@ -36,12 +36,12 @@ type genomeData struct {
 	Mass             byte       `json:"mass"`
 	MinMass          byte       `json:"min_mass"`
 	ReproductionType byte       `json:"reproduction_type"`
-	NeuronCount      byte       `json:"neuron_count"`
-	BrainLength      byte       `json:"brain_length"`
+	CognitiveBreadth      byte       `json:"neuron_count"`
+	SynapticDensity      byte       `json:"brain_length"`
 	JuvenilePeriod   byte       `json:"juvenile_period"`
 	MetabolicRate    byte       `json:"metabolic_rate"`
 	StomachSize      byte       `json:"stomach_size"`
-	LearningRate     byte       `json:"learning_rate"`
+	Neuroplasticity     byte       `json:"learning_rate"`
 	LearningThreshold byte      `json:"learning_threshold"`
 	Brain            []geneData `json:"brain"`
 }
@@ -66,12 +66,12 @@ func toGenomeData(g *Genome) genomeData {
 		Mass:             g.Mass,
 		MinMass:          g.MinMass,
 		ReproductionType: g.ReproductionType,
-		NeuronCount:      g.NeuronCount,
-		BrainLength:      g.BrainLength,
+		CognitiveBreadth:      g.CognitiveBreadth,
+		SynapticDensity:      g.SynapticDensity,
 		JuvenilePeriod:   g.JuvenilePeriod,
 		MetabolicRate:     g.MetabolicRate,
 		StomachSize:       g.StomachSize,
-		LearningRate:      g.LearningRate,
+		Neuroplasticity:      g.Neuroplasticity,
 		LearningThreshold: g.LearningThreshold,
 		Brain:             genes,
 	}
@@ -99,24 +99,26 @@ func fromGenomeData(gd genomeData) *Genome {
 	if minMass > mass {
 		minMass = mass
 	}
-	return &Genome{
-		OscPeriod:        gd.OscPeriod,
-		SightDistance:    gd.SightDistance,
-		FieldOfView:      gd.FieldOfView,
-		Responsiveness:   gd.Responsiveness,
-		MutationRate:     gd.MutationRate,
-		Mass:             mass,
-		MinMass:          minMass,
-		ReproductionType: gd.ReproductionType,
-		NeuronCount:      gd.NeuronCount,
-		BrainLength:      gd.BrainLength,
-		JuvenilePeriod:   gd.JuvenilePeriod,
+	g := &Genome{
+		OscPeriod:         gd.OscPeriod,
+		SightDistance:     gd.SightDistance,
+		FieldOfView:       gd.FieldOfView,
+		Responsiveness:    gd.Responsiveness,
+		MutationRate:      gd.MutationRate,
+		Mass:              mass,
+		MinMass:           minMass,
+		ReproductionType:  gd.ReproductionType,
+		CognitiveBreadth:  gd.CognitiveBreadth,
+		SynapticDensity:   gd.SynapticDensity,
+		JuvenilePeriod:    gd.JuvenilePeriod,
 		MetabolicRate:     gd.MetabolicRate,
 		StomachSize:       gd.StomachSize,
-		LearningRate:      gd.LearningRate,
+		Neuroplasticity:   gd.Neuroplasticity,
 		LearningThreshold: gd.LearningThreshold,
 		Brain:             genes,
 	}
+	g.recomputeBytes()
+	return g
 }
 
 type genomeCluster struct {
@@ -138,7 +140,7 @@ func SelectBestGenomes(creatures map[int]*Creature) []*Genome {
 		bestIdx := -1
 		bestSim := float32(-1)
 		for i, cl := range clusters {
-			if sim := GenomeSimilarity(*c.Genome, *cl.genome); sim > bestSim {
+			if sim := GenomeSimilarity(c.Genome, cl.genome); sim > bestSim {
 				bestSim = sim
 				bestIdx = i
 			}

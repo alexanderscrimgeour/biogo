@@ -14,6 +14,7 @@ type Population struct {
 	aliveIDs          []int // incrementally maintained; avoids full-map scan each step
 	DeathQueue        []DeathInstruction
 	MoveQueue         []MoveInstruction
+	AttackQueue       []AttackInstruction
 	ReproductionQueue []ReproductionInstruction
 }
 
@@ -31,11 +32,16 @@ type MoveInstruction struct {
 	MoveAmount float64
 }
 
+type AttackInstruction struct {
+	Creature *Creature
+}
+
 // pendingInstructions accumulates instructions produced by a single goroutine's
 // creature batch before they are merged into the shared Population queues.
 type pendingInstructions struct {
 	death        []DeathInstruction
 	move         []MoveInstruction
+	attack       []AttackInstruction
 	reproduction []ReproductionInstruction
 }
 
@@ -45,12 +51,17 @@ func NewPopulation(p *Parameters) *Population {
 		aliveIDs:          make([]int, 0, p.StartingPopulation),
 		DeathQueue:        []DeathInstruction{},
 		MoveQueue:         []MoveInstruction{},
+		AttackQueue:       []AttackInstruction{},
 		ReproductionQueue: []ReproductionInstruction{},
 	}
 }
 
 func (p *Population) QueueForMove(creature *Creature, newLoc grid.Position, moveAmount float64) {
 	p.MoveQueue = append(p.MoveQueue, MoveInstruction{creature, newLoc, moveAmount})
+}
+
+func (p *Population) QueueForAttack(creature *Creature) {
+	p.AttackQueue = append(p.AttackQueue, AttackInstruction{creature})
 }
 
 func (p *Population) QueueForDeath(creature *Creature) {
@@ -61,8 +72,8 @@ func (p *Population) QueueForReproduction(creature *Creature) {
 	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{creature})
 }
 
-// addAlive registers a newly spawned creature in the alive-ID index.
-func (p *Population) addAlive(id int) {
+// AddAlive registers a newly spawned creature in the alive-ID index.
+func (p *Population) AddAlive(id int) {
 	p.aliveIDs = append(p.aliveIDs, id)
 }
 
@@ -141,15 +152,17 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 				}
 			}
 
-			// Eat the nearest corpse and/or the nearest live creature within interaction radius.
+			// Eat the nearest corpse within interaction radius.
 			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, interactionRadius, c.SightCreatureBuffer)
 			if len(creatureIDs) > 0 {
 				closestCorpseID := -1
-				closestPreyID := -1
 				closestCorpseDistSq := math.MaxFloat64
-				closestPreyDistSq := math.MaxFloat64
 				for _, cid := range creatureIDs {
 					if cid == c.Id {
+						continue
+					}
+					cr, ok := p.Creatures[cid]
+					if !ok || cr.Alive {
 						continue
 					}
 					cpos, ok := w.GetCreaturePos(cid)
@@ -159,20 +172,9 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 					dx := cpos.X - newPos.X
 					dy := cpos.Y - newPos.Y
 					d2 := dx*dx + dy*dy
-					cr, ok := p.Creatures[cid]
-					if !ok {
-						continue
-					}
-					if cr.Alive {
-						if d2 < closestPreyDistSq {
-							closestPreyDistSq = d2
-							closestPreyID = cid
-						}
-					} else {
-						if d2 < closestCorpseDistSq {
-							closestCorpseDistSq = d2
-							closestCorpseID = cid
-						}
+					if d2 < closestCorpseDistSq {
+						closestCorpseDistSq = d2
+						closestCorpseID = cid
 					}
 				}
 
@@ -190,34 +192,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 						target.Mass -= eaten
 						if target.Mass <= 0 {
 							w.RemoveCreature(closestCorpseID)
-
 							delete(p.Creatures, closestCorpseID)
-						}
-					}
-				}
-
-				if closestPreyID != -1 && stomachSpace > 0 {
-					if target, ok := p.Creatures[closestPreyID]; ok {
-						// Attacker must be at least MinPredationMassRatio of prey mass.
-						if c.Mass >= target.Mass*params.MinPredationMassRatio {
-							// Damage scales with attacker/prey mass ratio.
-							massRatio := utils.MinFloat32(1.0, c.Mass/target.Mass)
-							effectiveBite := bite * massRatio
-							eaten := effectiveBite
-							if eaten > target.Mass {
-								eaten = target.Mass
-							}
-							if eaten > stomachSpace {
-								eaten = stomachSpace
-							}
-							c.Stomach += eaten
-							target.Mass -= eaten
-							c.DrainEnergy(params.AttackEnergyCost)
-							if target.Mass <= 0 {
-								target.Alive = false
-								target.Energy = 0
-								p.removeAlive(closestPreyID)
-							}
 						}
 					}
 				}
@@ -228,6 +203,96 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		c.Loc = newPos
 	}
 	p.MoveQueue = p.MoveQueue[:0]
+}
+
+// ProcessAttackQueue resolves ATTACK actions: each attacker bites the nearest live
+// creature within its FOV cone. Damage scales with the attacker/prey mass ratio.
+// Unlike passive predation, there is no minimum mass requirement — smaller creatures
+// can attack larger ones but deal proportionally less damage.
+func (p *Population) ProcessAttackQueue(w *grid.World, params *Parameters) {
+	for _, instruction := range p.AttackQueue {
+		c := instruction.Creature
+		if !c.Alive {
+			continue
+		}
+
+		stomachSpace := c.StomachCapacity(params) - c.Stomach
+		if stomachSpace <= 0 {
+			continue
+		}
+
+		bite := c.BiteSize(params)
+		massRatio := float64(c.Mass / float32(params.MaxMass))
+		if massRatio > 1.0 {
+			massRatio = 1.0
+		}
+		interactionRadius := params.FoodInteractionRadius * (1.0 + massRatio)
+
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, interactionRadius, c.SightCreatureBuffer)
+
+		closestPreyID := -1
+		closestPreyDistSq := math.MaxFloat64
+		for _, cid := range creatureIDs {
+			if cid == c.Id {
+				continue
+			}
+			cr, ok := p.Creatures[cid]
+			if !ok || !cr.Alive {
+				continue
+			}
+			cpos, ok := w.GetCreaturePos(cid)
+			if !ok {
+				continue
+			}
+			dx := cpos.X - c.Loc.X
+			dy := cpos.Y - c.Loc.Y
+			d2 := dx*dx + dy*dy
+			if d2 < closestPreyDistSq {
+				closestPreyDistSq = d2
+				closestPreyID = cid
+			}
+		}
+
+		if closestPreyID == -1 {
+			continue
+		}
+
+		target, ok := p.Creatures[closestPreyID]
+		if !ok {
+			continue
+		}
+
+		sizeRatio := c.Mass / target.Mass
+
+		defenseFactor := 0.5 + (0.5 * utils.MinFloat32(1.0, sizeRatio))
+		effectiveBite := bite * defenseFactor
+
+		eaten := effectiveBite
+		if eaten > target.Mass {
+			eaten = target.Mass
+		}
+		if eaten > stomachSpace {
+			eaten = stomachSpace
+		}
+
+		c.Stomach += eaten
+		target.Mass -= eaten
+
+		target.DrainEnergy(eaten * params.EnergyPerMassUnit)
+		struggleCost := params.AttackEnergyCost
+		if sizeRatio < 1.0 {
+			// Gradually increases cost as target gets larger, maxing at 1.5x
+			struggleCost *= (1.0 + (1.0-sizeRatio)*0.5)
+		}
+		c.DrainEnergy(struggleCost)
+
+		if target.Mass <= 0.01 {
+			target.Alive = false
+			target.Energy = 0
+			p.removeAlive(closestPreyID)
+		}
+	}
+	p.AttackQueue = p.AttackQueue[:0]
 }
 
 // ProcessDeathQueue marks queued creatures as dead. Corpses remain in the world
@@ -306,7 +371,7 @@ func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 // Energy cost scales with offspring mass (tissue = stored energy).
 // On reproduction the parent loses energy and half its body mass; the child
 // is created at that half-mass size and grows back to full mass over time.
-func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters, nextID func() int) {
+func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters) {
 	aliveCount := p.AliveCount()
 	for _, ri := range p.ReproductionQueue {
 		if aliveCount >= params.MaxPopulation {
@@ -321,7 +386,7 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 			continue
 		}
 
-		if parent.Mass < float32(parent.Genome.Mass) {
+		if parent.Mass < float32(parent.Genome.Mass)*0.9 {
 			continue
 		}
 
@@ -339,18 +404,16 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 		metabolicWaste := energyTransferred * (1 - params.ReproductionEfficiency)
 		parent.Mass = halfMass
 		parent.DrainEnergy(energyTransferred + metabolicWaste)
-		parent.GainDopamine(energyTransferred / utils.MaxFloat32(parent.MaxEnergy(params), 1))
 
 		parent.Mass = halfMass
 
 		childGenome := AsexualReproduction(parent.Genome, params)
-		id := nextID()
+		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
 		child.Mass = halfMass
 		child.Energy = energyTransferred
 		p.Creatures[id] = child
-		p.addAlive(id)
-		w.AddCreature(id, offspringLoc)
+		p.AddAlive(id)
 		aliveCount++
 	}
 	p.ReproductionQueue = p.ReproductionQueue[:0]
@@ -410,7 +473,7 @@ func (p *Population) GeneticDiversity() float32 {
 		}
 		c1 := p.Creatures[p.aliveIDs[i1]]
 		c2 := p.Creatures[p.aliveIDs[i2]]
-		total += 1 - GenomeSimilarity(*c1.Genome, *c2.Genome)
+		total += 1 - GenomeSimilarity(c1.Genome, c2.Genome)
 	}
 	return total / float32(sampleSize)
 }

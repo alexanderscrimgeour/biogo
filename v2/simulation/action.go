@@ -7,6 +7,9 @@ const (
 	SET_RESPONSIVENESS
 	SET_LEARNING_RATE // modulates per-tick learning rate relative to genome baseline
 	REST
+	ATTACK
+	REWARD
+	PUNISH
 
 	ACTION_COUNT
 )

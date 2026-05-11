@@ -197,7 +197,7 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt font.Face) {
 		nameClr := color.RGBA{200, 210, 255, 255}
 		text.Draw(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+15, nameClr)
 		summary := fmt.Sprintf("Mass %d  Neurons %d  Genes %d",
-			ng.Genome.Mass, ng.Genome.NeuronCount, len(ng.Genome.Brain))
+			ng.Genome.Mass, ng.Genome.CognitiveBreadth, len(ng.Genome.Brain))
 		text.Draw(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+28, color.RGBA{120, 130, 160, 200})
 
 		// Spawn button

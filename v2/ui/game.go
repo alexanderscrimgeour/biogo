@@ -148,6 +148,8 @@ type Game struct {
 	currentSnapshot    *simulation.StateSnapshot
 	lookup             map[int]int
 	unitCircle         []struct{ x, y float32 }
+	creatureVs         []ebiten.Vertex
+	creatureIs         []uint16
 }
 
 var BlockSize int = 2
@@ -186,6 +188,11 @@ func NewGame(sim SimulationState) *Game {
 			y: float32(math.Sin(angle)),
 		})
 	}
+	// vertsPerCreature = 1 center + len(unitCircle) edge = 14; trisPerCreature = segments = 12
+	const initCapCreatures = 500
+	g.creatureVs = make([]ebiten.Vertex, 0, initCapCreatures*(1+segments+1))
+	g.creatureIs = make([]uint16, 0, initCapCreatures*segments*3)
+
 	g.pauseBtn = &components.Button{
 		X: 10, Y: 10, W: 80, H: 24,
 		Label:      "Pause",
@@ -542,17 +549,30 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		blob.Draw(screen)
 	}
 
-	var creatureVs []ebiten.Vertex
-	var creatureIs []uint16
+	g.creatureVs = g.creatureVs[:0]
+	g.creatureIs = g.creatureIs[:0]
 	massRange := float64(g.maxCreatureMass) - float64(g.minCreatureMass)
 	half := float32(BlockSize) / 2
 
+	vertsPerCreature := 1 + len(g.unitCircle)
+	flushCreatures := func() {
+		if len(g.creatureVs) > 0 {
+			screen.DrawTriangles(g.creatureVs, g.creatureIs, g.whiteImage, nil)
+			g.creatureVs = g.creatureVs[:0]
+			g.creatureIs = g.creatureIs[:0]
+		}
+	}
+
 	for _, anim := range g.animByID {
+		if len(g.creatureVs)+vertsPerCreature > 60_000 {
+			flushCreatures()
+		}
+
 		lerpX := anim.prevX + (anim.curX-anim.prevX)*t
 		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
 		cx, cy := float32(lerpX)+half, float32(lerpY)+half
 
-		var r float32 = float32(BlockSize) * 0.8
+		var r float32 = float32(BlockSize) / 2
 		if massRange > 0 {
 			massT := (float64(anim.mass) - float64(g.minCreatureMass)) / massRange
 			if massT < 0 {
@@ -565,15 +585,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
-		baseIdx := uint16(len(creatureVs))
+		baseIdx := uint16(len(g.creatureVs))
 
-		creatureVs = append(creatureVs, ebiten.Vertex{
+		g.creatureVs = append(g.creatureVs, ebiten.Vertex{
 			DstX: cx, DstY: cy,
 			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 		})
 
 		for _, unit := range g.unitCircle {
-			creatureVs = append(creatureVs, ebiten.Vertex{
+			g.creatureVs = append(g.creatureVs, ebiten.Vertex{
 				DstX:   cx + r*unit.x,
 				DstY:   cy + r*unit.y,
 				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
@@ -581,13 +601,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 
 		for i := uint16(1); i <= uint16(len(g.unitCircle)-1); i++ {
-			creatureIs = append(creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
+			g.creatureIs = append(g.creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
 		}
 	}
 
-	if len(creatureVs) > 0 {
-		screen.DrawTriangles(creatureVs, creatureIs, g.whiteImage, nil)
-	}
+	flushCreatures()
 
 	g.drawHistoryGraph(screen)
 
@@ -749,7 +767,7 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	dopamine := &components.Label{Text: fmt.Sprintf("Dopamine:  %.02f", d.Dopamine), Font: g.statFont, Color: color.White}
 	dopamine.Draw(screen, currX, currY)
 	currY += 5
-	dopBar := &components.EnergyBar{Value: d.Dopamine, Max: float32(1.2), MaxColor: color.RGBA{216, 27, 96, 1}, MinColor: color.RGBA{48, 63, 159, 1}, Width: p.W - (detailTpad * 2)}
+	dopBar := &components.EnergyBar{Value: d.Dopamine, Max: float32(1.2), MaxColor: color.RGBA{216, 27, 96, 255}, MinColor: color.RGBA{48, 63, 159, 255}, Width: p.W - (detailTpad * 2), Centered: true}
 	_, h = dopBar.Draw(screen, currX, currY)
 	currY += h + 15
 	sight := &components.Label{Text: fmt.Sprintf("Sight: %d  FOV: %d°", d.SightDistance, d.FieldOfView), Font: g.statFont, Color: color.White}
@@ -1093,9 +1111,9 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 		}
 	}
 
-	const baseLearningRate = 0.01
+	const baseNeuroplasticity = 0.01
 	footerY := int(py+panelH) - nnPadding - 2
-	text.Draw(screen, fmt.Sprintf("Learning Rate: %.4f", baseLearningRate*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
+	text.Draw(screen, fmt.Sprintf("Learning Rate: %.4f", baseNeuroplasticity*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
 }
 
 func nnEdgeColor(w float32) color.RGBA {
@@ -1116,12 +1134,13 @@ func nnEdgeColor(w float32) color.RGBA {
 func nnSensorName(id byte) string {
 	names := [...]string{
 		"Age", "Energy", "Loc X", "Loc Y", "Osc 1",
-		"Density", "See Pop", "See Food", "See Corpse",
+		"LocalDensity", "LocalHeading", "LocalCentreOfMass",
+		"See Pop", "See Food", "See Corpse",
 		"Random", "Satiety", "Facing", "Food Ang",
-		"Food Dist", "Threat", "Kinship", "Burn Rate",
+		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd",
 		"Mass %", "Blocked", "Prey", "Threat Ang",
 		"Prey Ang", "Wall Prox", "Digest", "Food/Cap",
-		"Juvenile",
+		"Juvenile", "EnergyDelta",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -1131,8 +1150,8 @@ func nnSensorName(id byte) string {
 
 func nnActionName(id byte) string {
 	names := [...]string{
-		"Move", "Rotate",
-		"SetOsc", "SetResp", "SetLearn", "Rest",
+		"Move", "Rotate", "SetOsc", "SetResp",
+		"SetLearn", "Rest", "Attack", "Reward", "Punish",
 	}
 	if int(id) < len(names) {
 		return names[id]

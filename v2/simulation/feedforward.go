@@ -5,10 +5,14 @@ import (
 	"math"
 )
 
+const energyCostOfFiring = 0.0001
+const decayRate = 0.0005
+const energyCostOfLearning = 0.005
+
 func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *Parameters) []float32 {
-	var learningRateMod float32
+	var NeuroplasticityMod float32
 	if len(c.Nnet.LastActionValues) > int(SET_LEARNING_RATE) {
-		learningRateMod = float32(math.Tanh(float64(c.Nnet.LastActionValues[SET_LEARNING_RATE])))
+		NeuroplasticityMod = float32(math.Tanh(float64(c.Nnet.LastActionValues[SET_LEARNING_RATE])))
 	}
 
 	if len(c.Nnet.LastActionValues) != int(ACTION_COUNT) {
@@ -36,14 +40,19 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		}
 	}
 
-	const decayRate = 0.0005
-	const energyCostOfLearning = 0.005
-
-	genomeLearningRate := params.MinLearningRate + float32(c.Genome.LearningRate)/255.0*(params.MaxLearningRate-params.MinLearningRate)
+	genomeNeuroplasticity := params.MinNeuroplasticity + float32(c.Genome.Neuroplasticity)/255.0*(params.MaxNeuroplasticity-params.MinNeuroplasticity)
 	learningThreshold := params.MinLearningThreshold + float32(c.Genome.LearningThreshold)/255.0*(params.MaxLearningThreshold-params.MinLearningThreshold)
-	learningRate := genomeLearningRate * (1 + learningRateMod)
-	if learningRate < 0 {
-		learningRate = 0
+
+	dopamineDelta := c.Dopamine - c.LastDopamine
+	absDelta := dopamineDelta
+	if absDelta < 0 {
+		absDelta = -absDelta
+	}
+	surpriseFactor := float32(1.0) + absDelta
+
+	Neuroplasticity := genomeNeuroplasticity * (1 + NeuroplasticityMod) * surpriseFactor
+	if Neuroplasticity < 0 {
+		Neuroplasticity = 0
 	}
 
 	for i, gene := range c.Nnet.Edges {
@@ -57,7 +66,13 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		if gene.SinkType == ACTION && !neuronOutputsEvaluated {
 			for _, key := range c.Nnet.HiddenNeuronIDs {
 				if neuron := c.Nnet.HiddenNeurons[key]; neuron != nil && neuron.Driven {
-					neuron.Output = float32(math.Tanh(float64(neuronAccumulators[key])))
+					output := float32(math.Tanh(float64(neuronAccumulators[key])))
+					neuron.Output = output
+					absOutput := output
+					if absOutput < 0 {
+						absOutput = -absOutput
+					}
+					c.Energy -= absOutput * energyCostOfFiring
 				}
 			}
 			neuronOutputsEvaluated = true
@@ -96,10 +111,18 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			correlation := inputVal * sinkOutput
 			energyThreshold := c.MaxEnergy(params) * 0.6
 
-			if c.Energy > energyThreshold && c.Dopamine > 0.1 {
+			absDopamine := c.Dopamine
+			if absDopamine < 0 {
+				absDopamine = -absDopamine
+			}
+			if c.Energy > energyThreshold && absDopamine > 0.1 {
 				learningSignal := correlation * c.Dopamine
-				if learningSignal > learningThreshold {
-					c.Nnet.Weights[i] += learningRate * learningSignal
+				absSignal := learningSignal
+				if absSignal < 0 {
+					absSignal = -absSignal
+				}
+				if absSignal > learningThreshold {
+					c.Nnet.Weights[i] += Neuroplasticity * learningSignal
 					c.Energy -= energyCostOfLearning
 
 					if c.Nnet.Weights[i] > 4.0 {
@@ -111,5 +134,7 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			}
 		}
 	}
+
+	c.LastDopamine = c.Dopamine
 	return actionLevels
 }

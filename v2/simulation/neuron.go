@@ -19,8 +19,8 @@ type Neuron struct {
 
 type NeuralNet struct {
 	Edges            []*Gene
-	HiddenNeurons    [256]*Neuron // indexed by neuron ID; sparse, use HiddenNeuronIDs to iterate
-	HiddenNeuronIDs  []byte       // sorted list of occupied indices
+	HiddenNeurons    [256]*Neuron       // indexed by neuron ID; sparse, use HiddenNeuronIDs to iterate
+	HiddenNeuronIDs  []byte             // sorted list of occupied indices
 	ActiveSensors    [SENSOR_COUNT]bool // true for each sensor ID wired into at least one edge; set once at construction
 	Weights          []float32
 	LastSensorValues [SENSOR_COUNT]float32
@@ -72,8 +72,8 @@ func (n NodeMap) String() string {
 
 func CreateInitialNeuronOutput() float32 { return 0.5 }
 
-func CreateNeuralNetworkFromGenome(genes []*Gene, neuronCount byte) *NeuralNet {
-	neuralGenes := convertGenesToNeuronIDs(genes, neuronCount)
+func CreateNeuralNetworkFromGenome(genes []*Gene, CognitiveBreadth byte) *NeuralNet {
+	neuralGenes := convertGenesToNeuronIDs(genes, CognitiveBreadth)
 	nodeMap := createNodeMap(neuralGenes)
 	finalGenes := removeUselessGenes(neuralGenes, nodeMap)
 	// The remaining nodes in nodeMap will need to be re-indexed
@@ -198,25 +198,29 @@ func removeUselessGenes(g []*Gene, n NodeMap) []*Gene {
 	return final
 }
 func removeConnectionsToGene(genes []*Gene, n NodeMap, key byte) []*Gene {
-	newGenes := make([]*Gene, 0, len(genes))
+	newGenes := genes[:0]
 
 	for _, gene := range genes {
+		// If this gene's destination (Sink) is the neuron we are deleting...
 		if gene.SinkType == NEURON && gene.SinkID == key {
-
+			// ...then the source of this gene just lost an output.
 			if gene.SourceType == NEURON {
-				sourceNode, exists := n[gene.SourceID]
-				if exists {
+				if sourceNode, exists := n[gene.SourceID]; exists {
 					if sourceNode.OutputCount > 0 {
 						sourceNode.OutputCount--
 					}
+					// Handle self-loop decrement if the neuron is pruning itself
 					if gene.SourceID == key && sourceNode.SelfLoopCount > 0 {
 						sourceNode.SelfLoopCount--
 					}
 				}
 			}
-		} else {
-			newGenes = append(newGenes, gene)
+			// Do NOT append this gene; it is now deleted.
+			continue
 		}
+
+		// Keep genes that don't point to the deleted neuron.
+		newGenes = append(newGenes, gene)
 	}
 	return newGenes
 }
@@ -265,25 +269,25 @@ func createNodeMap(neuralGenes []*Gene) NodeMap {
 	return nMap
 }
 
-func convertGenesToNeuronIDs(genes []*Gene, neuronCount byte) []*Gene {
+func convertGenesToNeuronIDs(genes []*Gene, CognitiveBreadth byte) []*Gene {
 	newGenes := make([]*Gene, len(genes))
 
 	for i, gene := range genes {
 		new := *gene // Make a copy
-		if new.SourceType == NEURON && neuronCount > 0 {
-			// treat neurons as neurons ONLY if there's a neuronCount > 0
-			new.SourceID %= neuronCount
+		if new.SourceType == NEURON && CognitiveBreadth > 0 {
+			// treat neurons as neurons ONLY if there's a CognitiveBreadth > 0
+			new.SourceID %= CognitiveBreadth
 		} else {
-			// Reset the type in case of Neurons with neuronCount == 0
+			// Reset the type in case of Neurons with CognitiveBreadth == 0
 			new.SourceType = SENSOR
 			new.SourceID %= SENSOR_COUNT
 		}
 
-		if new.SinkType == NEURON && neuronCount > 0 {
-			// treat neurons as neurons ONLY if there's a neuronCount > 0
-			new.SinkID %= neuronCount
+		if new.SinkType == NEURON && CognitiveBreadth > 0 {
+			// treat neurons as neurons ONLY if there's a CognitiveBreadth > 0
+			new.SinkID %= CognitiveBreadth
 		} else {
-			// Reset the type in case of Neurons with neuronCount == 0
+			// Reset the type in case of Neurons with CognitiveBreadth == 0
 			new.SinkType = ACTION
 			new.SinkID %= ACTION_COUNT
 		}
