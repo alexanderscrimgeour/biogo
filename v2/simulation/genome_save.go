@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -215,6 +216,85 @@ func SaveCreatureToFile(g *Genome) error {
 		return err
 	}
 	return os.WriteFile(path, encoded, 0644)
+}
+
+// NamedGenome pairs a display name (derived from the filename) with a Genome.
+type NamedGenome struct {
+	Name   string
+	Genome *Genome
+}
+
+// sanitizeFilename converts a user-supplied name into a safe filename component.
+func sanitizeFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteRune('_')
+		}
+	}
+	s := b.String()
+	if len(s) > 64 {
+		s = s[:64]
+	}
+	return s
+}
+
+// SaveCreatureToFileNamed saves a genome with a user-provided name as the filename.
+// If name is empty or produces no safe characters, falls back to timestamp-based naming.
+// Appends a timestamp suffix if a file with that name already exists.
+func SaveCreatureToFileNamed(g *Genome, name string) error {
+	if err := os.MkdirAll(creaturesSaveDir, 0755); err != nil {
+		return err
+	}
+	safe := sanitizeFilename(name)
+	var filename string
+	if safe == "" {
+		filename = fmt.Sprintf("%d_%d.json", time.Now().UnixNano(), rand.Int63())
+	} else {
+		filename = safe + ".json"
+		if _, err := os.Stat(filepath.Join(creaturesSaveDir, filename)); err == nil {
+			filename = fmt.Sprintf("%s_%d.json", safe, time.Now().UnixNano())
+		}
+	}
+	data := toGenomeData(g)
+	encoded, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(creaturesSaveDir, filename), encoded, 0644)
+}
+
+// LoadAllCreatureGenomesNamed reads all saved genome files and returns them with
+// display names derived from their filenames (extension stripped).
+func LoadAllCreatureGenomesNamed() ([]NamedGenome, error) {
+	entries, err := os.ReadDir(creaturesSaveDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var result []NamedGenome
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		raw, readErr := os.ReadFile(filepath.Join(creaturesSaveDir, entry.Name()))
+		if readErr != nil {
+			continue
+		}
+		var gd genomeData
+		if jsonErr := json.Unmarshal(raw, &gd); jsonErr != nil {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".json")
+		result = append(result, NamedGenome{Name: name, Genome: fromGenomeData(gd)})
+	}
+	return result, nil
 }
 
 // LoadAllCreatureGenomes reads all individually saved creature genome files from data/creatures/.

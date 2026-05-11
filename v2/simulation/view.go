@@ -1,6 +1,5 @@
 package simulation
 
-import "sort"
 
 // CreatureView is a read-only snapshot of a creature's display state.
 type CreatureView struct {
@@ -14,10 +13,11 @@ type CreatureView struct {
 	CurrentMass   float64
 }
 
-// FoodView is a read-only snapshot of a food item's position for rendering.
+// FoodView is a read-only snapshot of a food item's position and mass for rendering.
 type FoodView struct {
 	ID   int
 	X, Y float64
+	Mass float32
 }
 
 // CorpseView is a read-only snapshot of a dead creature for rendering.
@@ -58,8 +58,6 @@ type CreatureDetailView struct {
 	LastAction      string
 	SightDistance   byte
 	FieldOfView     byte
-	NeuronCount     byte
-	BrainLength     int
 	Dopamine        float32
 	MutationPct     float32 // actual per-gene mutation probability as a percentage
 	R, G, B, A      uint8   // genome-derived display colour
@@ -93,12 +91,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 			Weight:     w,
 		})
 	}
-	for id := range c.Nnet.HiddenNeurons {
-		nnView.HiddenNeuronIDs = append(nnView.HiddenNeuronIDs, id)
-	}
-	sort.Slice(nnView.HiddenNeuronIDs, func(i, j int) bool {
-		return nnView.HiddenNeuronIDs[i] < nnView.HiddenNeuronIDs[j]
-	})
+	nnView.HiddenNeuronIDs = append(nnView.HiddenNeuronIDs, c.Nnet.HiddenNeuronIDs...)
 	if c.Nnet.LastSensorValues != nil {
 		nnView.SensorValues = make(map[byte]float32, len(c.Nnet.LastSensorValues))
 		for k, v := range c.Nnet.LastSensorValues {
@@ -124,10 +117,8 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		LastAction:      c.LastAction,
 		SightDistance:   c.Genome.SightDistance,
 		FieldOfView:     c.Genome.FieldOfView,
-		NeuronCount:     c.Genome.NeuronCount,
-		BrainLength:     len(c.Genome.Brain),
 		Dopamine:        c.Dopamine,
-		MutationPct:     s.Params.MinMutationRate * float32(c.Genome.MutationRate) * 100,
+		MutationPct:     s.Params.BaseMutationRate * float32(c.Genome.MutationRate),
 		R:               uint8(r >> 8),
 		G:               uint8(g >> 8),
 		B:               uint8(b >> 8),
@@ -166,12 +157,12 @@ func (s *Simulation) CreatureViews() map[int]CreatureView {
 func (s *Simulation) CreatureMinMass() byte { return 1 }
 func (s *Simulation) CreatureMaxMass() byte { return s.Params.MaxMass }
 
-// FoodViews returns a snapshot of all current food locations for rendering.
+// FoodViews returns a snapshot of all current food locations and masses for rendering.
 func (s *Simulation) FoodViews() []FoodView {
 	food := s.World.FoodPositions()
 	views := make([]FoodView, 0, len(food))
 	for id, pos := range food {
-		views = append(views, FoodView{ID: id, X: pos.X, Y: pos.Y})
+		views = append(views, FoodView{ID: id, X: pos.X, Y: pos.Y, Mass: s.World.GetFoodMass(id)})
 	}
 	return views
 }

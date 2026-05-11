@@ -29,7 +29,6 @@ type SimulationState interface {
 	PopulationCount() int
 	FoodCount() int
 	AverageAge() float64
-	// Prioritized Mass over Size
 	CreatureMinMass() byte
 	CreatureMaxMass() byte
 	SaveCreature(id int) error
@@ -37,6 +36,9 @@ type SimulationState interface {
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetSpawnMutationRate(rate float32)
 	SpawnAt(x, y float64) bool
+	SpawnGenome(g *simulation.Genome) bool
+	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
+	GetParams() *simulation.Parameters
 }
 
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
@@ -67,7 +69,7 @@ const (
 	detailPanelX   = 10
 	detailPanelY   = 168
 	detailPanelW   = 210
-	detailPanelH   = 435
+	detailPanelH   = 468 // extra height for Edit Genome button
 	detailTpad     = 8
 	detailSaveBtnH = 22
 
@@ -133,10 +135,15 @@ type Game struct {
 	newGameBtn         *components.Button
 	themeBtn           *components.Button
 	saveBtn            *components.Button
+	editGenomeBtn      *components.Button
+	createGenomeBtn    *components.Button
+	spawnSavedBtn      *components.Button
 	spawnRandomBtn     *components.Button
 	spawnPlacing       bool
 	spawnMutSlider     *components.Slider
 	detailsPanel       *components.Panel
+	genomeEditor       *GenomeEditor
+	savedGenomesPanel  *SavedGenomesPanel
 }
 
 var BlockSize int = 2
@@ -223,6 +230,31 @@ func NewGame(sim SimulationState) *Game {
 			g.spawnPlacing = !g.spawnPlacing
 		},
 	}
+	g.createGenomeBtn = &components.Button{
+		X: 782, Y: 10, W: 130, H: 24,
+		Label:      "Create Genome",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.genomeEditor.Open(nil, g.sim.GetParams())
+		},
+	}
+	g.spawnSavedBtn = &components.Button{
+		X: 922, Y: 10, W: 120, H: 24,
+		Label:      "Spawn Saved",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.savedGenomesPanel.Open()
+		},
+	}
+	g.genomeEditor = newGenomeEditor(func(genome *simulation.Genome, name string) {
+		g.sim.SpawnGenome(genome)
+		simulation.SaveCreatureToFileNamed(genome, name) //nolint:errcheck
+	})
+	g.savedGenomesPanel = newSavedGenomesPanel(func(genome *simulation.Genome) {
+		g.sim.SpawnGenome(genome)
+	})
 	g.spawnMutSlider = &components.Slider{
 		X: 315, Y: 10, W: 240, H: 24,
 		TrackX: 530, TrackW: 100,
@@ -259,9 +291,20 @@ func NewGame(sim SimulationState) *Game {
 }
 
 func (g *Game) handleContinuousInput() {
+	mx, my := ebiten.CursorPosition()
+	if g.genomeEditor.visible {
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			g.genomeEditor.HandleDrag(mx, my)
+		} else {
+			g.genomeEditor.HandleRelease()
+		}
+		return
+	}
+	if g.savedGenomesPanel.visible {
+		return // no continuous input needed for the list panel
+	}
 	if g.spawnMutSlider.Dragging {
 		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-			mx, _ := ebiten.CursorPosition()
 			g.spawnMutSlider.UpdateValue(mx)
 			g.sim.SetSpawnMutationRate(float32(g.spawnMutSlider.Value))
 		} else {
@@ -297,6 +340,23 @@ func (g *Game) handleInput() bool {
 			}
 		}
 
+		if g.editGenomeBtn != nil {
+			if g.editGenomeBtn.IsClicked(mx, my) {
+				g.editGenomeBtn.OnClick()
+				return true
+			}
+		}
+
+		if g.createGenomeBtn.IsClicked(mx, my) {
+			g.createGenomeBtn.OnClick()
+			return true
+		}
+
+		if g.spawnSavedBtn.IsClicked(mx, my) {
+			g.spawnSavedBtn.OnClick()
+			return true
+		}
+
 		if g.spawnMutSlider.InBounds(mx, my) {
 			g.spawnMutSlider.Dragging = true
 			g.spawnMutSlider.UpdateValue(mx)
@@ -328,8 +388,21 @@ func (g *Game) Update() error {
 	mx, my := ebiten.CursorPosition()
 	now := time.Now()
 
+	if g.genomeEditor.visible {
+		g.genomeEditor.HandleKeyInput()
+	}
+
+	_, scrollY := ebiten.Wheel()
+	if scrollY != 0 && g.savedGenomesPanel.visible {
+		g.savedGenomesPanel.Scroll(int(scrollY))
+	}
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		if !g.handleInput() {
+		if g.genomeEditor.visible {
+			g.genomeEditor.HandleInput(mx, my)
+		} else if g.savedGenomesPanel.visible {
+			g.savedGenomesPanel.HandleInput(mx, my)
+		} else if !g.handleInput() {
 			g.trySelectCreature(mx, my)
 		}
 	}
@@ -545,6 +618,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.spawnRandomBtn.Label = "Spawn Random"
 	}
 	g.spawnRandomBtn.Draw(screen, g.statFont)
+	g.createGenomeBtn.Draw(screen, g.statFont)
+	g.spawnSavedBtn.Draw(screen, g.statFont)
 	if g.spawnPlacing {
 		mx, my := ebiten.CursorPosition()
 		cx, cy := float32(mx), float32(my)
@@ -561,6 +636,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		tickRate := 1.0 / g.tickDuration.Seconds()
 		g.addStatLine(screen, "Tick Rate", fmt.Sprintf("%.0f/s", tickRate), 4)
 	}
+
+	// Overlays — drawn last so they sit above everything
+	g.savedGenomesPanel.Draw(screen, g.statFont)
+	g.genomeEditor.Draw(screen, g.statFont)
 }
 
 func (g *Game) drawFOVCones(screen *ebiten.Image, views map[int]simulation.CreatureView, t float64) {
@@ -674,19 +753,17 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	sight := &components.Label{Text: fmt.Sprintf("Sight: %d  FOV: %d°", d.SightDistance, d.FieldOfView), Font: g.statFont, Color: color.White}
 	sight.Draw(screen, currX, currY)
 	currY += h + 15
-	layers := &components.Label{Text: fmt.Sprintf("Layers: %d  Genes: %d", d.NeuronCount, d.BrainLength), Font: g.statFont, Color: color.White}
-	layers.Draw(screen, currX, currY)
-	currY += h + 15
 	mutation := &components.Label{Text: fmt.Sprintf("Mutation:  %.2f%%", d.MutationPct), Font: g.statFont, Color: color.White}
 	mutation.Draw(screen, currX, currY)
 	currY += h + 25
 
 	g.drawPhenotypeChart(screen, d, currX, currY)
 
+	btnY := int(currY) + 100
 	sBtn := &components.Button{
 		Label: "Save Genome",
 		X:     int(currX),
-		Y:     int(currY) + 100,
+		Y:     btnY,
 		W:     int(p.W - (detailTpad * 2)),
 		H:     int(detailSaveBtnH),
 		Color: color.RGBA{40, 100, 60, 220},
@@ -701,6 +778,23 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	}
 	g.saveBtn = sBtn
 	g.saveBtn.Draw(screen, g.statFont)
+
+	editBtn := &components.Button{
+		Label: "Edit Genome",
+		X:     int(currX),
+		Y:     btnY + detailSaveBtnH + 4,
+		W:     int(p.W - (detailTpad * 2)),
+		H:     int(detailSaveBtnH),
+		Color: color.RGBA{40, 60, 130, 220},
+		OnClick: func() {
+			id := g.selectedCreatureID
+			if genome, ok := g.sim.CreatureGenomeCopy(id); ok {
+				g.genomeEditor.Open(genome, g.sim.GetParams())
+			}
+		},
+	}
+	g.editGenomeBtn = editBtn
+	g.editGenomeBtn.Draw(screen, g.statFont)
 }
 
 func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDetailView, x, y float32) {
@@ -1099,16 +1193,17 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 	gw := float32(graphPanelW - graphPad*2)
 	gh := float32(graphPanelH - graphTextH - graphPad)
 
-	globalMax := 1
+	foodMax := 1
+	popMax := 1
 	for i := 0; i < g.histCount; i++ {
 		idx := ((g.histHead-1-i)%historyLen + historyLen) % historyLen
 		s := g.history[idx]
 
-		if s.pop > globalMax {
-			globalMax = s.pop
+		if s.pop > popMax {
+			popMax = s.pop
 		}
-		if s.food > globalMax {
-			globalMax = s.food
+		if s.food > foodMax {
+			foodMax = s.food
 		}
 	}
 
@@ -1117,10 +1212,10 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 		steps = g.histCount
 	}
 
-	g.drawGraphLine(screen, gx, gy, gw, gh, steps, globalMax,
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, foodMax,
 		color.RGBA{80, 210, 100, 200}, func(s histSample) int { return s.food })
 
-	g.drawGraphLine(screen, gx, gy, gw, gh, steps, globalMax,
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, popMax,
 		color.RGBA{100, 180, 255, 200}, func(s histSample) int { return s.pop })
 }
 

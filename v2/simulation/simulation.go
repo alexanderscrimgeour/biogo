@@ -15,6 +15,7 @@ type Simulation struct {
 	Tick           int
 	nextCreatureID int
 	Params         *Parameters
+	TargetEnergy   float64 // total liquid energy to maintain (set at initialisation)
 }
 
 func New(params *Parameters) *Simulation {
@@ -24,12 +25,14 @@ func New(params *Parameters) *Simulation {
 	}
 	sim.initializeWorld()
 	sim.initializePopulation()
+	sim.TargetEnergy = sim.TotalEnergy()
 	return sim
 }
 
 func (s *Simulation) initializeWorld() {
 	s.World = grid.NewWorld(s.Params.GridWidth, s.Params.GridHeight, 1)
-	s.World.SpawnRandom(s.Params.MaxFood)
+	s.World.SpawnRandom(s.Params.MaxFood, s.Params.FoodMass)
+	s.World.InitFountains(s.Params.FountainCount)
 }
 
 func (s *Simulation) initializePopulation() {
@@ -78,6 +81,7 @@ func (s *Simulation) Reset() {
 	s.nextCreatureID = grid.StartingCreatureID
 	s.initializeWorld()
 	s.initializePopulation()
+	s.TargetEnergy = s.TotalEnergy()
 }
 
 func (s *Simulation) allocateID() int {
@@ -91,13 +95,16 @@ func (s *Simulation) Update() {
 }
 
 func (s *Simulation) step() {
+	s.World.StepFountains(s.Params.FountainDriftSpeed)
+
 	if s.Tick%s.Params.FoodSpawnInterval == 0 {
-		toSpawn := s.Params.FoodPerSpawn
-		if available := s.Params.MaxFood - s.World.FoodCount(); available < toSpawn {
-			toSpawn = available
-		}
+		deficit := s.TargetEnergy - s.TotalEnergy()
+		toSpawn := int(deficit / float64(s.Params.FoodMass))
 		if toSpawn > 0 {
-			s.World.SpawnFood(toSpawn, s.Params.FoodPatchRadius, s.Params.FoodPatchSize)
+			if available := s.Params.MaxFood - s.World.FoodCount(); toSpawn > available {
+				toSpawn = available
+			}
+			s.World.SpawnFood(toSpawn, s.Params.FountainRadius, s.Params.FoodMass)
 		}
 	}
 
@@ -106,6 +113,18 @@ func (s *Simulation) step() {
 	ids := s.Population.AliveIDs()
 	n := runtime.GOMAXPROCS(0)
 	batches := partitionIDs(ids, n)
+
+	// Pre-size shared queues so Process* functions can reuse the backing array.
+	popSize := len(ids)
+	if cap(s.Population.DeathQueue) < popSize {
+		s.Population.DeathQueue = make([]DeathInstruction, 0, popSize)
+	}
+	if cap(s.Population.MoveQueue) < popSize {
+		s.Population.MoveQueue = make([]MoveInstruction, 0, popSize)
+	}
+	if cap(s.Population.ReproductionQueue) < popSize {
+		s.Population.ReproductionQueue = make([]ReproductionInstruction, 0, popSize)
+	}
 
 	// Each goroutine writes to its own pendingInstructions; no shared mutation.
 	results := make([]pendingInstructions, n)
@@ -150,9 +169,7 @@ func (s *Simulation) step() {
 	}
 
 	spawnParams := *s.Params
-	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
-		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
-	}
+
 	for s.Population.AliveCount() < s.Params.MinPopulation {
 		loc, ok := s.World.FindEmptyLocation()
 		if !ok {
@@ -160,11 +177,11 @@ func (s *Simulation) step() {
 		}
 		id := s.allocateID()
 		var genome *Genome
-		// if source := s.Population.OldestGenome(); source != nil {
-		// 	genome = AsexualReproduction(source, &spawnParams)
-		// } else {
-		genome = MakeRandomGenome(&spawnParams)
-		// }
+		if source := s.Population.OldestGenome(); source != nil {
+			genome = ArtificialReproduction(source, &spawnParams)
+		} else {
+			genome = MakeRandomGenome(&spawnParams)
+		}
 		c := NewAdultCreature(id, loc, genome, s.Params)
 		s.Population.Creatures[id] = c
 		s.World.AddCreature(id, loc)
@@ -184,7 +201,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		return
 	}
 
-	juvenilePeriod := s.Params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(s.Params.MaxJuvenilePeriod-s.Params.MinJuvenilePeriod))
+	juvenilePeriod := c.cachedJuvenilePeriod
 	reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
 	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod && c.Mass >= float32(c.Genome.Mass) {
 		pending.reproduction = append(pending.reproduction, ReproductionInstruction{c})
@@ -284,16 +301,40 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 		return false
 	}
 	spawnParams := *s.Params
-	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
-		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
-	}
+
 	id := s.allocateID()
 	genome := MakeRandomGenome(&spawnParams)
 	c := NewAdultCreature(id, pos, genome, s.Params)
 	s.Population.Creatures[id] = c
 	s.World.AddCreature(id, pos)
+
 	return true
 }
+
+// SpawnGenome places a new adult creature with the given genome at a random empty location.
+func (s *Simulation) SpawnGenome(g *Genome) bool {
+	loc, ok := s.World.FindEmptyLocation()
+	if !ok {
+		return false
+	}
+	id := s.allocateID()
+	c := NewAdultCreature(id, loc, g, s.Params)
+	s.Population.Creatures[id] = c
+	s.World.AddCreature(id, loc)
+	return true
+}
+
+// CreatureGenomeCopy returns a deep copy of a living creature's genome by ID.
+func (s *Simulation) CreatureGenomeCopy(id int) (*Genome, bool) {
+	c, ok := s.Population.Creatures[id]
+	if !ok || !c.Alive {
+		return nil, false
+	}
+	return c.Genome.Copy(), true
+}
+
+// GetParams exposes the simulation parameters to the UI layer.
+func (s *Simulation) GetParams() *Parameters { return s.Params }
 
 func (s *Simulation) GridWidth() float64  { return s.Params.GridWidth }
 func (s *Simulation) GridHeight() float64 { return s.Params.GridHeight }
@@ -301,6 +342,20 @@ func (s *Simulation) GridHeight() float64 { return s.Params.GridHeight }
 func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
 func (s *Simulation) FoodCount() int { return s.World.FoodCount() }
+
+// TotalEnergy returns the total liquid energy in the system: food energy plus the
+// immediate metabolic stores (energy + stomach contents) of all living creatures.
+// Body mass is treated as structural and excluded; corpse mass is excluded too since
+// it is not reliably converted back to energy.
+func (s *Simulation) TotalEnergy() float64 {
+	energy := s.World.TotalFoodMass()
+	for _, c := range s.Population.Creatures {
+		if c.Alive {
+			energy += float64(c.Energy) + float64(c.Stomach)
+		}
+	}
+	return energy
+}
 
 func (s *Simulation) AverageAge() float64 {
 	total := 0

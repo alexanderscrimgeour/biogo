@@ -1,6 +1,9 @@
 package simulation
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 const (
 	// Neurons are treated differently to sensors/actions.
@@ -16,7 +19,8 @@ type Neuron struct {
 
 type NeuralNet struct {
 	Edges            []*Gene
-	HiddenNeurons    map[byte]*Neuron
+	HiddenNeurons    [256]*Neuron // indexed by neuron ID; sparse, use HiddenNeuronIDs to iterate
+	HiddenNeuronIDs  []byte       // sorted list of occupied indices
 	Weights          []float32
 	LastSensorValues map[byte]float32
 	LastActionValues []float32
@@ -43,8 +47,10 @@ func (n NeuralNet) String() string {
 		str += fmt.Sprintf("%s ", val.String())
 	}
 	str += "]\n    | Neurons: "
-	for _, val := range n.HiddenNeurons {
-		str += fmt.Sprintf("%s ", val.String())
+	for _, id := range n.HiddenNeuronIDs {
+		if n.HiddenNeurons[id] != nil {
+			str += fmt.Sprintf("%s ", n.HiddenNeurons[id].String())
+		}
 	}
 	str += "\n"
 	return str
@@ -112,40 +118,66 @@ func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 		}
 
 	}
-	nnet.HiddenNeurons = make(map[byte]*Neuron, len(n))
-	// Create the neurons
+	// Create the neurons; HiddenNeuronIDs is sorted for deterministic iteration.
+	nnet.HiddenNeuronIDs = make([]byte, 0, len(n))
 	for _, node := range n {
 		neuron := &Neuron{
 			Output: CreateInitialNeuronOutput(),
 			Driven: node.InputCount != 0,
 		}
 		nnet.HiddenNeurons[node.NewID] = neuron
+		nnet.HiddenNeuronIDs = append(nnet.HiddenNeuronIDs, node.NewID)
 	}
+	sort.Slice(nnet.HiddenNeuronIDs, func(i, j int) bool {
+		return nnet.HiddenNeuronIDs[i] < nnet.HiddenNeuronIDs[j]
+	})
 	return &nnet
 }
 
 func setNodeNewIDValues(n NodeMap) {
-	i := 0
-	for _, node := range n {
+	keys := make([]byte, 0, len(n))
+	for k := range n {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	for i, key := range keys {
+		node := n[key]
 		if node.OutputCount == 0 {
 			panic("Somehow we have a dead neuron!")
 		}
 		node.NewID = byte(i)
-		i++
 	}
 }
-
 func removeUselessGenes(g []*Gene, n NodeMap) []*Gene {
-	// Do not cull if no neurons
 	if len(n) == 0 {
 		return g
 	}
+
 	final := g
-	// Iterate until we're done
 	done := false
 	for !done {
 		done = true
-		for key, node := range n {
+
+		// 1. Extract and sort keys to ensure deterministic pruning
+		keys := make([]byte, 0, len(n))
+		for k := range n {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i] < keys[j]
+		})
+
+		// 2. Iterate through sorted keys
+		for _, key := range keys {
+			node, exists := n[key]
+			if !exists {
+				continue
+			}
+
+			// If a neuron only outputs to itself or nothing, it's useless
 			if node.OutputCount == node.SelfLoopCount {
 				done = false
 				final = removeConnectionsToGene(final, n, key)
@@ -155,21 +187,28 @@ func removeUselessGenes(g []*Gene, n NodeMap) []*Gene {
 	}
 	return final
 }
-
 func removeConnectionsToGene(genes []*Gene, n NodeMap, key byte) []*Gene {
-	new := []*Gene{}
+	newGenes := make([]*Gene, 0, len(genes))
+
 	for _, gene := range genes {
 		if gene.SinkType == NEURON && gene.SinkID == key {
+
 			if gene.SourceType == NEURON {
-				if n[gene.SourceID].OutputCount > 0 {
-					n[gene.SourceID].OutputCount--
+				sourceNode, exists := n[gene.SourceID]
+				if exists {
+					if sourceNode.OutputCount > 0 {
+						sourceNode.OutputCount--
+					}
+					if gene.SourceID == key && sourceNode.SelfLoopCount > 0 {
+						sourceNode.SelfLoopCount--
+					}
 				}
 			}
 		} else {
-			new = append(new, gene)
+			newGenes = append(newGenes, gene)
 		}
 	}
-	return new
+	return newGenes
 }
 
 func TestRemove(nodeMap NodeMap, key byte) {
@@ -181,46 +220,35 @@ func TestRemoveList(g []*Gene) []*Gene {
 	return g
 }
 
-// CreateNodeMap takes in a
+// CreateNodeMap takes in
 func createNodeMap(neuralGenes []*Gene) NodeMap {
 	nMap := NodeMap{}
-	for _, gene := range neuralGenes {
-		// First, if this gene -> NEURON, it must be from a SENSOR or a NEURON
-		if gene.SinkType == NEURON {
-			// New Node
-			node := &Node{
+	ensureNode := func(id byte) {
+		if _, ok := nMap[id]; !ok {
+			nMap[id] = &Node{
 				NewID:         0,
 				OutputCount:   0,
 				InputCount:    0,
 				SelfLoopCount: 0,
 			}
-			// If not present, add new node to the nMap
-			if _, ok := nMap[gene.SinkID]; !ok {
-				nMap[gene.SinkID] = node
-			}
-			// If Neuron, we allow self inputs, so increment self loop count
-			if (gene.SourceType == NEURON) && (gene.SourceID == gene.SinkID) {
+		}
+	}
+
+	for _, gene := range neuralGenes {
+		// First, if this gene -> NEURON, it must be from a SENSOR or a NEURON
+		if gene.SinkType == NEURON {
+			ensureNode(gene.SinkID)
+			if gene.SourceType == NEURON && gene.SourceID == gene.SinkID {
 				nMap[gene.SinkID].SelfLoopCount++
 			} else {
-				// Case SENSOR we just increment inputs
+				// We count inputs from SENSORS or other NEURONS
 				nMap[gene.SinkID].InputCount++
 			}
 		}
 
 		// If NEURON -> GENE, can only be a NEURON or an ACTION
 		if gene.SourceType == NEURON {
-			// New node object
-			node := &Node{
-				NewID:         0,
-				OutputCount:   0,
-				InputCount:    0,
-				SelfLoopCount: 0,
-			}
-			// If not present, add new node to the nMap
-			if _, ok := nMap[gene.SourceID]; !ok {
-				nMap[gene.SourceID] = node
-			}
-			// Add the output count
+			ensureNode(gene.SourceID)
 			nMap[gene.SourceID].OutputCount++
 		}
 	}

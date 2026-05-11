@@ -153,7 +153,7 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 // creature contribute more; the signal saturates at maxFoodDensity total weight.
 func calculateFoodDensityFwd(c Creature, w *grid.World) float32 {
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 
 	const maxFoodDensity = 8.0
 	var sum float64
@@ -177,7 +177,7 @@ func calculateCorpseDensityFwd(c Creature, w *grid.World, p *Population) float32
 		return 0
 	}
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	const maxCorpseDensity = 5.0
@@ -207,7 +207,7 @@ func calculateCorpseDensityFwd(c Creature, w *grid.World, p *Population) float32
 // the forward FOV cone. 0 = none visible, 1 = cone is at capacity.
 func calculateSightPopFwd(c Creature, w *grid.World, p *Population) float32 {
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	count := 0
@@ -306,7 +306,7 @@ func calculateThreatFwd(c Creature, w *grid.World, p *Population) float32 {
 		return 0
 	}
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	best := float32(0)
@@ -343,7 +343,7 @@ func calculatePreyFwd(c Creature, w *grid.World, p *Population) float32 {
 		return 0
 	}
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	best := float32(0)

@@ -89,7 +89,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		newPos := instruction.Loc
 
 		if instruction.MoveAmount > 0 {
-			halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+			halfFOVCos := c.halfFOVCos
 
 			bite := c.BiteSize(params)
 			stomachSpace := c.StomachCapacity(params) - c.Stomach
@@ -100,6 +100,9 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 			interactionRadius := params.FoodInteractionRadius * (1.0 + massRatio)
 
 			// Consume the nearest food item within interaction radius.
+			// If the item has more mass than the bite or the remaining stomach space,
+			// only the appropriate portion is taken and the item stays in the world
+			// with its remaining mass.
 			if stomachSpace > 0 {
 				foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, interactionRadius)
 				if len(foodIDs) > 0 {
@@ -115,16 +118,17 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 							closestID = fid
 						}
 					}
+					foodMass := w.GetFoodMass(closestID)
 					eaten := bite
-					if eaten > params.FoodMass {
-						eaten = params.FoodMass
+					if eaten > foodMass {
+						eaten = foodMass
 					}
 					if eaten > stomachSpace {
 						eaten = stomachSpace
 					}
 					c.Stomach += eaten
 					stomachSpace -= eaten
-					w.RemoveFood(closestID)
+					w.ReduceFoodMass(closestID, eaten)
 				}
 			}
 
@@ -212,7 +216,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 		w.MoveCreature(c.Id, newPos)
 		c.Loc = newPos
 	}
-	p.MoveQueue = []MoveInstruction{}
+	p.MoveQueue = p.MoveQueue[:0]
 }
 
 // ProcessDeathQueue marks queued creatures as dead. Corpses remain in the world
@@ -223,7 +227,7 @@ func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 		di.Creature.Mass = di.Creature.CurrentMass(params)
 		di.Creature.Energy = 0
 	}
-	p.DeathQueue = []DeathInstruction{}
+	p.DeathQueue = p.DeathQueue[:0]
 }
 
 // ProcessCorpseDecay drains mass from every dead creature. Fully decayed
@@ -289,7 +293,7 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters,
 		p.Creatures[id] = child
 		w.AddCreature(id, offspringLoc)
 	}
-	p.ReproductionQueue = []ReproductionInstruction{}
+	p.ReproductionQueue = p.ReproductionQueue[:0]
 }
 
 // findOffspringLocation returns a free position for an offspring, preferring a

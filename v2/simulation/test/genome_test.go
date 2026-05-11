@@ -68,10 +68,10 @@ func TestGeneCopy(t *testing.T) {
 func TestMutateChangesGenome(t *testing.T) {
 	rand.Seed(42)
 	p := defaultParams()
-	p.MinMutationRate = 1.0 // force mutation on every gene
+	p.BaseMutationRate = 1.0 // force mutation on every gene
 	g := simulation.MakeRandomGenome(p)
 	original := g.String()
-	simulation.Mutate(g, p)
+	simulation.Mutate(g, p, false)
 	// With 100% mutation rate, genome string very likely changes
 	if g.String() == original {
 		t.Log("Mutate did not change the genome (probabilistic, rare)")
@@ -125,10 +125,10 @@ func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 
 func TestMutatePreservesMinMassConstraint(t *testing.T) {
 	p := defaultParams()
-	p.MinMutationRate = 1.0 // force mutations on every gene
+	p.BaseMutationRate = 1.0 // force mutations on every gene
 	for i := 0; i < 200; i++ {
 		g := simulation.MakeRandomGenome(p)
-		simulation.Mutate(g, p)
+		simulation.Mutate(g, p, false)
 		if float32(g.MinMass)*2 >= float32(g.Mass) {
 			t.Fatalf("Mutate violated MinMass constraint: MinMass=%d, Mass=%d", g.MinMass, g.Mass)
 		}
@@ -165,10 +165,10 @@ func TestMakeRandomGenomeMutationRateNonZero(t *testing.T) {
 
 func TestMutateNeverZeroMutationRate(t *testing.T) {
 	p := defaultParams()
-	p.MinMutationRate = 1.0
+	p.BaseMutationRate = 1.0
 	for i := 0; i < 1000; i++ {
 		g := simulation.MakeRandomGenome(p)
-		simulation.Mutate(g, p)
+		simulation.Mutate(g, p, false)
 		if g.MutationRate == 0 {
 			t.Fatalf("Mutate produced MutationRate=0 on iteration %d", i)
 		}

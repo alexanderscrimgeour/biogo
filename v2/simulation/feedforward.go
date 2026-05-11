@@ -8,9 +8,14 @@ import (
 
 func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *Parameters) []float32 {
 	actionLevels := make([]float32, ACTION_COUNT)
-	neuronAccumulators := map[byte]float32{}
+	var neuronAccumulators [256]float32 // stack-allocated; no heap allocation per tick
 	neuronOutputsEvaluated := false
-	lastSensorVals := map[byte]float32{}
+	// Reuse the sensor-values map across ticks to avoid per-tick allocation.
+	if c.Nnet.LastSensorValues == nil {
+		c.Nnet.LastSensorValues = make(map[byte]float32)
+	} else {
+		clear(c.Nnet.LastSensorValues)
+	}
 	const decayRate = 0.0005
 	const energyCostOfLearning = 0.005
 
@@ -36,7 +41,8 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		}
 
 		if gene.SinkType == ACTION && !neuronOutputsEvaluated {
-			for key, neuron := range c.Nnet.HiddenNeurons {
+			for _, key := range c.Nnet.HiddenNeuronIDs {
+				neuron := c.Nnet.HiddenNeurons[key]
 				if neuron.Driven {
 					neuron.Output = float32(math.Tanh(float64(neuronAccumulators[key])))
 				}
@@ -47,14 +53,14 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		var inputVal float32
 		if gene.SourceType == SENSOR {
 			inputVal = c.GetSensor(gene.SourceID, w, p, step, params)
-			lastSensorVals[gene.SourceID] = inputVal
+			c.Nnet.LastSensorValues[gene.SourceID] = inputVal
 		} else {
-			if _, ok := c.Nnet.HiddenNeurons[gene.SourceID]; !ok {
+			if c.Nnet.HiddenNeurons[gene.SourceID] == nil {
 				fmt.Printf("\n\nNot okay, trying to see %d of type %d, %s", gene.SourceID, gene.SourceType, c.Nnet.String())
 				for _, gene := range c.Nnet.Edges {
 					fmt.Printf("\n%s", gene.PrettyString())
 				}
-				fmt.Printf("\nC.Nnet.HiddenNeurons: %v\n", c.Nnet.HiddenNeurons)
+				fmt.Printf("\nC.Nnet.HiddenNeuronIDs: %v\n", c.Nnet.HiddenNeuronIDs)
 			}
 			inputVal = c.Nnet.HiddenNeurons[gene.SourceID].Output
 		}
@@ -69,7 +75,7 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			neuronAccumulators[gene.SinkID] += inputVal * currentWeight
 		}
 
-		if isNeuron || (isAction && len(c.Nnet.HiddenNeurons) == 0) {
+		if isNeuron || (isAction && len(c.Nnet.HiddenNeuronIDs) == 0) {
 			var sinkOutput float32
 			if isNeuron {
 				sinkOutput = c.Nnet.HiddenNeurons[gene.SinkID].Output
@@ -102,7 +108,6 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			}
 		}
 	}
-	c.Nnet.LastSensorValues = lastSensorVals
 	c.Nnet.LastActionValues = actionLevels
 	return actionLevels
 }

@@ -66,7 +66,7 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	creature.Energy = creature.Mass * params.EnergyPerMassUnit * 0.5
 
 	w.AddCreature(1, startPos)
-	w.AddFood(foodPos)
+	w.AddFood(foodPos, 10)
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[1] = creature
@@ -76,11 +76,13 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	if creature.Loc != destPos {
 		t.Errorf("creature should move to destination, got %v", creature.Loc)
 	}
-	if w.FoodCount() != 0 {
-		t.Error("food should be consumed after creature moves onto it")
-	}
 	if creature.Stomach <= 0 {
-		t.Error("creature stomach should be filled after eating food")
+		t.Error("creature should have eaten something (stomach > 0)")
+	}
+	// Food may be fully consumed (FoodCount == 0) or only partially eaten
+	// (a small creature's bite is less than FoodMass so the item persists with reduced mass).
+	if w.FoodCount() > 0 && w.TotalFoodMass() >= 10 {
+		t.Error("food mass should decrease after creature eats from it")
 	}
 }
 

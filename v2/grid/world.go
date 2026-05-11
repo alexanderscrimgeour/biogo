@@ -8,14 +8,6 @@ import (
 // StartingCreatureID is the first valid creature ID; 0 is reserved for "empty".
 const StartingCreatureID = 1
 
-type FoodSpawnMode int
-
-const (
-	SpawnRandom FoodSpawnMode = iota
-	SpawnClustered
-	SpawnTrail
-)
-
 // Wall is an axis-aligned rectangular obstacle in world-space.
 type Wall struct {
 	X, Y, W, H float64
@@ -30,13 +22,15 @@ type World struct {
 	creaturePos map[int]Position
 	cBuckets    map[[2]int]map[int]bool
 
-	foodPos      map[int]Position
-	fBuckets     map[[2]int]map[int]bool
-	nextFoodID   int
-	spawnMode    FoodSpawnMode
-	lastPatchPos Position
-	lastAngle    float64
-	bucketSize   float64
+	foodPos    map[int]Position
+	foodMass   map[int]float32
+	fBuckets   map[[2]int]map[int]bool
+	nextFoodID int
+	bucketSize float64
+
+	// Gaussian fountain system: 3-5 drifting points that food spawns around.
+	Fountains      []Position
+	fountainAngles []float64
 }
 
 func NewWorld(width, height float64, wallType int) *World {
@@ -46,9 +40,9 @@ func NewWorld(width, height float64, wallType int) *World {
 		creaturePos: make(map[int]Position),
 		cBuckets:    make(map[[2]int]map[int]bool),
 		foodPos:     make(map[int]Position),
+		foodMass:    make(map[int]float32),
 		fBuckets:    make(map[[2]int]map[int]bool),
 		bucketSize:  20.0,
-		spawnMode:   SpawnClustered,
 	}
 	w.createWalls(wallType)
 	return w
@@ -140,11 +134,12 @@ func (w *World) GetCreaturesInCone(center Position, heading float64, halfFOVCos 
 
 // --- Food spatial operations ---
 
-// AddFood places a food item at pos and returns its ID.
-func (w *World) AddFood(pos Position) int {
+// AddFood places a food item with the given mass at pos and returns its ID.
+func (w *World) AddFood(pos Position, mass float32) int {
 	w.nextFoodID++
 	id := w.nextFoodID
 	w.foodPos[id] = pos
+	w.foodMass[id] = mass
 	key := w.bucketKey(pos)
 	if w.fBuckets[key] == nil {
 		w.fBuckets[key] = make(map[int]bool)
@@ -157,11 +152,39 @@ func (w *World) RemoveFood(id int) {
 	if pos, ok := w.foodPos[id]; ok {
 		delete(w.fBuckets[w.bucketKey(pos)], id)
 		delete(w.foodPos, id)
+		delete(w.foodMass, id)
 	}
 }
 
 func (w *World) GetFoodPos(id int) Position {
 	return w.foodPos[id]
+}
+
+// GetFoodMass returns the remaining mass of food item id.
+func (w *World) GetFoodMass(id int) float32 {
+	return w.foodMass[id]
+}
+
+// ReduceFoodMass subtracts amount from food item id's mass.
+// If the remaining mass drops to zero or below the item is automatically removed.
+// Returns the remaining mass (0 if removed).
+func (w *World) ReduceFoodMass(id int, amount float32) float32 {
+	remaining := w.foodMass[id] - amount
+	if remaining <= 0 {
+		w.RemoveFood(id)
+		return 0
+	}
+	w.foodMass[id] = remaining
+	return remaining
+}
+
+// TotalFoodMass returns the sum of all food item masses currently in the world.
+func (w *World) TotalFoodMass() float64 {
+	total := float64(0)
+	for _, m := range w.foodMass {
+		total += float64(m)
+	}
+	return total
 }
 
 func (w *World) FoodCount() int {
@@ -275,92 +298,83 @@ func (w *World) FindEmptyLocation() (Position, bool) {
 	return Position{}, false
 }
 
-// SpawnFood is now a high-level dispatcher
-func (w *World) SpawnFood(n int, patchRadius float64, patchSize int) {
-	switch w.spawnMode {
-	case SpawnRandom:
-		w.SpawnRandom(n)
-	case SpawnClustered:
-		w.spawnClustered(n, patchRadius, patchSize)
-	case SpawnTrail:
-		w.spawnTrail(n, patchRadius, patchSize)
+// --- Fountain system ---
+
+// InitFountains places count fountain points at random valid locations with random drift angles.
+func (w *World) InitFountains(count int) {
+	w.Fountains = make([]Position, count)
+	w.fountainAngles = make([]float64, count)
+	for i := range w.Fountains {
+		pos, ok := w.FindEmptyLocation()
+		if !ok {
+			pos = Position{X: w.Width / 2, Y: w.Height / 2}
+		}
+		w.Fountains[i] = pos
+		w.fountainAngles[i] = rand.Float64() * 2 * math.Pi
 	}
 }
-func (w *World) spawnTrail(n int, patchRadius float64, patchSize int) {
-	totalSpawned := 0
-	stepDist := patchRadius * 1.5
 
-	for totalSpawned < n {
-		var nextCenter Position
+// StepFountains advances each fountain by driftSpeed units along its current angle,
+// applying a small random angular perturbation each step. Fountains bounce off world
+// edges and walls.
+func (w *World) StepFountains(driftSpeed float64) {
+	for i := range w.Fountains {
+		w.fountainAngles[i] += (rand.Float64() - 0.5) * 0.1
 
-		if w.lastPatchPos.X == 0 && w.lastPatchPos.Y == 0 {
-			nextCenter, _ = w.FindEmptyLocation()
-			w.lastAngle = rand.Float64() * 2 * math.Pi
-		} else {
-			foundValid := false
-			for attempts := 0; attempts < 15; attempts++ {
-				angleOffset := (rand.Float64() * math.Pi) - (math.Pi / 2)
-				currentAngle := w.lastAngle + angleOffset
-
-				candidate := Position{
-					X: w.lastPatchPos.X + math.Cos(currentAngle)*stepDist,
-					Y: w.lastPatchPos.Y + math.Sin(currentAngle)*stepDist,
-				}
-
-				if w.IsInBounds(candidate) && !w.IsWall(candidate) {
-					nextCenter = candidate
-					w.lastAngle = currentAngle
-					foundValid = true
-					break
-				}
-
-				w.lastAngle += math.Pi / 4
-			}
-
-			if !foundValid {
-				nextCenter, _ = w.FindEmptyLocation()
-				w.lastAngle = rand.Float64() * 2 * math.Pi
-			}
+		newPos := Position{
+			X: w.Fountains[i].X + math.Cos(w.fountainAngles[i])*driftSpeed,
+			Y: w.Fountains[i].Y + math.Sin(w.fountainAngles[i])*driftSpeed,
 		}
 
-		w.lastPatchPos = nextCenter
-		totalSpawned += w.placeClusterAt(nextCenter, n-totalSpawned, patchRadius, patchSize)
+		if w.IsInBounds(newPos) && !w.IsWall(newPos) {
+			w.Fountains[i] = newPos
+		} else {
+			// Bounce: reverse direction with a small random jitter so fountains
+			// don't get trapped oscillating against a boundary.
+			w.fountainAngles[i] += math.Pi + (rand.Float64()-0.5)*math.Pi*0.25
+		}
 	}
 }
 
-func (w *World) placeClusterAt(center Position, remainingN int, radius float64, size int) int {
+// SpawnFood places n food items (each with the given mass) sampled from Gaussian
+// distributions centred on each fountain. Each item is assigned to a fountain
+// uniformly at random, then offset by a 2-D normal with standard deviation sigma.
+// Items that fall outside the world bounds or inside a wall are retried; if the retry
+// budget is exhausted the remainder are placed uniformly at random so the requested
+// count is always satisfied.
+func (w *World) SpawnFood(n int, sigma float64, mass float32) {
+	if len(w.Fountains) == 0 || n <= 0 {
+		w.SpawnRandom(n, mass)
+		return
+	}
+
+	maxAttempts := n * 20
 	spawned := 0
-	for i := 0; i < size && spawned < remainingN; i++ {
-		angle := rand.Float64() * 2 * math.Pi
-		dist := radius * math.Sqrt(rand.Float64())
+	for attempts := 0; spawned < n && attempts < maxAttempts; attempts++ {
+		fi := rand.Intn(len(w.Fountains))
+		center := w.Fountains[fi]
 		pos := Position{
-			X: center.X + math.Cos(angle)*dist,
-			Y: center.Y + math.Sin(angle)*dist,
+			X: center.X + rand.NormFloat64()*sigma,
+			Y: center.Y + rand.NormFloat64()*sigma,
 		}
 		if w.IsInBounds(pos) && !w.IsWall(pos) {
-			w.AddFood(pos)
+			w.AddFood(pos, mass)
 			spawned++
 		}
 	}
-	return spawned
-}
 
-func (w *World) SpawnRandom(n int) {
-	for i := 0; i < n; i++ {
-		pos, ok := w.FindEmptyLocation()
-		if ok {
-			w.AddFood(pos)
-		}
+	// Fallback for any items not placed via Gaussian (e.g. fountain near edge).
+	if spawned < n {
+		w.SpawnRandom(n-spawned, mass)
 	}
 }
 
-func (w *World) spawnClustered(n int, patchRadius float64, patchSize int) {
-	totalSpawned := 0
-	for totalSpawned < n {
-		seed, ok := w.FindEmptyLocation()
-		if !ok {
-			break
+// SpawnRandom places n food items (each with the given mass) at uniformly random valid positions.
+func (w *World) SpawnRandom(n int, mass float32) {
+	for i := 0; i < n; i++ {
+		pos, ok := w.FindEmptyLocation()
+		if ok {
+			w.AddFood(pos, mass)
 		}
-		totalSpawned += w.placeClusterAt(seed, n-totalSpawned, patchRadius, patchSize)
 	}
 }

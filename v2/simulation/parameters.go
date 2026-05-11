@@ -31,7 +31,7 @@ type Parameters struct {
 	ResponseCurveKFactor float32
 
 	// Mutation
-	MinMutationRate   float32
+	BaseMutationRate  float32
 	SpawnMutationRate float32
 
 	// Age / lifecycle
@@ -42,11 +42,13 @@ type Parameters struct {
 	// Food system
 	MaxFood               int
 	FoodSpawnInterval     int
-	FoodPerSpawn          int
 	FoodMass              float32 // mass of each food item consumed
-	FoodPatchRadius       float64
-	FoodPatchSize         int
 	FoodInteractionRadius float64
+
+	// Gaussian fountain spawning
+	FountainCount      int     // number of drifting spawn points (3–5)
+	FountainDriftSpeed float64 // world units per tick each fountain moves
+	FountainRadius     float64 // Gaussian sigma for food placement around a fountain
 
 	// Stomach / digestion
 	MinStomachSize float32 // stomach capacity at StomachSize gene = 0
@@ -103,21 +105,21 @@ func DefaultParams() *Parameters {
 		MinFieldOfView:              10,
 		MaxFieldOfView:              180,
 		ResponseCurveKFactor:        2,
-		MinMutationRate:             0.0001,
-		SpawnMutationRate:           0.01,
+		BaseMutationRate:            0.005,
+		SpawnMutationRate:           0.5,
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
 		MaxFood:                     30000,
-		FoodSpawnInterval:           100,
-		FoodPerSpawn:                1000,
+		FoodSpawnInterval:           50,
 		FoodMass:                    10.0,
+		FoodInteractionRadius:       3.0,
+		FountainCount:               4,
+		FountainDriftSpeed:          0.3,
+		FountainRadius:              50.0,
 		MinStomachSize:              5.0,
 		MaxStomachSize:              100.0,
 		DigestionRate:               0.5,
-		FoodPatchRadius:             20.0,
-		FoodPatchSize:               200,
-		FoodInteractionRadius:       3.0,
 		BaseBMR:                     0.5,
 		EnergyPerMassUnit:           1.0,
 		MoveCost:                    0.01,

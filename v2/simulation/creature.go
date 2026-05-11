@@ -29,6 +29,11 @@ type Creature struct {
 	LastStomach    float32
 	IsResting      bool
 	Color          color.RGBA
+
+	// Genome-derived constants cached at construction to avoid recomputing each tick.
+	halfFOVCos          float64 // math.Cos(FieldOfView/2 in radians)
+	cachedMetabolicGene float32 // 0.7 + 0.6*(MetabolicRate/255)
+	cachedJuvenilePeriod int    // MinJuvenilePeriod + genome fraction * range
 }
 
 func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
@@ -45,6 +50,7 @@ func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature 
 		Genome:         g,
 		Mass:           float32(g.MinMass),
 	}
+	c.initCachedFields(g, p)
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
 	c.Color = c.CalculateColor(p)
@@ -65,11 +71,18 @@ func NewAdultCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Crea
 		Genome:         g,
 		Mass:           float32(g.Mass),
 	}
+	c.initCachedFields(g, p)
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
-	c.Age = c.JuvenilePeriod(p)
+	c.Age = c.cachedJuvenilePeriod
 	c.Color = c.CalculateColor(p)
 	return &c
+}
+
+func (c *Creature) initCachedFields(g *Genome, p *Parameters) {
+	c.halfFOVCos = math.Cos(float64(g.FieldOfView) / 2.0 * math.Pi / 180.0)
+	c.cachedMetabolicGene = 0.7 + 0.6*(float32(g.MetabolicRate)/255.0)
+	c.cachedJuvenilePeriod = p.MinJuvenilePeriod + int(float32(g.JuvenilePeriod)/255.0*float32(p.MaxJuvenilePeriod-p.MinJuvenilePeriod))
 }
 
 func (c *Creature) CreateNeuralNet() {
@@ -106,30 +119,40 @@ func (c Creature) BiteSize(params *Parameters) float32 {
 }
 
 // Digest converts stomach contents into energy at DigestionRate mass units per tick.
+// Digestion is gated by available energy capacity: if the creature is already at max
+// energy the stomach contents are held and converted only once energy has been spent.
 func (c *Creature) Digest(params *Parameters) {
 	if c.Stomach <= 0 {
 		return
 	}
-	digestionRate := params.DigestionRate
-	efficiency := 1.0
-
-	// If resting, digest faster and more efficiently
-	if c.IsResting {
-		digestionRate *= 1.5 // 50% faster processing
-		efficiency = 1.2     // 20% more energy per unit of food
+	energySpace := c.MaxEnergy(params) - c.Energy
+	if energySpace <= 0 {
+		return
 	}
+
+	digestionRate := params.DigestionRate
+	efficiency := float32(1.0)
+	if c.IsResting {
+		digestionRate *= 1.5
+		efficiency = 1.2
+	}
+
+	// Never digest more than what can be absorbed into available energy capacity.
+	maxDigestableMass := energySpace / (params.EnergyPerMassUnit * efficiency)
 	digested := digestionRate
+	if digested > maxDigestableMass {
+		digested = maxDigestableMass
+	}
 	if digested > c.Stomach {
 		digested = c.Stomach
 	}
 	c.Stomach -= digested
-	energyGained := digested * params.EnergyPerMassUnit * float32(efficiency)
-	c.GainEnergy(energyGained, params)
+	c.GainEnergy(digested*params.EnergyPerMassUnit*efficiency, params)
 }
 
 // JuvenilePeriod returns the number of ticks before this creature is considered an adult.
-func (c Creature) JuvenilePeriod(params *Parameters) int {
-	return params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(params.MaxJuvenilePeriod-params.MinJuvenilePeriod))
+func (c Creature) JuvenilePeriod(_ *Parameters) int {
+	return c.cachedJuvenilePeriod
 }
 
 // IsJuvenile reports whether the creature has not yet completed its juvenile phase.
@@ -207,8 +230,7 @@ func (c *Creature) GainDopamine(ratio float32) {
 // runaway body size. The MetabolicRate genome gene shifts efficiency in [0.7, 1.3].
 func (c Creature) MetabolicRate(params *Parameters) float32 {
 	massNorm := c.Mass / float32(params.MaxMass)
-	metabolicGene := 0.7 + 0.6*(float32(c.Genome.MetabolicRate)/255.0) // [0.7, 1.3]
-	return params.BaseBMR * float32(math.Pow(float64(massNorm), 0.75)) * metabolicGene
+	return params.BaseBMR * float32(math.Pow(float64(massNorm), 0.75)) * c.cachedMetabolicGene
 }
 
 // MaxAge returns the creature's maximum lifespan in ticks.
@@ -229,7 +251,7 @@ func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {
 	// 1. Structural Density (Efficiency)
 	// We look at how many connections (Edges) exist per hidden neuron.
 	// A high connectivity-to-node ratio suggests complex integration.
-	numHidden := float32(len(nn.HiddenNeurons))
+	numHidden := float32(len(nn.HiddenNeuronIDs))
 	if numHidden == 0 {
 		numHidden = 1
 	} // Avoid division by zero for reflex-only brains

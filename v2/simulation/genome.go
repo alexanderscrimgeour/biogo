@@ -200,10 +200,14 @@ func nudgeByte(val byte, strength int) byte {
 	return byte(newVal)
 }
 
-// Mutate randomly flips bits in the genome at a rate of p.MinMutationRate * g.MutationRate
-func Mutate(g *Genome, p *Parameters) {
-	mutationRate := p.MinMutationRate * float32(g.MutationRate)
+// Mutate randomly mutates genes in the genome at a rate of p.BaseMutationRate * g.MutationRate
+func Mutate(g *Genome, p *Parameters, isArtificial bool) {
+	rateMultiplier := float32(g.MutationRate) / 128.0
+	mutationRate := p.BaseMutationRate * rateMultiplier
 
+	if isArtificial {
+		mutationRate = p.SpawnMutationRate * float32(g.MutationRate)
+	}
 	mutateTarget := func(val *byte, min, max byte, strength int) {
 		if rand.Float32() < mutationRate {
 			*val = utils.ClampByte(min, max, nudgeByte(*val, strength))
@@ -262,12 +266,23 @@ func Mutate(g *Genome, p *Parameters) {
 	diff := int(g.BrainLength) - len(g.Brain)
 	if diff > 0 {
 		for i := 0; i < diff; i++ {
-			g.Brain = append(g.Brain, MakeRandomGene())
-		}
-	} else if diff < 0 {
-		for i := 0; i > diff; i-- {
-			index := rand.Intn(len(g.Brain))
-			g.Brain = append(g.Brain[:index], g.Brain[index+1:]...)
+			if len(g.Brain) > 0 && rand.Float32() < 0.8 {
+				// 1. Pick a random existing gene and then change it slightly
+				sourceGene := g.Brain[rand.Intn(len(g.Brain))]
+				newGene := sourceGene.Copy()
+
+				if rand.Float32() < 0.5 {
+					newGene.SourceID = utils.MakeRandomByte()
+				} else {
+					newGene.SinkID = utils.MakeRandomByte()
+				}
+
+				newGene.Weight = nudgeByte(newGene.Weight, 40)
+
+				g.Brain = append(g.Brain, newGene)
+			} else {
+				g.Brain = append(g.Brain, MakeRandomGene())
+			}
 		}
 	}
 }
@@ -275,7 +290,14 @@ func Mutate(g *Genome, p *Parameters) {
 // AsexualReproduction creates a deep copy of the parent genome then mutates it.
 func AsexualReproduction(parent *Genome, p *Parameters) *Genome {
 	child := parent.Copy()
-	Mutate(child, p)
+	Mutate(child, p, false)
+	return child
+}
+
+// AsexualReproduction creates a deep copy of the parent genome then mutates it by the spawn Mutation Rate
+func ArtificialReproduction(parent *Genome, p *Parameters) *Genome {
+	child := parent.Copy()
+	Mutate(child, p, true)
 	return child
 }
 
