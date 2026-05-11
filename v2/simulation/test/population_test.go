@@ -28,11 +28,11 @@ func TestProcessMoveQueue(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 
 	startPos := grid.Position{X: 5, Y: 5}
-	creature := simulation.NewCreature(1, startPos, genome, params)
-	w.AddCreature(1, startPos)
+	id := w.AddCreature(startPos)
+	creature := simulation.NewCreature(id, startPos, genome, params)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = creature
+	pop.Creatures[id] = creature
 
 	newPos := grid.Position{X: 6, Y: 5}
 	pop.QueueForMove(creature, newPos, 1.0)
@@ -41,7 +41,7 @@ func TestProcessMoveQueue(t *testing.T) {
 	if creature.Loc != newPos {
 		t.Errorf("creature did not move: got %v, want %v", creature.Loc, newPos)
 	}
-	pos, ok := w.GetCreaturePos(1)
+	pos, ok := w.GetCreaturePos(id)
 	if !ok || pos != newPos {
 		t.Errorf("world creature position not updated: got %v", pos)
 	}
@@ -60,27 +60,29 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	destPos := grid.Position{X: 6, Y: 5}
 	foodPos := grid.Position{X: 7, Y: 5}
 
-	creature := simulation.NewCreature(1, startPos, genome, params)
+	id := w.AddCreature(startPos)
+	creature := simulation.NewCreature(id, startPos, genome, params)
 	creature.Heading = 0 // east, so food at (7,5) is in the forward cone
 	// Start at 50% of MaxEnergy so the creature is hungry enough to eat.
 	creature.Energy = creature.Mass * params.EnergyPerMassUnit * 0.5
 
-	w.AddCreature(1, startPos)
-	w.AddFood(foodPos)
+	w.AddFood(foodPos, 10)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = creature
+	pop.Creatures[id] = creature
 	pop.QueueForMove(creature, destPos, 1.0)
 	pop.ProcessMoveQueue(w, params)
 
 	if creature.Loc != destPos {
 		t.Errorf("creature should move to destination, got %v", creature.Loc)
 	}
-	if w.FoodCount() != 0 {
-		t.Error("food should be consumed after creature moves onto it")
-	}
 	if creature.Stomach <= 0 {
-		t.Error("creature stomach should be filled after eating food")
+		t.Error("creature should have eaten something (stomach > 0)")
+	}
+	// Food may be fully consumed (FoodCount == 0) or only partially eaten
+	// (a small creature's bite is less than FoodMass so the item persists with reduced mass).
+	if w.FoodCount() > 0 && w.TotalFoodMass() >= 10 {
+		t.Error("food mass should decrease after creature eats from it")
 	}
 }
 
@@ -90,11 +92,11 @@ func TestProcessDeathQueue(t *testing.T) {
 
 	genome := simulation.MakeRandomGenome(params)
 	loc := grid.Position{X: 3, Y: 3}
-	creature := simulation.NewCreature(1, loc, genome, params)
-	w.AddCreature(1, loc)
+	id := w.AddCreature(loc)
+	creature := simulation.NewCreature(id, loc, genome, params)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = creature
+	pop.Creatures[id] = creature
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(w, params)
 
@@ -113,25 +115,25 @@ func TestProcessCorpseDecay(t *testing.T) {
 
 	genome := simulation.MakeRandomGenome(params)
 	loc := grid.Position{X: 3, Y: 3}
-	corpse := simulation.NewCreature(1, loc, genome, params)
+	id := w.AddCreature(loc)
+	corpse := simulation.NewCreature(id, loc, genome, params)
 	corpse.Alive = false
 	corpse.Mass = 60
-	w.AddCreature(1, loc)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = corpse
+	pop.Creatures[id] = corpse
 
 	pop.ProcessCorpseDecay(w, params)
 
 	if corpse.Mass >= 60 {
 		t.Error("corpse mass should decrease after decay")
 	}
-	if _, ok := pop.Creatures[1]; !ok {
+	if _, ok := pop.Creatures[id]; !ok {
 		t.Error("corpse with remaining mass should still be in map")
 	}
 
 	pop.ProcessCorpseDecay(w, params)
-	if _, ok := pop.Creatures[1]; ok {
+	if _, ok := pop.Creatures[id]; ok {
 		t.Error("fully decayed corpse should be removed from population map")
 	}
 }
@@ -145,12 +147,12 @@ func TestCorpseEnergySetOnDeath(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 	genome.Mass = 120
 	loc := grid.Position{X: 3, Y: 3}
-	creature := simulation.NewAdultCreature(1, loc, genome, params)
+	id := w.AddCreature(loc)
+	creature := simulation.NewAdultCreature(id, loc, genome, params)
 	creature.Energy = 5
-	w.AddCreature(creature.Id, loc)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = creature
+	pop.Creatures[id] = creature
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(w, params)
 
@@ -191,6 +193,8 @@ func TestOldestGenomeReturnsOldest(t *testing.T) {
 
 	pop.Creatures[1] = young
 	pop.Creatures[2] = old
+	pop.AddAlive(1)
+	pop.AddAlive(2)
 
 	result := pop.OldestGenome()
 	if result == nil {
@@ -227,21 +231,16 @@ func TestReproductionCreatesOffspring(t *testing.T) {
 	genome.MinMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
-	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
+	parentID := w.AddCreature(parentPos)
+	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	// Start at full energy so reproduction threshold is met.
 	parent.Energy = parent.Mass * params.EnergyPerMassUnit
-	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = parent
+	pop.Creatures[parentID] = parent
 
-	nextID := 2
 	pop.QueueForReproduction(parent)
-	pop.ProcessReproductionQueue(w, params, func() int {
-		id := nextID
-		nextID++
-		return id
-	})
+	pop.ProcessReproductionQueue(w, params)
 
 	if len(pop.Creatures) != 2 {
 		t.Fatalf("expected 2 creatures after reproduction, got %d", len(pop.Creatures))
@@ -258,20 +257,15 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 	genome.MinMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
-	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
+	parentID := w.AddCreature(parentPos)
+	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	parent.Energy = parent.Mass * params.EnergyPerMassUnit
-	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = parent
+	pop.Creatures[parentID] = parent
 
-	nextID := 2
 	pop.QueueForReproduction(parent)
-	pop.ProcessReproductionQueue(w, params, func() int {
-		id := nextID
-		nextID++
-		return id
-	})
+	pop.ProcessReproductionQueue(w, params)
 
 	wantMass := float32(genome.Mass) / 2
 	if parent.Mass != wantMass {
@@ -290,25 +284,26 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 	genome.MutationRate = 0 // suppress mutations so child inherits same Mass
 
 	parentPos := grid.Position{X: 25, Y: 25}
-	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
+	parentID := w.AddCreature(parentPos)
+	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	parent.Energy = parent.Mass * params.EnergyPerMassUnit
-	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = parent
+	pop.Creatures[parentID] = parent
 
-	nextID := 2
 	pop.QueueForReproduction(parent)
-	pop.ProcessReproductionQueue(w, params, func() int {
-		id := nextID
-		nextID++
-		return id
-	})
+	pop.ProcessReproductionQueue(w, params)
 
 	if len(pop.Creatures) != 2 {
 		t.Fatalf("expected 2 creatures after reproduction, got %d", len(pop.Creatures))
 	}
-	child := pop.Creatures[2]
+	var child *simulation.Creature
+	for _, c := range pop.Creatures {
+		if c != parent {
+			child = c
+			break
+		}
+	}
 	wantMass := float32(genome.Mass) / 2
 	if child.Mass != wantMass {
 		t.Errorf("child Mass at birth: got %f, want %f", child.Mass, wantMass)
@@ -325,21 +320,16 @@ func TestReproductionSkipsWhenEnergyBelowThreshold(t *testing.T) {
 	genome.MinMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
-	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
+	parentID := w.AddCreature(parentPos)
+	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	// Set energy just below the reproduction threshold.
 	parent.Energy = params.ReproductionEnergyThreshold*float32(genome.Mass)*params.EnergyPerMassUnit - 1
-	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = parent
+	pop.Creatures[parentID] = parent
 
-	nextID := 2
 	pop.QueueForReproduction(parent)
-	pop.ProcessReproductionQueue(w, params, func() int {
-		id := nextID
-		nextID++
-		return id
-	})
+	pop.ProcessReproductionQueue(w, params)
 
 	if len(pop.Creatures) != 1 {
 		t.Errorf("reproduction should be skipped below energy threshold, got %d creatures", len(pop.Creatures))
@@ -356,20 +346,15 @@ func TestReproductionSkipsWhenMinMassConstraintViolated(t *testing.T) {
 	genome.MinMass = 6 // 6*2=12 >= 10: violates MinMass < Mass/2
 
 	parentPos := grid.Position{X: 25, Y: 25}
-	parent := simulation.NewAdultCreature(1, parentPos, genome, params)
+	parentID := w.AddCreature(parentPos)
+	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	parent.Energy = parent.Mass * params.EnergyPerMassUnit
-	w.AddCreature(1, parentPos)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[1] = parent
+	pop.Creatures[parentID] = parent
 
-	nextID := 2
 	pop.QueueForReproduction(parent)
-	pop.ProcessReproductionQueue(w, params, func() int {
-		id := nextID
-		nextID++
-		return id
-	})
+	pop.ProcessReproductionQueue(w, params)
 
 	if len(pop.Creatures) != 1 {
 		t.Errorf("reproduction should be skipped when MinMass violates constraint, got %d creatures", len(pop.Creatures))
@@ -399,6 +384,7 @@ func TestAliveCount(t *testing.T) {
 
 	pop.Creatures[1] = alive
 	pop.Creatures[2] = dead
+	pop.AddAlive(1)
 
 	if pop.AliveCount() != 1 {
 		t.Errorf("AliveCount should be 1, got %d", pop.AliveCount())

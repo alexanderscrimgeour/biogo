@@ -7,13 +7,14 @@ import (
 	"testing"
 )
 
-// makeCreatureAt creates a minimal creature at pos facing east (heading = 0).
-func makeCreatureAt(pos grid.Position, sightDist, fov byte) *simulation.Creature {
+// makeCreatureAt creates a minimal creature registered in w at pos facing east (heading = 0).
+func makeCreatureAt(w *grid.World, pos grid.Position, sightDist, fov byte) *simulation.Creature {
 	p := defaultParams()
 	g := simulation.MakeRandomGenome(p)
 	g.SightDistance = sightDist
 	g.FieldOfView = fov
-	c := simulation.NewCreature(1, pos, g, p)
+	id := w.AddCreature(pos)
+	c := simulation.NewCreature(id, pos, g, p)
 	c.Heading = 0 // facing east
 	return c
 }
@@ -25,14 +26,14 @@ func makeWorld(w, h float64) *grid.World {
 func TestSightFoodForward_DetectsFood(t *testing.T) {
 	w := makeWorld(200, 200)
 	loc := grid.Position{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 5, 90)
-	w.AddCreature(c.Id, loc)
+	c := makeCreatureAt(w, loc, 5, 90)
 
 	// Place food directly ahead (east)
-	w.AddFood(grid.Position{X: 103, Y: 100})
+	w.AddFood(grid.Position{X: 103, Y: 100}, 10)
 
 	params := defaultParams()
-	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, 0, params)
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
 	if val <= 0 {
 		t.Errorf("expected food to be detected ahead, got %f", val)
 	}
@@ -41,14 +42,14 @@ func TestSightFoodForward_DetectsFood(t *testing.T) {
 func TestSightFoodForward_NoFoodBehind(t *testing.T) {
 	w := makeWorld(200, 200)
 	loc := grid.Position{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 5, 90)
-	w.AddCreature(c.Id, loc)
+	c := makeCreatureAt(w, loc, 5, 90)
 
 	// Place food directly behind (west)
-	w.AddFood(grid.Position{X: 97, Y: 100})
+	w.AddFood(grid.Position{X: 97, Y: 100}, 10)
 
 	params := defaultParams()
-	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, 0, params)
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
 	if val != 0 {
 		t.Errorf("expected 0 for food behind creature, got %f", val)
 	}
@@ -60,18 +61,18 @@ func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
 	foodPos := grid.Position{X: 103, Y: 103}
 
 	wNarrow := makeWorld(200, 200)
-	wNarrow.AddFood(foodPos)
-	cNarrow := makeCreatureAt(loc, 6, 10)
-	wNarrow.AddCreature(cNarrow.Id, loc)
+	wNarrow.AddFood(foodPos, 10)
+	cNarrow := makeCreatureAt(wNarrow, loc, 6, 10)
 
 	wWide := makeWorld(200, 200)
-	wWide.AddFood(foodPos)
-	cWide := makeCreatureAt(loc, 6, 180)
-	wWide.AddCreature(cWide.Id, loc)
+	wWide.AddFood(foodPos, 10)
+	cWide := makeCreatureAt(wWide, loc, 6, 180)
 
 	params := defaultParams()
-	narrow := cNarrow.GetSensor(simulation.SIGHT_FOOD_FORWARD, wNarrow, nil, 0, params)
-	wide := cWide.GetSensor(simulation.SIGHT_FOOD_FORWARD, wWide, nil, 0, params)
+	cNarrow.UpdateSensorContext(wNarrow, params)
+	cWide.UpdateSensorContext(wWide, params)
+	narrow := cNarrow.GetSensor(simulation.SIGHT_FOOD_FORWARD, wNarrow, nil, &cNarrow.Sensors, 0, params)
+	wide := cWide.GetSensor(simulation.SIGHT_FOOD_FORWARD, wWide, nil, &cWide.Sensors, 0, params)
 
 	if narrow != 0 {
 		t.Errorf("narrow FOV should not see NE food, got %f", narrow)
@@ -84,11 +85,11 @@ func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
 func TestSightPopForward_EmptyWorldReturnsZero(t *testing.T) {
 	w := makeWorld(200, 200)
 	loc := grid.Position{X: 100, Y: 100}
-	c := makeCreatureAt(loc, 4, 90)
-	w.AddCreature(c.Id, loc)
+	c := makeCreatureAt(w, loc, 4, 90)
 
 	params := defaultParams()
-	val := c.GetSensor(simulation.SIGHT_POPULATION_FORWARD, w, nil, 0, params)
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.SIGHT_POPULATION_FORWARD, w, nil, &c.Sensors, 0, params)
 	if val != 0 {
 		t.Errorf("expected 0 for empty world ahead, got %f", val)
 	}
@@ -98,18 +99,18 @@ func TestSightFoodForward_ScalesWithDistance(t *testing.T) {
 	loc := grid.Position{X: 100, Y: 100}
 
 	wClose := makeWorld(200, 200)
-	wClose.AddFood(grid.Position{X: 102, Y: 100})
-	cClose := makeCreatureAt(loc, 8, 90)
-	wClose.AddCreature(cClose.Id, loc)
+	wClose.AddFood(grid.Position{X: 102, Y: 100}, 10)
+	cClose := makeCreatureAt(wClose, loc, 8, 90)
 
 	wFar := makeWorld(200, 200)
-	wFar.AddFood(grid.Position{X: 107, Y: 100})
-	cFar := makeCreatureAt(loc, 8, 90)
-	wFar.AddCreature(cFar.Id, loc)
+	wFar.AddFood(grid.Position{X: 107, Y: 100}, 10)
+	cFar := makeCreatureAt(wFar, loc, 8, 90)
 
 	params := defaultParams()
-	scoreClose := cClose.GetSensor(simulation.SIGHT_FOOD_FORWARD, wClose, nil, 0, params)
-	scoreFar := cFar.GetSensor(simulation.SIGHT_FOOD_FORWARD, wFar, nil, 0, params)
+	cClose.UpdateSensorContext(wClose, params)
+	cFar.UpdateSensorContext(wFar, params)
+	scoreClose := cClose.GetSensor(simulation.SIGHT_FOOD_FORWARD, wClose, nil, &cClose.Sensors, 0, params)
+	scoreFar := cFar.GetSensor(simulation.SIGHT_FOOD_FORWARD, wFar, nil, &cFar.Sensors, 0, params)
 
 	if scoreClose <= scoreFar {
 		t.Errorf("close food (%f) should score higher than far food (%f)", scoreClose, scoreFar)
@@ -119,13 +120,13 @@ func TestSightFoodForward_ScalesWithDistance(t *testing.T) {
 func TestSatiation_FullStomach(t *testing.T) {
 	params := defaultParams()
 	loc := grid.Position{X: 50, Y: 50}
-	c := makeCreatureAt(loc, 1, 90)
 	w := makeWorld(200, 200)
-	w.AddCreature(c.Id, loc)
+	c := makeCreatureAt(w, loc, 1, 90)
 
 	cap := c.StomachCapacity(params)
 	c.Stomach = cap
-	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-1.0) > 0.01 {
 		t.Errorf("SATIATION at full stomach should be ~1.0, got %f", val)
 	}
@@ -134,12 +135,12 @@ func TestSatiation_FullStomach(t *testing.T) {
 func TestSatiation_EmptyStomach(t *testing.T) {
 	params := defaultParams()
 	loc := grid.Position{X: 50, Y: 50}
-	c := makeCreatureAt(loc, 1, 90)
 	w := makeWorld(200, 200)
-	w.AddCreature(c.Id, loc)
+	c := makeCreatureAt(w, loc, 1, 90)
 
 	c.Stomach = 0
-	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)) > 0.01 {
 		t.Errorf("SATIATION at empty stomach should be ~0.0, got %f", val)
 	}
@@ -148,15 +149,88 @@ func TestSatiation_EmptyStomach(t *testing.T) {
 func TestSatiation_HalfStomach(t *testing.T) {
 	params := defaultParams()
 	loc := grid.Position{X: 50, Y: 50}
-	c := makeCreatureAt(loc, 1, 90)
 	w := makeWorld(200, 200)
-	w.AddCreature(c.Id, loc)
+	c := makeCreatureAt(w, loc, 1, 90)
 
 	cap := c.StomachCapacity(params)
 	c.Stomach = cap / 2
-	val := c.GetSensor(simulation.SATIATION, w, nil, 0, params)
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-0.5) > 0.01 {
 		t.Errorf("SATIATION at half stomach should be ~0.5, got %f", val)
 	}
 }
 
+func TestStomachRate_MaxDigestion(t *testing.T) {
+	params := defaultParams()
+	w := makeWorld(200, 200)
+	c := makeCreatureAt(w, grid.Position{X: 50, Y: 50}, 1, 90)
+
+	// Stomach drained by exactly DigestionRate → output should be ~1.0.
+	c.LastStomach = params.DigestionRate
+	c.Stomach = 0
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)
+	if math.Abs(float64(val)-1.0) > 0.01 {
+		t.Errorf("STOMACH_RATE at max digestion should be ~1.0, got %f", val)
+	}
+}
+
+func TestStomachRate_NoDigestion(t *testing.T) {
+	params := defaultParams()
+	w := makeWorld(200, 200)
+	c := makeCreatureAt(w, grid.Position{X: 50, Y: 50}, 1, 90)
+
+	c.LastStomach = 5
+	c.Stomach = 5
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)
+	if math.Abs(float64(val)) > 0.01 {
+		t.Errorf("STOMACH_RATE with no change should be ~0.0, got %f", val)
+	}
+}
+
+func TestEnergyDelta_MaxGain(t *testing.T) {
+	params := defaultParams()
+	w := makeWorld(200, 200)
+	c := makeCreatureAt(w, grid.Position{X: 50, Y: 50}, 1, 90)
+
+	maxE := c.MaxEnergy(params)
+	c.LastTickEnergy = 0
+	c.Energy = maxE
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
+	if math.Abs(float64(val)-1.0) > 0.01 {
+		t.Errorf("ENERGY_DELTA at max gain should be ~1.0, got %f", val)
+	}
+}
+
+func TestEnergyDelta_NoChange(t *testing.T) {
+	params := defaultParams()
+	w := makeWorld(200, 200)
+	c := makeCreatureAt(w, grid.Position{X: 50, Y: 50}, 1, 90)
+
+	maxE := c.MaxEnergy(params)
+	c.Energy = maxE / 2
+	c.LastTickEnergy = maxE / 2
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
+	if math.Abs(float64(val)-0.5) > 0.01 {
+		t.Errorf("ENERGY_DELTA with no change should be ~0.5, got %f", val)
+	}
+}
+
+func TestEnergyDelta_MaxLoss(t *testing.T) {
+	params := defaultParams()
+	w := makeWorld(200, 200)
+	c := makeCreatureAt(w, grid.Position{X: 50, Y: 50}, 1, 90)
+
+	maxE := c.MaxEnergy(params)
+	c.LastTickEnergy = maxE
+	c.Energy = 0
+	c.UpdateSensorContext(w, params)
+	val := c.GetSensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
+	if math.Abs(float64(val)-0.0) > 0.01 {
+		t.Errorf("ENERGY_DELTA at max loss should be ~0.0, got %f", val)
+	}
+}

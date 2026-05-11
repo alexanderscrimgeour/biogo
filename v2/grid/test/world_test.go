@@ -39,9 +39,9 @@ func TestIsInBounds(t *testing.T) {
 func TestAddAndGetCreature(t *testing.T) {
 	w := grid.NewWorld(100, 100, 0)
 	pos := grid.Position{X: 50, Y: 50}
-	w.AddCreature(1, pos)
+	id := w.AddCreature(pos)
 
-	got, ok := w.GetCreaturePos(1)
+	got, ok := w.GetCreaturePos(id)
 	if !ok {
 		t.Fatal("GetCreaturePos should find creature after AddCreature")
 	}
@@ -52,11 +52,11 @@ func TestAddAndGetCreature(t *testing.T) {
 
 func TestMoveCreature(t *testing.T) {
 	w := grid.NewWorld(100, 100, 0)
-	w.AddCreature(1, grid.Position{X: 10, Y: 10})
+	id := w.AddCreature(grid.Position{X: 10, Y: 10})
 	newPos := grid.Position{X: 20, Y: 30}
-	w.MoveCreature(1, newPos)
+	w.MoveCreature(id, newPos)
 
-	got, ok := w.GetCreaturePos(1)
+	got, ok := w.GetCreaturePos(id)
 	if !ok || got != newPos {
 		t.Errorf("after MoveCreature, got %v, want %v", got, newPos)
 	}
@@ -64,35 +64,35 @@ func TestMoveCreature(t *testing.T) {
 
 func TestRemoveCreature(t *testing.T) {
 	w := grid.NewWorld(100, 100, 0)
-	w.AddCreature(1, grid.Position{X: 50, Y: 50})
-	w.RemoveCreature(1)
-	if _, ok := w.GetCreaturePos(1); ok {
+	id := w.AddCreature(grid.Position{X: 50, Y: 50})
+	w.RemoveCreature(id)
+	if _, ok := w.GetCreaturePos(id); ok {
 		t.Error("creature should not be found after RemoveCreature")
 	}
 }
 
 func TestGetCreaturesInRadius(t *testing.T) {
 	w := grid.NewWorld(200, 200, 0)
-	w.AddCreature(1, grid.Position{X: 100, Y: 100})
-	w.AddCreature(2, grid.Position{X: 102, Y: 100}) // within radius 5
-	w.AddCreature(3, grid.Position{X: 200, Y: 200}) // far away
+	id1 := w.AddCreature(grid.Position{X: 100, Y: 100})
+	id2 := w.AddCreature(grid.Position{X: 102, Y: 100}) // within radius 5
+	id3 := w.AddCreature(grid.Position{X: 200, Y: 200}) // far away
 
-	ids := w.GetCreaturesInRadius(grid.Position{X: 100, Y: 100}, 5)
+	ids := w.GetCreaturesInRadius(grid.Position{X: 100, Y: 100}, 5, nil)
 	found := map[int]bool{}
 	for _, id := range ids {
 		found[id] = true
 	}
-	if !found[1] || !found[2] {
-		t.Error("expected creatures 1 and 2 within radius 5")
+	if !found[id1] || !found[id2] {
+		t.Error("expected creatures id1 and id2 within radius 5")
 	}
-	if found[3] {
-		t.Error("creature 3 should not be within radius 5")
+	if found[id3] {
+		t.Error("creature id3 should not be within radius 5")
 	}
 }
 
 func TestAddAndRemoveFood(t *testing.T) {
 	w := grid.NewWorld(100, 100, 0)
-	id := w.AddFood(grid.Position{X: 50, Y: 50})
+	id := w.AddFood(grid.Position{X: 50, Y: 50}, 10)
 	if w.FoodCount() != 1 {
 		t.Errorf("expected 1 food, got %d", w.FoodCount())
 	}
@@ -104,11 +104,11 @@ func TestAddAndRemoveFood(t *testing.T) {
 
 func TestGetFoodInRadius(t *testing.T) {
 	w := grid.NewWorld(200, 200, 0)
-	id1 := w.AddFood(grid.Position{X: 100, Y: 100})
-	id2 := w.AddFood(grid.Position{X: 102, Y: 100}) // within radius 5
-	_ = w.AddFood(grid.Position{X: 150, Y: 150})    // far away
+	id1 := w.AddFood(grid.Position{X: 100, Y: 100}, 10)
+	id2 := w.AddFood(grid.Position{X: 102, Y: 100}, 10) // within radius 5
+	_ = w.AddFood(grid.Position{X: 150, Y: 150}, 10) // far away
 
-	ids := w.GetFoodInRadius(grid.Position{X: 100, Y: 100}, 5)
+	ids := w.GetFoodInRadius(grid.Position{X: 100, Y: 100}, 5, nil)
 	found := map[int]bool{}
 	for _, id := range ids {
 		found[id] = true
@@ -120,18 +120,19 @@ func TestGetFoodInRadius(t *testing.T) {
 
 func TestSpawnFood(t *testing.T) {
 	w := grid.NewWorld(200, 200, 0)
-	w.SpawnFood(10, 20.0, 200)
+	w.InitFountains(2)
+	w.SpawnFood(10, 30.0, 10)
 	if w.FoodCount() != 10 {
 		t.Errorf("SpawnFood(10) should place exactly 10 items, got %d", w.FoodCount())
 	}
 }
 
-func TestSpawnFoodParameterisedPatch(t *testing.T) {
-	// Small patchSize forces multiple patches to satisfy n.
+func TestSpawnFoodGaussianFallback(t *testing.T) {
+	// Without fountains initialised, SpawnFood should fall back to random placement.
 	w := grid.NewWorld(500, 500, 0)
-	w.SpawnFood(50, 10.0, 5)
+	w.SpawnFood(50, 30.0, 10)
 	if w.FoodCount() != 50 {
-		t.Errorf("SpawnFood(50) with patchSize=5 should place exactly 50 items, got %d", w.FoodCount())
+		t.Errorf("SpawnFood(50) without fountains should place exactly 50 items, got %d", w.FoodCount())
 	}
 }
 

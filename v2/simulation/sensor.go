@@ -14,17 +14,19 @@ const (
 	LOC_Y
 	OSC1
 	POPULATION_LOCAL_DENSITY
+	POPULATION_LOCAL_HEADING
+	POPULATION_LOCAL_CENTRE_OF_MASS
 	SIGHT_POPULATION_FORWARD
 	SIGHT_FOOD_FORWARD
 	SIGHT_CORPSE_FORWARD
 	RANDOM
 	SATIATION
-	FACING_DIR
+	HEADING
 	NEAREST_FOOD_ANGLE
 	NEAREST_FOOD_DIST
 	THREAT_FORWARD
 	KINSHIP_LOCAL
-	ENERGY_RATE
+	KINSHIP_FORWARD
 	MASS_FRACTION
 	BLOCKED_FORWARD
 	PREY_FORWARD
@@ -34,11 +36,28 @@ const (
 	STOMACH_RATE
 	LOCAL_FOOD_PER_CAPITA
 	JUVENILE
+	ENERGY_DELTA
 
 	SENSOR_COUNT
 )
 
-func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep int, params *Parameters) float32 {
+type SensorContext struct {
+	SightFoodIDs     []int
+	SightCreatureIDs []int
+	LocalCreatureIDs []int
+}
+
+func (c *Creature) UpdateSensorContext(world *grid.World, params *Parameters) {
+	c.SightFoodBuffer = world.GetFoodInRadius(c.Loc, float64(c.Genome.SightDistance), c.SightFoodBuffer)
+	c.SightCreatureBuffer = world.GetCreaturesInRadius(c.Loc, float64(c.Genome.SightDistance), c.SightCreatureBuffer)
+	c.LocalCreatureBuffer = world.GetCreaturesInRadius(c.Loc, params.PopulationSensorRadius, c.LocalCreatureBuffer)
+
+	c.Sensors.SightFoodIDs = c.SightFoodBuffer
+	c.Sensors.SightCreatureIDs = c.SightCreatureBuffer
+	c.Sensors.LocalCreatureIDs = c.LocalCreatureBuffer
+}
+
+func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, ctx *SensorContext, simStep int, params *Parameters) float32 {
 	var output float32
 	switch sensorID {
 	case AGE:
@@ -66,16 +85,20 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 		output = utils.RestrictFloat32(0, 1, float32(factor))
 
 	case POPULATION_LOCAL_DENSITY:
-		output = getLocalPopulationDensity(c.Loc, w, params)
+		output = getLocalPopulationDensity(ctx, params)
 
+	case POPULATION_LOCAL_HEADING:
+		output = getLocalPopulationHeading(c, ctx, p, params)
+	case POPULATION_LOCAL_CENTRE_OF_MASS:
+		output = getLocalPopulationCentreOfMass(c, ctx, p, params)
 	case SIGHT_POPULATION_FORWARD:
-		output = calculateSightPopFwd(c, w, p)
+		output = calculateSightPopFwd(c, w, p, ctx)
 
 	case SIGHT_FOOD_FORWARD:
-		output = calculateFoodDensityFwd(c, w)
+		output = calculateFoodDensityFwd(c, w, ctx)
 
 	case SIGHT_CORPSE_FORWARD:
-		output = calculateCorpseDensityFwd(c, w, p)
+		output = calculateCorpseDensityFwd(c, w, p, ctx)
 
 	case SATIATION:
 		cap := c.StomachCapacity(params)
@@ -83,31 +106,26 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 			output = c.Stomach / cap
 		}
 
-	case FACING_DIR:
+	case HEADING:
 		output = float32((c.Heading + math.Pi) / (2 * math.Pi))
 
 	case NEAREST_FOOD_ANGLE:
-		output = calculateNearestFoodAngle(c, w)
+		output = calculateNearestFoodAngle(c, w, ctx)
 
 	case NEAREST_FOOD_DIST:
-		output = calculateNearestFoodDist(c, w)
+		output = calculateNearestFoodDist(c, w, ctx)
 
 	case THREAT_FORWARD:
-		output = calculateThreatFwd(c, w, p)
+		output = calculateThreatFwd(c, p, ctx)
 
 	case PREY_FORWARD:
-		output = calculatePreyFwd(c, w, p)
+		output = calculatePreyFwd(c, p, ctx)
 
 	case KINSHIP_LOCAL:
-		output = calculateKinshipLocal(c, w, p, params)
+		output = calculateKinshipLocal(c, p, ctx)
 
-	case ENERGY_RATE:
-		maxE := c.MaxEnergy(params)
-		if maxE > 0 {
-			delta := c.Energy - c.LastTickEnergy
-			output = float32(delta/maxE*10) + 0.5
-		}
-
+	case KINSHIP_FORWARD:
+		output = calculateKinshipFwd(c, p, ctx)
 	case MASS_FRACTION:
 		if c.Genome.Mass > 0 {
 			output = c.Mass / float32(c.Genome.Mass)
@@ -117,29 +135,40 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 		output = calculateBlockedFwd(c, w, params)
 
 	case NEAREST_THREAT_ANGLE:
-		output = calculateNearestThreatAngle(c, w, p)
+		output = calculateNearestThreatAngle(c, p, ctx)
 
 	case NEAREST_PREY_ANGLE:
-		output = calculateNearestPreyAngle(c, w, p)
+		output = calculateNearestPreyAngle(c, p, ctx)
 
 	case WALL_PROXIMITY:
 		output = calculateWallProximity(c, w, params)
 
 	case STOMACH_RATE:
-		cap := c.StomachCapacity(params)
-		if cap > 0 {
-			delta := c.Stomach - c.LastStomach
-			output = float32(delta/cap*10) + 0.5
+		if params.DigestionRate > 0 {
+			output = (c.LastStomach - c.Stomach) / params.DigestionRate
 		}
 
 	case LOCAL_FOOD_PER_CAPITA:
-		output = calculateLocalFoodPerCapita(c, w, params)
+		output = calculateLocalFoodPerCapita(ctx, params)
 
 	case JUVENILE:
 		if c.IsJuvenile(params) {
 			output = 1
 		}
 
+	case ENERGY_DELTA:
+		maxE := c.MaxEnergy(params)
+		if maxE > 0 {
+			delta := float32(c.Energy) - float32(c.LastTickEnergy)
+
+			nd := delta / maxE
+
+			sensitivity := float32(150.0)
+
+			t := math.Tanh(float64(nd * sensitivity))
+
+			output = float32(t)*0.5 + 0.5
+		}
 	case RANDOM:
 		fallthrough
 	default:
@@ -151,81 +180,70 @@ func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, simStep
 // calculateFoodDensityFwd returns a proximity-weighted density of food in the
 // creature's forward FOV cone, normalised to [0, 1]. Items closer to the
 // creature contribute more; the signal saturates at maxFoodDensity total weight.
-func calculateFoodDensityFwd(c Creature, w *grid.World) float32 {
+func calculateFoodDensityFwd(c Creature, w *grid.World, ctx *SensorContext) float32 {
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	const maxFoodDensity = 8.0
 	var sum float64
-	for _, id := range w.GetFoodInCone(c.Loc, c.Heading, halfFOVCos, dist) {
+	for _, id := range ctx.SightFoodIDs {
 		pos := w.GetFoodPos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
+			continue
+		}
+
 		d := math.Sqrt(dx*dx + dy*dy)
 		sum += 1.0 - d/dist
 	}
-	if sum > maxFoodDensity {
-		sum = maxFoodDensity
-	}
-	return float32(sum / maxFoodDensity)
+	return float32(math.Min(maxFoodDensity, sum) / maxFoodDensity)
 }
 
 // calculateCorpseDensityFwd returns a proximity-weighted density of corpses in
 // the creature's forward FOV cone, normalised to [0, 1].
-func calculateCorpseDensityFwd(c Creature, w *grid.World, p *Population) float32 {
-	if p == nil {
-		return 0
-	}
+func calculateCorpseDensityFwd(c Creature, w *grid.World, p *Population, ctx *SensorContext) float32 {
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	const maxCorpseDensity = 5.0
 	var sum float64
-	for _, other := range p.Creatures {
-		if other.Alive {
+	for _, id := range ctx.SightCreatureIDs {
+		other, ok := p.Creatures[id]
+		if !ok || other.Alive {
 			continue
 		}
-		dx := other.Loc.X - c.Loc.X
-		dy := other.Loc.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d == 0 || d > dist {
+
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 == 0 || grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
 			continue
 		}
-		if grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
-			continue
-		}
-		sum += 1.0 - d/dist
+
+		sum += 1.0 - math.Sqrt(d2)/dist
 	}
-	if sum > maxCorpseDensity {
-		sum = maxCorpseDensity
-	}
-	return float32(sum / maxCorpseDensity)
+	return float32(math.Min(maxCorpseDensity, sum) / maxCorpseDensity)
 }
 
 // calculateSightPopFwd returns a density signal [0,1] for living creatures in
 // the forward FOV cone. 0 = none visible, 1 = cone is at capacity.
-func calculateSightPopFwd(c Creature, w *grid.World, p *Population) float32 {
-	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+func calculateSightPopFwd(c Creature, w *grid.World, p *Population, ctx *SensorContext) float32 {
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
 
 	count := 0
-	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+	for _, id := range ctx.SightCreatureIDs {
 		if id == c.Id {
 			continue
 		}
-		if p != nil {
-			other, ok := p.Creatures[id]
-			if !ok || !other.Alive {
-				continue
-			}
+		other, ok := p.Creatures[id]
+		if !ok || !other.Alive {
+			continue
 		}
-		pos, _ := w.GetCreaturePos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d == 0 {
+
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
+		if dx == 0 && dy == 0 {
 			continue
 		}
 		if grid.CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
@@ -233,43 +251,127 @@ func calculateSightPopFwd(c Creature, w *grid.World, p *Population) float32 {
 		}
 	}
 	const maxExpected = 10.0
-	frac := float64(count) / maxExpected
-	if frac > 1 {
-		frac = 1
-	}
-	return float32(frac)
+	return float32(math.Min(1.0, float64(count)/maxExpected))
 }
 
-func getLocalPopulationDensity(loc grid.Position, w *grid.World, params *Parameters) float32 {
+func getLocalPopulationDensity(ctx *SensorContext, params *Parameters) float32 {
 	radius := params.PopulationSensorRadius
-	ids := w.GetCreaturesInRadius(loc, radius)
-	// Normalize: approximate max density as one creature per 4 sq units in the area.
 	maxExpected := math.Pi * radius * radius / 4.0
-	if maxExpected < 1 {
-		maxExpected = 1
+	return float32(float64(len(ctx.LocalCreatureIDs)) / math.Max(1, maxExpected))
+}
+
+func getLocalPopulationHeading(c Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
+	var sumX, sumY float32
+	var count int
+
+	radiusSq := params.PopulationSensorRadius * params.PopulationSensorRadius
+
+	for _, id := range ctx.LocalCreatureIDs {
+		if id == c.Id {
+			continue
+		}
+		neighbor, ok := p.Creatures[id]
+		if !ok || !neighbor.Alive {
+			continue
+		}
+		dx := neighbor.Loc.X - c.Loc.X
+		dy := neighbor.Loc.Y - c.Loc.Y
+		distSq := dx*dx + dy*dy
+
+		if distSq <= radiusSq {
+			sumX += float32(math.Cos(float64(neighbor.Heading)))
+			sumY += float32(math.Sin(float64(neighbor.Heading)))
+			count++
+		}
 	}
-	return float32(float64(len(ids)) / maxExpected)
+
+	if count == 0 {
+		return 0.5 // Neutral: No one in range to follow
+	}
+
+	avgAngle := math.Atan2(float64(sumY), float64(sumX))
+
+	diff := avgAngle - c.Heading
+
+	// Standard wrap to [-PI, PI]
+	for diff > math.Pi {
+		diff -= 2 * math.Pi
+	}
+	for diff < -math.Pi {
+		diff += 2 * math.Pi
+	}
+
+	// Map to [0, 1] range
+	// 0.5 means "I am perfectly aligned with the group"
+	return float32((diff / (2 * math.Pi)) + 0.5)
+}
+
+func getLocalPopulationCentreOfMass(c Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
+	var sumX, sumY float64
+	var count int
+
+	radiusSq := params.PopulationSensorRadius * params.PopulationSensorRadius
+
+	for _, id := range ctx.LocalCreatureIDs {
+		if id == c.Id {
+			continue
+		}
+		neighbor, ok := p.Creatures[id]
+		if !ok || !neighbor.Alive {
+			continue
+		}
+
+		dx := neighbor.Loc.X - c.Loc.X
+		dy := neighbor.Loc.Y - c.Loc.Y
+		distSq := dx*dx + dy*dy
+
+		if distSq <= radiusSq {
+			sumX += neighbor.Loc.X
+			sumY += neighbor.Loc.Y
+			count++
+		}
+	}
+
+	if count == 0 {
+		return 0.5 // Neutral: No neighbors to form a center
+	}
+
+	avgX := sumX / float64(count)
+	avgY := sumY / float64(count)
+
+	relX := avgX - c.Loc.X
+	relY := avgY - c.Loc.Y
+
+	angleToCenter := math.Atan2(float64(relY), float64(relX))
+
+	diff := angleToCenter - c.Heading
+
+	for diff > math.Pi {
+		diff -= 2 * math.Pi
+	}
+	for diff < -math.Pi {
+		diff += 2 * math.Pi
+	}
+
+	// Map to [0, 1] range
+	// 0.5 means the "Heart" of the crowd is directly in front of you.
+	return float32((diff / (2 * math.Pi)) + 0.5)
 }
 
 // calculateNearestFoodAngle returns the angle to the nearest food item within
 // sight range, relative to the creature's heading, mapped to [0, 1] where 0.5
 // means directly ahead. Returns 0 when no food is visible; pair with
 // NEAREST_FOOD_DIST to distinguish this from food directly behind.
-func calculateNearestFoodAngle(c Creature, w *grid.World) float32 {
-	dist := float64(c.Genome.SightDistance)
-	bestDist := math.MaxFloat64
+func calculateNearestFoodAngle(c Creature, w *grid.World, ctx *SensorContext) float32 {
+	bestDistSq := math.MaxFloat64
 	var bestDx, bestDy float64
 	found := false
-	for _, id := range w.GetFoodInRadius(c.Loc, dist) {
+	for _, id := range ctx.SightFoodIDs {
 		pos := w.GetFoodPos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d < bestDist {
-			bestDist = d
-			bestDx = dx
-			bestDy = dy
-			found = true
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 < bestDistSq {
+			bestDistSq, bestDx, bestDy, found = d2, dx, dy, true
 		}
 	}
 	if !found {
@@ -281,36 +383,34 @@ func calculateNearestFoodAngle(c Creature, w *grid.World) float32 {
 
 // calculateNearestFoodDist returns proximity to the nearest food item within
 // sight range: 1 = adjacent, approaching 0 at max range, 0 = none visible.
-func calculateNearestFoodDist(c Creature, w *grid.World) float32 {
+func calculateNearestFoodDist(c Creature, w *grid.World, ctx *SensorContext) float32 {
 	dist := float64(c.Genome.SightDistance)
-	bestDist := math.MaxFloat64
-	for _, id := range w.GetFoodInRadius(c.Loc, dist) {
+	bestDistSq := math.MaxFloat64
+	for _, id := range ctx.SightFoodIDs {
 		pos := w.GetFoodPos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d < bestDist {
-			bestDist = d
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 < bestDistSq {
+			bestDistSq = d2
 		}
 	}
-	if bestDist == math.MaxFloat64 {
+	if bestDistSq == math.MaxFloat64 {
 		return 0
 	}
-	return float32(1.0 - bestDist/dist)
+	return float32(1.0 - math.Sqrt(bestDistSq)/dist)
 }
 
 // calculateThreatFwd returns a proximity-weighted signal [0,1] for the nearest
 // creature heavier than self within the forward FOV cone. 0 = no threat.
-func calculateThreatFwd(c Creature, w *grid.World, p *Population) float32 {
+func calculateThreatFwd(c Creature, p *Population, ctx *SensorContext) float32 {
 	if p == nil {
 		return 0
 	}
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
-
 	best := float32(0)
-	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+	for _, id := range ctx.SightCreatureIDs {
 		if id == c.Id {
 			continue
 		}
@@ -318,17 +418,15 @@ func calculateThreatFwd(c Creature, w *grid.World, p *Population) float32 {
 		if !ok || !other.Alive || other.Mass <= c.Mass {
 			continue
 		}
-		pos, _ := w.GetCreaturePos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d == 0 || d > dist {
-			continue
-		}
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
 		if grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
 			continue
 		}
-		val := float32(1.0 - d/dist)
+		d2 := dx*dx + dy*dy
+		if d2 == 0 {
+			continue
+		}
+		val := float32(1.0 - math.Sqrt(d2)/dist)
 		if val > best {
 			best = val
 		}
@@ -338,16 +436,15 @@ func calculateThreatFwd(c Creature, w *grid.World, p *Population) float32 {
 
 // calculatePreyFwd returns a proximity-weighted signal [0,1] for the nearest
 // live creature lighter than self within the forward FOV cone. 0 = no prey visible.
-func calculatePreyFwd(c Creature, w *grid.World, p *Population) float32 {
+func calculatePreyFwd(c Creature, p *Population, ctx *SensorContext) float32 {
 	if p == nil {
 		return 0
 	}
 	dist := float64(c.Genome.SightDistance)
-	halfFOVCos := math.Cos(float64(c.Genome.FieldOfView) / 2.0 * math.Pi / 180.0)
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := grid.HeadingToVec(c.Heading)
-
 	best := float32(0)
-	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+	for _, id := range ctx.SightCreatureIDs {
 		if id == c.Id {
 			continue
 		}
@@ -355,17 +452,62 @@ func calculatePreyFwd(c Creature, w *grid.World, p *Population) float32 {
 		if !ok || !other.Alive || other.Mass >= c.Mass {
 			continue
 		}
-		pos, _ := w.GetCreaturePos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d == 0 || d > dist {
-			continue
-		}
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
 		if grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
 			continue
 		}
-		val := float32(1.0 - d/dist)
+		d2 := dx*dx + dy*dy
+		if d2 == 0 {
+			continue
+		}
+		val := float32(1.0 - math.Sqrt(d2)/dist)
+		if val > best {
+			best = val
+		}
+	}
+	return best
+}
+
+func calculateKinshipFwd(c Creature, p *Population, ctx *SensorContext) float32 {
+	if p == nil {
+		return 0
+	}
+
+	dist := float64(c.Genome.SightDistance)
+	halfFOVCos := c.halfFOVCos
+	fwdX, fwdY := grid.HeadingToVec(c.Heading)
+	best := float32(0)
+
+	for _, id := range ctx.SightCreatureIDs {
+		if id == c.Id {
+			continue
+		}
+
+		other, ok := p.Creatures[id]
+		if !ok || !other.Alive {
+			continue
+		}
+
+		// 1. Spatial Check: Is it in the vision cone?
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
+		if grid.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
+			continue
+		}
+
+		d2 := dx*dx + dy*dy
+		if d2 == 0 || d2 > dist*dist {
+			continue
+		}
+
+		// 2. Genetic Check: How similar are we?
+		// This is the "Green Beard" signal encoded in the genome.
+		similarity := GenomeSimilarity(c.Genome, other.Genome)
+
+		// 3. Signal Strength: Scale similarity by proximity.
+		// A twin far away is a faint signal; a twin in your face is 1.0.
+		proximity := float32(1.0 - math.Sqrt(d2)/dist)
+		val := similarity * proximity
+
 		if val > best {
 			best = val
 		}
@@ -375,14 +517,10 @@ func calculatePreyFwd(c Creature, w *grid.World, p *Population) float32 {
 
 // calculateKinshipLocal returns the average genetic similarity [0,1] of all
 // living creatures within the population sensor radius. 0 = none nearby.
-func calculateKinshipLocal(c Creature, w *grid.World, p *Population, params *Parameters) float32 {
-	if p == nil {
-		return 0
-	}
-	radius := params.PopulationSensorRadius
-	total := float32(0)
+func calculateKinshipLocal(c Creature, p *Population, ctx *SensorContext) float32 {
+	var total float32
 	count := 0
-	for _, id := range w.GetCreaturesInRadius(c.Loc, radius) {
+	for _, id := range ctx.LocalCreatureIDs {
 		if id == c.Id {
 			continue
 		}
@@ -390,7 +528,7 @@ func calculateKinshipLocal(c Creature, w *grid.World, p *Population, params *Par
 		if !ok || !other.Alive {
 			continue
 		}
-		total += GenomeSimilarity(*c.Genome, *other.Genome)
+		total += GenomeSimilarity(c.Genome, other.Genome)
 		count++
 	}
 	if count == 0 {
@@ -430,15 +568,14 @@ func calculateBlockedFwd(c Creature, w *grid.World, params *Parameters) float32 
 // calculateNearestThreatAngle returns the angle to the nearest creature heavier
 // than self within sight range, relative to heading, mapped to [0,1] where 0.5
 // is directly ahead. Returns 0 when no threat is visible.
-func calculateNearestThreatAngle(c Creature, w *grid.World, p *Population) float32 {
+func calculateNearestThreatAngle(c Creature, p *Population, ctx *SensorContext) float32 {
 	if p == nil {
 		return 0
 	}
-	dist := float64(c.Genome.SightDistance)
-	bestDist := math.MaxFloat64
+	bestDistSq := math.MaxFloat64
 	var bestDx, bestDy float64
 	found := false
-	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+	for _, id := range ctx.SightCreatureIDs {
 		if id == c.Id {
 			continue
 		}
@@ -446,15 +583,10 @@ func calculateNearestThreatAngle(c Creature, w *grid.World, p *Population) float
 		if !ok || !other.Alive || other.Mass <= c.Mass {
 			continue
 		}
-		pos, _ := w.GetCreaturePos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d > 0 && d < bestDist {
-			bestDist = d
-			bestDx = dx
-			bestDy = dy
-			found = true
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 > 0 && d2 < bestDistSq {
+			bestDistSq, bestDx, bestDy, found = d2, dx, dy, true
 		}
 	}
 	if !found {
@@ -467,15 +599,14 @@ func calculateNearestThreatAngle(c Creature, w *grid.World, p *Population) float
 // calculateNearestPreyAngle returns the angle to the nearest creature lighter
 // than self within sight range, relative to heading, mapped to [0,1] where 0.5
 // is directly ahead. Returns 0 when no prey is visible.
-func calculateNearestPreyAngle(c Creature, w *grid.World, p *Population) float32 {
+func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) float32 {
 	if p == nil {
 		return 0
 	}
-	dist := float64(c.Genome.SightDistance)
-	bestDist := math.MaxFloat64
+	bestDistSq := math.MaxFloat64
 	var bestDx, bestDy float64
 	found := false
-	for _, id := range w.GetCreaturesInRadius(c.Loc, dist) {
+	for _, id := range ctx.SightCreatureIDs {
 		if id == c.Id {
 			continue
 		}
@@ -483,15 +614,10 @@ func calculateNearestPreyAngle(c Creature, w *grid.World, p *Population) float32
 		if !ok || !other.Alive || other.Mass >= c.Mass {
 			continue
 		}
-		pos, _ := w.GetCreaturePos(id)
-		dx := pos.X - c.Loc.X
-		dy := pos.Y - c.Loc.Y
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d > 0 && d < bestDist {
-			bestDist = d
-			bestDx = dx
-			bestDy = dy
-			found = true
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 > 0 && d2 < bestDistSq {
+			bestDistSq, bestDx, bestDy, found = d2, dx, dy, true
 		}
 	}
 	if !found {
@@ -533,12 +659,8 @@ func calculateWallProximity(c Creature, w *grid.World, params *Parameters) float
 
 // calculateLocalFoodPerCapita returns a signal [0,1] for local food availability
 // relative to local competition. Saturates at 4 food items per creature in the area.
-func calculateLocalFoodPerCapita(c Creature, w *grid.World, params *Parameters) float32 {
-	radius := params.PopulationSensorRadius
-	foodCount := float64(len(w.GetFoodInRadius(c.Loc, radius)))
-	creatureCount := float64(len(w.GetCreaturesInRadius(c.Loc, radius)))
-	if creatureCount == 0 {
-		creatureCount = 1
-	}
-	return float32(math.Min(1.0, (foodCount/creatureCount)/4.0))
+func calculateLocalFoodPerCapita(ctx *SensorContext, params *Parameters) float32 {
+	foodCount := float64(len(ctx.SightFoodIDs))
+	creatureCount := float64(len(ctx.LocalCreatureIDs))
+	return float32(math.Min(1.0, (foodCount/math.Max(1, creatureCount))/4.0))
 }

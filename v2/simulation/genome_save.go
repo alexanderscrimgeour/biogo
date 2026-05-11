@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -35,12 +36,12 @@ type genomeData struct {
 	Mass             byte       `json:"mass"`
 	MinMass          byte       `json:"min_mass"`
 	ReproductionType byte       `json:"reproduction_type"`
-	NeuronCount      byte       `json:"neuron_count"`
-	BrainLength      byte       `json:"brain_length"`
+	CognitiveBreadth      byte       `json:"neuron_count"`
+	SynapticDensity      byte       `json:"brain_length"`
 	JuvenilePeriod   byte       `json:"juvenile_period"`
 	MetabolicRate    byte       `json:"metabolic_rate"`
 	StomachSize      byte       `json:"stomach_size"`
-	LearningRate     byte       `json:"learning_rate"`
+	Neuroplasticity     byte       `json:"learning_rate"`
 	LearningThreshold byte      `json:"learning_threshold"`
 	Brain            []geneData `json:"brain"`
 }
@@ -65,12 +66,12 @@ func toGenomeData(g *Genome) genomeData {
 		Mass:             g.Mass,
 		MinMass:          g.MinMass,
 		ReproductionType: g.ReproductionType,
-		NeuronCount:      g.NeuronCount,
-		BrainLength:      g.BrainLength,
+		CognitiveBreadth:      g.CognitiveBreadth,
+		SynapticDensity:      g.SynapticDensity,
 		JuvenilePeriod:   g.JuvenilePeriod,
 		MetabolicRate:     g.MetabolicRate,
 		StomachSize:       g.StomachSize,
-		LearningRate:      g.LearningRate,
+		Neuroplasticity:      g.Neuroplasticity,
 		LearningThreshold: g.LearningThreshold,
 		Brain:             genes,
 	}
@@ -98,24 +99,26 @@ func fromGenomeData(gd genomeData) *Genome {
 	if minMass > mass {
 		minMass = mass
 	}
-	return &Genome{
-		OscPeriod:        gd.OscPeriod,
-		SightDistance:    gd.SightDistance,
-		FieldOfView:      gd.FieldOfView,
-		Responsiveness:   gd.Responsiveness,
-		MutationRate:     gd.MutationRate,
-		Mass:             mass,
-		MinMass:          minMass,
-		ReproductionType: gd.ReproductionType,
-		NeuronCount:      gd.NeuronCount,
-		BrainLength:      gd.BrainLength,
-		JuvenilePeriod:   gd.JuvenilePeriod,
+	g := &Genome{
+		OscPeriod:         gd.OscPeriod,
+		SightDistance:     gd.SightDistance,
+		FieldOfView:       gd.FieldOfView,
+		Responsiveness:    gd.Responsiveness,
+		MutationRate:      gd.MutationRate,
+		Mass:              mass,
+		MinMass:           minMass,
+		ReproductionType:  gd.ReproductionType,
+		CognitiveBreadth:  gd.CognitiveBreadth,
+		SynapticDensity:   gd.SynapticDensity,
+		JuvenilePeriod:    gd.JuvenilePeriod,
 		MetabolicRate:     gd.MetabolicRate,
 		StomachSize:       gd.StomachSize,
-		LearningRate:      gd.LearningRate,
+		Neuroplasticity:   gd.Neuroplasticity,
 		LearningThreshold: gd.LearningThreshold,
 		Brain:             genes,
 	}
+	g.recomputeBytes()
+	return g
 }
 
 type genomeCluster struct {
@@ -137,7 +140,7 @@ func SelectBestGenomes(creatures map[int]*Creature) []*Genome {
 		bestIdx := -1
 		bestSim := float32(-1)
 		for i, cl := range clusters {
-			if sim := GenomeSimilarity(*c.Genome, *cl.genome); sim > bestSim {
+			if sim := GenomeSimilarity(c.Genome, cl.genome); sim > bestSim {
 				bestSim = sim
 				bestIdx = i
 			}
@@ -215,6 +218,85 @@ func SaveCreatureToFile(g *Genome) error {
 		return err
 	}
 	return os.WriteFile(path, encoded, 0644)
+}
+
+// NamedGenome pairs a display name (derived from the filename) with a Genome.
+type NamedGenome struct {
+	Name   string
+	Genome *Genome
+}
+
+// sanitizeFilename converts a user-supplied name into a safe filename component.
+func sanitizeFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteRune('_')
+		}
+	}
+	s := b.String()
+	if len(s) > 64 {
+		s = s[:64]
+	}
+	return s
+}
+
+// SaveCreatureToFileNamed saves a genome with a user-provided name as the filename.
+// If name is empty or produces no safe characters, falls back to timestamp-based naming.
+// Appends a timestamp suffix if a file with that name already exists.
+func SaveCreatureToFileNamed(g *Genome, name string) error {
+	if err := os.MkdirAll(creaturesSaveDir, 0755); err != nil {
+		return err
+	}
+	safe := sanitizeFilename(name)
+	var filename string
+	if safe == "" {
+		filename = fmt.Sprintf("%d_%d.json", time.Now().UnixNano(), rand.Int63())
+	} else {
+		filename = safe + ".json"
+		if _, err := os.Stat(filepath.Join(creaturesSaveDir, filename)); err == nil {
+			filename = fmt.Sprintf("%s_%d.json", safe, time.Now().UnixNano())
+		}
+	}
+	data := toGenomeData(g)
+	encoded, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(creaturesSaveDir, filename), encoded, 0644)
+}
+
+// LoadAllCreatureGenomesNamed reads all saved genome files and returns them with
+// display names derived from their filenames (extension stripped).
+func LoadAllCreatureGenomesNamed() ([]NamedGenome, error) {
+	entries, err := os.ReadDir(creaturesSaveDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var result []NamedGenome
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		raw, readErr := os.ReadFile(filepath.Join(creaturesSaveDir, entry.Name()))
+		if readErr != nil {
+			continue
+		}
+		var gd genomeData
+		if jsonErr := json.Unmarshal(raw, &gd); jsonErr != nil {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".json")
+		result = append(result, NamedGenome{Name: name, Genome: fromGenomeData(gd)})
+	}
+	return result, nil
 }
 
 // LoadAllCreatureGenomes reads all individually saved creature genome files from data/creatures/.

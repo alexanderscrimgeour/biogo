@@ -13,8 +13,8 @@ func smallParams() *simulation.Parameters {
 	p.MaxPopulation = 20
 	p.MinPopulation = 5
 	p.FoodSpawnInterval = 10
-	p.FoodPerSpawn = 5
 	p.MaxFood = 200
+	p.FountainCount = 2
 	return p
 }
 
@@ -87,7 +87,6 @@ func TestSimulationInterfaceMethods(t *testing.T) {
 func TestSimulationFoodSpawns(t *testing.T) {
 	p := smallParams()
 	p.FoodSpawnInterval = 1
-	p.FoodPerSpawn = 3
 	sim := simulation.New(p)
 
 	sim.Update()
@@ -99,7 +98,6 @@ func TestSimulationFoodSpawns(t *testing.T) {
 func TestSimulationFoodViews(t *testing.T) {
 	p := smallParams()
 	p.FoodSpawnInterval = 1
-	p.FoodPerSpawn = 5
 	sim := simulation.New(p)
 	sim.Update()
 

@@ -21,7 +21,7 @@ import (
 // SimulationState is the interface the UI requires
 type SimulationState interface {
 	Update()
-	CreatureViews() map[int]simulation.CreatureView
+	CreatureViews() []simulation.CreatureView
 	FoodViews() []simulation.FoodView
 	CorpseViews() []simulation.CorpseView
 	GridWidth() float64
@@ -29,7 +29,6 @@ type SimulationState interface {
 	PopulationCount() int
 	FoodCount() int
 	AverageAge() float64
-	// Prioritized Mass over Size
 	CreatureMinMass() byte
 	CreatureMaxMass() byte
 	SaveCreature(id int) error
@@ -37,6 +36,10 @@ type SimulationState interface {
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetSpawnMutationRate(rate float32)
 	SpawnAt(x, y float64) bool
+	SpawnGenome(g *simulation.Genome) bool
+	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
+	GetParams() *simulation.Parameters
+	GetSnapshot() simulation.StateSnapshot
 }
 
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
@@ -67,7 +70,7 @@ const (
 	detailPanelX   = 10
 	detailPanelY   = 168
 	detailPanelW   = 210
-	detailPanelH   = 435
+	detailPanelH   = 468 // extra height for Edit Genome button
 	detailTpad     = 8
 	detailSaveBtnH = 22
 
@@ -110,7 +113,7 @@ type creatureAnim struct {
 type Game struct {
 	sim                SimulationState
 	renderGrid         *RenderGrid
-	foodBlobsByKey     map[string]*Blob
+	foodBlobsByID      map[int]*Blob
 	corpseBlobsByID    map[int]*Blob
 	statFont           font.Face
 	whiteImage         *ebiten.Image
@@ -133,10 +136,20 @@ type Game struct {
 	newGameBtn         *components.Button
 	themeBtn           *components.Button
 	saveBtn            *components.Button
+	editGenomeBtn      *components.Button
+	createGenomeBtn    *components.Button
+	spawnSavedBtn      *components.Button
 	spawnRandomBtn     *components.Button
 	spawnPlacing       bool
 	spawnMutSlider     *components.Slider
 	detailsPanel       *components.Panel
+	genomeEditor       *GenomeEditor
+	savedGenomesPanel  *SavedGenomesPanel
+	currentSnapshot    *simulation.StateSnapshot
+	lookup             map[int]int
+	unitCircle         []struct{ x, y float32 }
+	creatureVs         []ebiten.Vertex
+	creatureIs         []uint16
 }
 
 var BlockSize int = 2
@@ -155,7 +168,7 @@ func NewGame(sim SimulationState) *Game {
 	g := &Game{
 		sim:                sim,
 		renderGrid:         NewRenderGrid(0, 0, BlockSize),
-		foodBlobsByKey:     make(map[string]*Blob),
+		foodBlobsByID:      make(map[int]*Blob),
 		corpseBlobsByID:    make(map[int]*Blob),
 		statFont:           statFont,
 		whiteImage:         wImg,
@@ -166,6 +179,20 @@ func NewGame(sim SimulationState) *Game {
 		spawnMutRate:       0.01,
 		isDarkBackground:   true,
 	}
+
+	const segments = 12
+	for i := 0; i <= segments; i++ {
+		angle := float64(i) * 2 * math.Pi / segments
+		g.unitCircle = append(g.unitCircle, struct{ x, y float32 }{
+			x: float32(math.Cos(angle)),
+			y: float32(math.Sin(angle)),
+		})
+	}
+	// vertsPerCreature = 1 center + len(unitCircle) edge = 14; trisPerCreature = segments = 12
+	const initCapCreatures = 500
+	g.creatureVs = make([]ebiten.Vertex, 0, initCapCreatures*(1+segments+1))
+	g.creatureIs = make([]uint16, 0, initCapCreatures*segments*3)
+
 	g.pauseBtn = &components.Button{
 		X: 10, Y: 10, W: 80, H: 24,
 		Label:      "Pause",
@@ -191,10 +218,10 @@ func NewGame(sim SimulationState) *Game {
 		OnClick: func() {
 			g.sim.Reset()
 			g.animByID = make(map[int]*creatureAnim)
-			for _, b := range g.foodBlobsByKey {
+			for _, b := range g.foodBlobsByID {
 				g.renderGrid.RemoveFoodBlob(b)
 			}
-			g.foodBlobsByKey = make(map[string]*Blob)
+			g.foodBlobsByID = make(map[int]*Blob)
 			for _, b := range g.corpseBlobsByID {
 				g.renderGrid.RemoveBlob(b)
 			}
@@ -223,6 +250,31 @@ func NewGame(sim SimulationState) *Game {
 			g.spawnPlacing = !g.spawnPlacing
 		},
 	}
+	g.createGenomeBtn = &components.Button{
+		X: 782, Y: 10, W: 130, H: 24,
+		Label:      "Create Genome",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.genomeEditor.Open(nil, g.sim.GetParams())
+		},
+	}
+	g.spawnSavedBtn = &components.Button{
+		X: 922, Y: 10, W: 120, H: 24,
+		Label:      "Spawn Saved",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		OnClick: func() {
+			g.savedGenomesPanel.Open()
+		},
+	}
+	g.genomeEditor = newGenomeEditor(func(genome *simulation.Genome, name string) {
+		g.sim.SpawnGenome(genome)
+		simulation.SaveCreatureToFileNamed(genome, name) //nolint:errcheck
+	})
+	g.savedGenomesPanel = newSavedGenomesPanel(func(genome *simulation.Genome) {
+		g.sim.SpawnGenome(genome)
+	})
 	g.spawnMutSlider = &components.Slider{
 		X: 315, Y: 10, W: 240, H: 24,
 		TrackX: 530, TrackW: 100,
@@ -259,9 +311,20 @@ func NewGame(sim SimulationState) *Game {
 }
 
 func (g *Game) handleContinuousInput() {
+	mx, my := ebiten.CursorPosition()
+	if g.genomeEditor.visible {
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			g.genomeEditor.HandleDrag(mx, my)
+		} else {
+			g.genomeEditor.HandleRelease()
+		}
+		return
+	}
+	if g.savedGenomesPanel.visible {
+		return // no continuous input needed for the list panel
+	}
 	if g.spawnMutSlider.Dragging {
 		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-			mx, _ := ebiten.CursorPosition()
 			g.spawnMutSlider.UpdateValue(mx)
 			g.sim.SetSpawnMutationRate(float32(g.spawnMutSlider.Value))
 		} else {
@@ -297,6 +360,23 @@ func (g *Game) handleInput() bool {
 			}
 		}
 
+		if g.editGenomeBtn != nil {
+			if g.editGenomeBtn.IsClicked(mx, my) {
+				g.editGenomeBtn.OnClick()
+				return true
+			}
+		}
+
+		if g.createGenomeBtn.IsClicked(mx, my) {
+			g.createGenomeBtn.OnClick()
+			return true
+		}
+
+		if g.spawnSavedBtn.IsClicked(mx, my) {
+			g.spawnSavedBtn.OnClick()
+			return true
+		}
+
 		if g.spawnMutSlider.InBounds(mx, my) {
 			g.spawnMutSlider.Dragging = true
 			g.spawnMutSlider.UpdateValue(mx)
@@ -328,8 +408,21 @@ func (g *Game) Update() error {
 	mx, my := ebiten.CursorPosition()
 	now := time.Now()
 
+	if g.genomeEditor.visible {
+		g.genomeEditor.HandleKeyInput()
+	}
+
+	_, scrollY := ebiten.Wheel()
+	if scrollY != 0 && g.savedGenomesPanel.visible {
+		g.savedGenomesPanel.Scroll(int(scrollY))
+	}
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		if !g.handleInput() {
+		if g.genomeEditor.visible {
+			g.genomeEditor.HandleInput(mx, my)
+		} else if g.savedGenomesPanel.visible {
+			g.savedGenomesPanel.HandleInput(mx, my)
+		} else if !g.handleInput() {
 			g.trySelectCreature(mx, my)
 		}
 	}
@@ -348,11 +441,15 @@ func (g *Game) Update() error {
 			g.histCount++
 		}
 
-		views := g.sim.CreatureViews()
-		currentIDs := make(map[int]bool, len(views))
+		snapshot := g.sim.GetSnapshot()
+		g.currentSnapshot = &snapshot
+
+		g.lookup = make(map[int]int, len(snapshot.Creatures))
+		currentIDs := make(map[int]bool, len(snapshot.Creatures))
 		bs := float64(BlockSize)
 
-		for _, cv := range views {
+		for i, cv := range snapshot.Creatures {
+			g.lookup[cv.ID] = i
 			currentIDs[cv.ID] = true
 			screenX := float64(cv.X * bs)
 			screenY := float64(cv.Y * bs)
@@ -366,7 +463,7 @@ func (g *Game) Update() error {
 				anim.curX, anim.curY = screenX, screenY
 				anim.r, anim.g, anim.b, anim.a = cv.R, cv.G, cv.B, cv.A
 				anim.heading = cv.Heading
-				anim.mass = cv.CurrentMass // Prioritise mass
+				anim.mass = cv.CurrentMass
 			} else {
 				g.animByID[cv.ID] = &creatureAnim{
 					prevX: screenX, prevY: screenY,
@@ -383,38 +480,33 @@ func (g *Game) Update() error {
 			}
 		}
 
-		// Reconcile food
-		foodViews := g.sim.FoodViews()
-		currentFood := make(map[string]bool, len(foodViews))
-		for _, fv := range foodViews {
-			key := foodKey(fv.X, fv.Y)
-			currentFood[key] = true
-			if _, ok := g.foodBlobsByKey[key]; !ok {
+		currentFood := make(map[int]bool, len(snapshot.Food))
+		for _, fv := range snapshot.Food {
+			currentFood[fv.ID] = true
+			if _, ok := g.foodBlobsByID[fv.ID]; !ok {
 				blob := g.renderGrid.AddFoodBlob(BlockSize, foodColor)
-				blob.Translate(float64(fv.X*bs), float64(fv.Y*bs))
-				g.foodBlobsByKey[key] = blob
+				blob.Translate(fv.X*bs, fv.Y*bs)
+				g.foodBlobsByID[fv.ID] = blob
 			}
 		}
-		for key, blob := range g.foodBlobsByKey {
-			if !currentFood[key] {
+		for id, blob := range g.foodBlobsByID {
+			if !currentFood[id] {
 				g.renderGrid.RemoveFoodBlob(blob)
-				delete(g.foodBlobsByKey, key)
+				delete(g.foodBlobsByID, id)
 			}
 		}
 
-		// Reconcile corpses
-		corpseViews := g.sim.CorpseViews()
-		currentCorpses := make(map[int]bool, len(corpseViews))
-		for _, cv := range corpseViews {
+		currentCorpses := make(map[int]bool, len(snapshot.Corpses))
+		for _, cv := range snapshot.Corpses {
 			currentCorpses[cv.ID] = true
 			alpha := uint8(cv.EnergyFraction * 220)
 			corpseColor := color.RGBA{R: 120, G: 60, B: 20, A: alpha}
 			if blob, ok := g.corpseBlobsByID[cv.ID]; ok {
-				blob.Move(float64(cv.X*bs), float64(cv.Y*bs))
+				blob.Move(cv.X*bs, cv.Y*bs)
 				blob.SetColor(corpseColor)
 			} else {
 				blob := g.renderGrid.AddBlob(BlockSize, corpseColor)
-				blob.Translate(float64(cv.X*bs), float64(cv.Y*bs))
+				blob.Translate(cv.X*bs, cv.Y*bs)
 				if g.corpseBlobsByID == nil {
 					g.corpseBlobsByID = make(map[int]*Blob)
 				}
@@ -436,7 +528,6 @@ func (g *Game) Update() error {
 
 	return nil
 }
-
 func (g *Game) Draw(screen *ebiten.Image) {
 	if g.isDarkBackground {
 		screen.Fill(color.RGBA{5, 5, 10, 255})
@@ -458,22 +549,30 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		blob.Draw(screen)
 	}
 
-	var creatureVs []ebiten.Vertex
-	var creatureIs []uint16
+	g.creatureVs = g.creatureVs[:0]
+	g.creatureIs = g.creatureIs[:0]
 	massRange := float64(g.maxCreatureMass) - float64(g.minCreatureMass)
-	half := float64(BlockSize) / 2
+	half := float32(BlockSize) / 2
+
+	vertsPerCreature := 1 + len(g.unitCircle)
+	flushCreatures := func() {
+		if len(g.creatureVs) > 0 {
+			screen.DrawTriangles(g.creatureVs, g.creatureIs, g.whiteImage, nil)
+			g.creatureVs = g.creatureVs[:0]
+			g.creatureIs = g.creatureIs[:0]
+		}
+	}
 
 	for _, anim := range g.animByID {
-		// 1. Calculate Interpolated Position
+		if len(g.creatureVs)+vertsPerCreature > 60_000 {
+			flushCreatures()
+		}
+
 		lerpX := anim.prevX + (anim.curX-anim.prevX)*t
 		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
-		cx, cy := float32(lerpX+half), float32(lerpY+half)
+		cx, cy := float32(lerpX)+half, float32(lerpY)+half
 
-		// 2. Calculate Scaled Radius based on Mass
-		var r float32
-		minRadius := float32(BlockSize) * 0.8
-		maxExtraRadius := float32(BlockSize) * 4.0
-
+		var r float32 = float32(BlockSize) / 2
 		if massRange > 0 {
 			massT := (float64(anim.mass) - float64(g.minCreatureMass)) / massRange
 			if massT < 0 {
@@ -482,69 +581,66 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if massT > 1 {
 				massT = 1
 			}
-			// Scale r: Starting at 80% BlockSize, growing up to +400% based on mass
-			r = minRadius + (float32(massT) * maxExtraRadius)
-		} else {
-			r = minRadius
+			r += float32(massT) * float32(BlockSize) * 4.0
 		}
 
-		// 3. Prepare Colors
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
+		baseIdx := uint16(len(g.creatureVs))
 
-		// 4. Generate Circle Vertices (12 segments)
-		baseIdx := uint16(len(creatureVs))
-		const segments = 12
-
-		// Center vertex for the triangle fan
-		creatureVs = append(creatureVs, ebiten.Vertex{
+		g.creatureVs = append(g.creatureVs, ebiten.Vertex{
 			DstX: cx, DstY: cy,
 			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 		})
 
-		for i := 0; i <= segments; i++ {
-			angle := float64(i) * 2 * math.Pi / segments
-			creatureVs = append(creatureVs, ebiten.Vertex{
-				DstX:   cx + r*float32(math.Cos(angle)),
-				DstY:   cy + r*float32(math.Sin(angle)),
+		for _, unit := range g.unitCircle {
+			g.creatureVs = append(g.creatureVs, ebiten.Vertex{
+				DstX:   cx + r*unit.x,
+				DstY:   cy + r*unit.y,
 				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 			})
 		}
 
-		// 5. Build Indices for the Fan
-		for i := uint16(1); i <= segments; i++ {
-			creatureIs = append(creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
+		for i := uint16(1); i <= uint16(len(g.unitCircle)-1); i++ {
+			g.creatureIs = append(g.creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
 		}
 	}
 
-	if len(creatureVs) > 0 {
-		screen.DrawTriangles(creatureVs, creatureIs, g.whiteImage, nil)
-	}
+	flushCreatures()
 
 	g.drawHistoryGraph(screen)
+
 	if g.selectedCreatureID != -1 {
 		g.drawSelectionHighlight(screen)
 		if detail, ok := g.sim.CreatureDetail(g.selectedCreatureID); ok {
 			g.drawCreatureDetail(screen, detail)
 			g.drawNeuralNetGraph(screen, detail)
-			g.drawFOVCones(screen, map[int]simulation.CreatureView{g.selectedCreatureID: g.sim.CreatureViews()[g.selectedCreatureID]}, t)
+
+			if idx, found := g.lookup[g.selectedCreatureID]; found {
+				view := g.currentSnapshot.Creatures[idx]
+				g.drawFOVCones(screen, map[int]simulation.CreatureView{
+					g.selectedCreatureID: view,
+				}, t)
+			}
 		} else {
 			g.selectedCreatureID = -1
 		}
 	}
+
 	g.pauseBtn.Draw(screen, g.statFont)
 	g.themeBtn.Draw(screen, g.statFont)
 	g.newGameBtn.Draw(screen, g.statFont)
 	if g.spawnMutSlider != nil {
 		g.drawSpawnMutSlider(screen)
 	}
+
+	g.spawnRandomBtn.Label = "Spawn Random"
 	if g.spawnPlacing {
-		g.spawnRandomBtn.Color = components.ColorButtonGreen
 		g.spawnRandomBtn.Label = "Cancel Spawn"
-	} else {
-		g.spawnRandomBtn.Color = components.ColorDefault
-		g.spawnRandomBtn.Label = "Spawn Random"
 	}
 	g.spawnRandomBtn.Draw(screen, g.statFont)
+	g.createGenomeBtn.Draw(screen, g.statFont)
+	g.spawnSavedBtn.Draw(screen, g.statFont)
+
 	if g.spawnPlacing {
 		mx, my := ebiten.CursorPosition()
 		cx, cy := float32(mx), float32(my)
@@ -561,6 +657,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		tickRate := 1.0 / g.tickDuration.Seconds()
 		g.addStatLine(screen, "Tick Rate", fmt.Sprintf("%.0f/s", tickRate), 4)
 	}
+
+	g.savedGenomesPanel.Draw(screen, g.statFont)
+	g.genomeEditor.Draw(screen, g.statFont)
 }
 
 func (g *Game) drawFOVCones(screen *ebiten.Image, views map[int]simulation.CreatureView, t float64) {
@@ -668,14 +767,11 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	dopamine := &components.Label{Text: fmt.Sprintf("Dopamine:  %.02f", d.Dopamine), Font: g.statFont, Color: color.White}
 	dopamine.Draw(screen, currX, currY)
 	currY += 5
-	dopBar := &components.EnergyBar{Value: d.Dopamine, Max: float32(1.2), MaxColor: color.RGBA{216, 27, 96, 1}, MinColor: color.RGBA{48, 63, 159, 1}, Width: p.W - (detailTpad * 2)}
+	dopBar := &components.EnergyBar{Value: d.Dopamine, Max: float32(1.2), MaxColor: color.RGBA{216, 27, 96, 255}, MinColor: color.RGBA{48, 63, 159, 255}, Width: p.W - (detailTpad * 2), Centered: true}
 	_, h = dopBar.Draw(screen, currX, currY)
 	currY += h + 15
 	sight := &components.Label{Text: fmt.Sprintf("Sight: %d  FOV: %d°", d.SightDistance, d.FieldOfView), Font: g.statFont, Color: color.White}
 	sight.Draw(screen, currX, currY)
-	currY += h + 15
-	layers := &components.Label{Text: fmt.Sprintf("Layers: %d  Genes: %d", d.NeuronCount, d.BrainLength), Font: g.statFont, Color: color.White}
-	layers.Draw(screen, currX, currY)
 	currY += h + 15
 	mutation := &components.Label{Text: fmt.Sprintf("Mutation:  %.2f%%", d.MutationPct), Font: g.statFont, Color: color.White}
 	mutation.Draw(screen, currX, currY)
@@ -683,10 +779,11 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 
 	g.drawPhenotypeChart(screen, d, currX, currY)
 
+	btnY := int(currY) + 100
 	sBtn := &components.Button{
 		Label: "Save Genome",
 		X:     int(currX),
-		Y:     int(currY) + 100,
+		Y:     btnY,
 		W:     int(p.W - (detailTpad * 2)),
 		H:     int(detailSaveBtnH),
 		Color: color.RGBA{40, 100, 60, 220},
@@ -701,6 +798,23 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	}
 	g.saveBtn = sBtn
 	g.saveBtn.Draw(screen, g.statFont)
+
+	editBtn := &components.Button{
+		Label: "Edit Genome",
+		X:     int(currX),
+		Y:     btnY + detailSaveBtnH + 4,
+		W:     int(p.W - (detailTpad * 2)),
+		H:     int(detailSaveBtnH),
+		Color: color.RGBA{40, 60, 130, 220},
+		OnClick: func() {
+			id := g.selectedCreatureID
+			if genome, ok := g.sim.CreatureGenomeCopy(id); ok {
+				g.genomeEditor.Open(genome, g.sim.GetParams())
+			}
+		},
+	}
+	g.editGenomeBtn = editBtn
+	g.editGenomeBtn.Draw(screen, g.statFont)
 }
 
 func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDetailView, x, y float32) {
@@ -997,9 +1111,9 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 		}
 	}
 
-	const baseLearningRate = 0.01
+	const baseNeuroplasticity = 0.01
 	footerY := int(py+panelH) - nnPadding - 2
-	text.Draw(screen, fmt.Sprintf("Learning Rate: %.4f", baseLearningRate*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
+	text.Draw(screen, fmt.Sprintf("Learning Rate: %.4f", baseNeuroplasticity*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
 }
 
 func nnEdgeColor(w float32) color.RGBA {
@@ -1020,12 +1134,13 @@ func nnEdgeColor(w float32) color.RGBA {
 func nnSensorName(id byte) string {
 	names := [...]string{
 		"Age", "Energy", "Loc X", "Loc Y", "Osc 1",
-		"Density", "See Pop", "See Food", "See Corpse",
+		"LocalDensity", "LocalHeading", "LocalCentreOfMass",
+		"See Pop", "See Food", "See Corpse",
 		"Random", "Satiety", "Facing", "Food Ang",
-		"Food Dist", "Threat", "Kinship", "Burn Rate",
+		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd",
 		"Mass %", "Blocked", "Prey", "Threat Ang",
 		"Prey Ang", "Wall Prox", "Digest", "Food/Cap",
-		"Juvenile",
+		"Juvenile", "EnergyDelta",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -1035,8 +1150,8 @@ func nnSensorName(id byte) string {
 
 func nnActionName(id byte) string {
 	names := [...]string{
-		"Move", "Rotate",
-		"SetOsc", "SetResp", "SetLearn", "Rest",
+		"Move", "Rotate", "SetOsc", "SetResp",
+		"SetLearn", "Rest", "Attack", "Reward", "Punish",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -1099,16 +1214,17 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 	gw := float32(graphPanelW - graphPad*2)
 	gh := float32(graphPanelH - graphTextH - graphPad)
 
-	globalMax := 1
+	foodMax := 1
+	popMax := 1
 	for i := 0; i < g.histCount; i++ {
 		idx := ((g.histHead-1-i)%historyLen + historyLen) % historyLen
 		s := g.history[idx]
 
-		if s.pop > globalMax {
-			globalMax = s.pop
+		if s.pop > popMax {
+			popMax = s.pop
 		}
-		if s.food > globalMax {
-			globalMax = s.food
+		if s.food > foodMax {
+			foodMax = s.food
 		}
 	}
 
@@ -1117,10 +1233,10 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 		steps = g.histCount
 	}
 
-	g.drawGraphLine(screen, gx, gy, gw, gh, steps, globalMax,
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, foodMax,
 		color.RGBA{80, 210, 100, 200}, func(s histSample) int { return s.food })
 
-	g.drawGraphLine(screen, gx, gy, gw, gh, steps, globalMax,
+	g.drawGraphLine(screen, gx, gy, gw, gh, steps, popMax,
 		color.RGBA{100, 180, 255, 200}, func(s histSample) int { return s.pop })
 }
 

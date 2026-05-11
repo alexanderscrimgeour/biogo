@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestDoNothingHalvesMetabolicCost(t *testing.T) {
+func TestDoNothingReducesMetabolicCost(t *testing.T) {
 	p := defaultParams()
 	p.BaseBMR = 5
 	p.MoveCost = 0
@@ -37,14 +37,14 @@ func TestDoNothingHalvesMetabolicCost(t *testing.T) {
 		Weight:     255,
 	}
 	c.Genome.Brain = []*simulation.Gene{doNothingGene}
-	c.Genome.BrainLength = 1
+	c.Genome.SynapticDensity = 1
 	c.CreateNeuralNet()
 
 	rate := c.MetabolicRate(p)
 	sim.Update()
 
-	// Resting refunds the full metabolic drain and charges half — net cost = rate/2.
-	expectedEnergy := energyBefore - rate/2
+	// Resting refunds the full metabolic drain and charges 10% — net cost = rate * 0.1.
+	expectedEnergy := energyBefore - rate*0.1
 	tolerance := float32(0.01)
 	if math.Abs(float64(c.Energy-expectedEnergy)) > float64(tolerance) {
 		t.Errorf("REST should charge half metabolic rate: before=%f expected=%f got=%f (rate=%f)",
@@ -58,7 +58,7 @@ func TestDoNothingIsEnabled(t *testing.T) {
 	}
 }
 
-func TestPassivePredation_TakesBiteFromNearbyCreature(t *testing.T) {
+func TestPassivePredation_TakesBiteFromNearbyCorpse(t *testing.T) {
 	params := defaultParams()
 	params.FoodInteractionRadius = 3.0
 	params.MaxFood = 0
@@ -72,33 +72,33 @@ func TestPassivePredation_TakesBiteFromNearbyCreature(t *testing.T) {
 	predGenome.StomachSize = 255
 
 	predPos := grid.Position{X: 5, Y: 5}
-	pred := simulation.NewAdultCreature(1, predPos, predGenome, params)
+	predID := w.AddCreature(predPos)
+	pred := simulation.NewAdultCreature(predID, predPos, predGenome, params)
 	pred.Heading = 0 // east
 
-	preyGenome := simulation.MakeRandomGenome(params)
-	preyGenome.Mass = 50
-	preyGenome.MinMass = 5
+	corpseGenome := simulation.MakeRandomGenome(params)
+	corpseGenome.Mass = 50
+	corpseGenome.MinMass = 5
 
-	preyPos := grid.Position{X: 7, Y: 5}
-	prey := simulation.NewAdultCreature(2, preyPos, preyGenome, params)
-
-	w.AddCreature(pred.Id, predPos)
-	w.AddCreature(prey.Id, preyPos)
+	corpsePos := grid.Position{X: 7, Y: 5}
+	corpseID := w.AddCreature(corpsePos)
+	corpse := simulation.NewAdultCreature(corpseID, corpsePos, corpseGenome, params)
+	corpse.Alive = false // dead — available as food
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[pred.Id] = pred
-	pop.Creatures[prey.Id] = prey
+	pop.Creatures[predID] = pred
+	pop.Creatures[corpseID] = corpse
 
-	preyMassBefore := prey.Mass
+	corpseMassBefore := corpse.Mass
 	newPos := grid.Position{X: 6, Y: 5}
 	pop.QueueForMove(pred, newPos, 1.0)
 	pop.ProcessMoveQueue(w, params)
 
-	if prey.Mass >= preyMassBefore {
-		t.Errorf("prey should lose mass after being bitten: before=%f after=%f", preyMassBefore, prey.Mass)
+	if corpse.Mass >= corpseMassBefore {
+		t.Errorf("corpse should lose mass after being eaten: before=%f after=%f", corpseMassBefore, corpse.Mass)
 	}
 	if pred.Stomach <= 0 {
-		t.Errorf("predator stomach should be filled after biting: got %f", pred.Stomach)
+		t.Errorf("predator stomach should be filled after eating corpse: got %f", pred.Stomach)
 	}
 }
 

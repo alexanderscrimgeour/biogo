@@ -1,4 +1,4 @@
-package simulation
+﻿package simulation
 
 import (
 	"biogo/v2/grid"
@@ -10,26 +10,31 @@ import (
 )
 
 type Simulation struct {
-	World          *grid.World
-	Population     *Population
-	Tick           int
-	nextCreatureID int
-	Params         *Parameters
+	World        *grid.World
+	Population   *Population
+	Tick         int
+	Params       *Parameters
+	TargetEnergy float64 // total liquid energy to maintain (set at initialisation)
+	displayCache []CreatureView
+	foodCache    []FoodView
+	corpseCache  []CorpseView
+	cacheMu      sync.RWMutex
 }
 
 func New(params *Parameters) *Simulation {
 	sim := &Simulation{
-		Params:         params,
-		nextCreatureID: grid.StartingCreatureID,
+		Params: params,
 	}
 	sim.initializeWorld()
 	sim.initializePopulation()
+	sim.TargetEnergy = sim.TotalEnergy()
 	return sim
 }
 
 func (s *Simulation) initializeWorld() {
 	s.World = grid.NewWorld(s.Params.GridWidth, s.Params.GridHeight, 1)
-	s.World.SpawnRandom(s.Params.MaxFood)
+	s.World.SpawnRandom(s.Params.MaxFood, s.Params.FoodMass)
+	s.World.InitFountains(s.Params.FountainCount)
 }
 
 func (s *Simulation) initializePopulation() {
@@ -45,7 +50,6 @@ func (s *Simulation) initializePopulation() {
 			break
 		}
 
-		id := s.allocateID()
 		var genome *Genome
 
 		// If we have saved genomes and haven't hit the seeding limit,
@@ -56,9 +60,10 @@ func (s *Simulation) initializePopulation() {
 			genome = MakeRandomGenome(s.Params)
 		}
 
+		id := s.World.AddCreature(loc)
 		c := NewAdultCreature(id, loc, genome, s.Params)
 		pop.Creatures[id] = c
-		s.World.AddCreature(id, loc)
+		pop.AddAlive(id)
 	}
 	s.Population = pop
 }
@@ -75,37 +80,52 @@ func (s *Simulation) SaveCreature(id int) error {
 // Reset reinitialises the simulation from scratch.
 func (s *Simulation) Reset() {
 	s.Tick = 0
-	s.nextCreatureID = grid.StartingCreatureID
 	s.initializeWorld()
 	s.initializePopulation()
-}
-
-func (s *Simulation) allocateID() int {
-	id := s.nextCreatureID
-	s.nextCreatureID++
-	return id
+	s.TargetEnergy = s.TotalEnergy()
 }
 
 func (s *Simulation) Update() {
 	s.step()
+	s.cacheMu.Lock()
+	s.updatePopulationCaches() // Rename your existing updateDisplayCache to this
+	s.updateFoodCache()
+	s.cacheMu.Unlock()
 }
 
 func (s *Simulation) step() {
+	s.World.StepFountains(s.Params.FountainDriftSpeed)
+
 	if s.Tick%s.Params.FoodSpawnInterval == 0 {
-		toSpawn := s.Params.FoodPerSpawn
-		if available := s.Params.MaxFood - s.World.FoodCount(); available < toSpawn {
-			toSpawn = available
-		}
+		deficit := s.TargetEnergy - s.TotalEnergy()
+		toSpawn := int(deficit / float64(s.Params.FoodMass))
 		if toSpawn > 0 {
-			s.World.SpawnFood(toSpawn, s.Params.FoodPatchRadius, s.Params.FoodPatchSize)
+			if available := s.Params.MaxFood - s.World.FoodCount(); toSpawn > available {
+				toSpawn = available
+			}
+			s.World.SpawnFood(toSpawn, s.Params.FountainRadius, s.Params.FoodMass)
 		}
 	}
 
-	// Collect alive IDs before spawning goroutines so the map is not modified
-	// while goroutines are reading it.
+	// AliveIDs() now returns the live backing slice — no allocation, O(1).
 	ids := s.Population.AliveIDs()
 	n := runtime.GOMAXPROCS(0)
 	batches := partitionIDs(ids, n)
+
+	// Pre-size shared queues so Process* functions can reuse the backing array.
+	popSize := len(ids)
+	if cap(s.Population.DeathQueue) < popSize {
+		s.Population.DeathQueue = make([]DeathInstruction, 0, popSize)
+	}
+	if cap(s.Population.MoveQueue) < popSize {
+		s.Population.MoveQueue = make([]MoveInstruction, 0, popSize)
+	}
+	if cap(s.Population.AttackQueue) < popSize {
+		s.Population.AttackQueue = make([]AttackInstruction, 0, popSize)
+	}
+	if cap(s.Population.ReproductionQueue) < popSize {
+		s.Population.ReproductionQueue = make([]ReproductionInstruction, 0, popSize)
+	}
 
 	// Each goroutine writes to its own pendingInstructions; no shared mutation.
 	results := make([]pendingInstructions, n)
@@ -125,49 +145,44 @@ func (s *Simulation) step() {
 	for i := range results {
 		s.Population.DeathQueue = append(s.Population.DeathQueue, results[i].death...)
 		s.Population.MoveQueue = append(s.Population.MoveQueue, results[i].move...)
+		s.Population.AttackQueue = append(s.Population.AttackQueue, results[i].attack...)
 		s.Population.ReproductionQueue = append(s.Population.ReproductionQueue, results[i].reproduction...)
 	}
 
 	s.Population.ProcessMoveQueue(s.World, s.Params)
+	s.Population.ProcessAttackQueue(s.World, s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
 	s.Population.ProcessCorpseDecay(s.World, s.Params)
-	s.Population.ProcessReproductionQueue(s.World, s.Params, s.allocateID)
+	s.Population.ProcessReproductionQueue(s.World, s.Params)
 
-	// Reward decay
-	for _, c := range s.Population.Creatures {
-		if !c.Alive {
-			continue
-		}
-
-		// Decay the dopamine signal
-		c.Dopamine *= 0.6
-
-		if c.Dopamine < 0.01 {
+	// Reward decay — iterate only alive creatures via the maintained index.
+	for _, id := range s.Population.aliveIDs {
+		c := s.Population.Creatures[id]
+		c.Dopamine *= 0.9
+		if c.Dopamine > -0.01 && c.Dopamine < 0.01 {
 			c.Dopamine = 0
 		}
-		c.LastTickEnergy = c.Energy
-		c.LastStomach = c.Stomach
 	}
 
 	spawnParams := *s.Params
-	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
-		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
-	}
-	for s.Population.AliveCount() < s.Params.MinPopulation {
+
+	aliveCount := s.Population.AliveCount()
+	for aliveCount < s.Params.MinPopulation {
 		loc, ok := s.World.FindEmptyLocation()
 		if !ok {
 			break
 		}
-		id := s.allocateID()
 		var genome *Genome
-		// if source := s.Population.OldestGenome(); source != nil {
-		// 	genome = AsexualReproduction(source, &spawnParams)
-		// } else {
-		genome = MakeRandomGenome(&spawnParams)
-		// }
+		if source := s.Population.OldestGenome(); source != nil {
+			genome = ArtificialReproduction(source, &spawnParams)
+		} else {
+			genome = MakeRandomGenome(&spawnParams)
+		}
+		id := s.World.AddCreature(loc)
 		c := NewAdultCreature(id, loc, genome, s.Params)
 		s.Population.Creatures[id] = c
-		s.World.AddCreature(id, loc)
+		s.Population.AddAlive(id)
+		aliveCount++
 	}
 
 	s.Tick++
@@ -184,15 +199,18 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		return
 	}
 
-	juvenilePeriod := s.Params.MinJuvenilePeriod + int(float32(c.Genome.JuvenilePeriod)/255.0*float32(s.Params.MaxJuvenilePeriod-s.Params.MinJuvenilePeriod))
+	juvenilePeriod := c.cachedJuvenilePeriod
 	reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
-	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod && c.Mass >= float32(c.Genome.Mass) {
+	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod && c.Mass >= (float32(c.Genome.Mass)*0.9) {
 		pending.reproduction = append(pending.reproduction, ReproductionInstruction{c})
 		c.LastAction = appendActionString(c.LastAction, "Reproducing")
 	}
 
 	actionLevels := c.FeedForward(s.World, s.Population, s.Tick, s.Params)
 	s.executeActionsLocal(c, actionLevels, pending)
+
+	c.LastTickEnergy = c.Energy
+	c.LastStomach = c.Stomach
 }
 
 func (s *Simulation) Print() {
@@ -232,14 +250,41 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 	}
 
+	if IsActionEnabled(ATTACK) {
+		level := actionLevels[ATTACK]
+		if math.Abs(float64(level)) > 0.8 {
+			pending.attack = append(pending.attack, AttackInstruction{c})
+			c.LastAction = appendActionString(c.LastAction, "Attacking")
+		}
+	}
+
+	if IsActionEnabled(REWARD) {
+		level := actionLevels[REWARD]
+		if level > 0 {
+			c.GainDopamine(float32(math.Tanh(float64(level))))
+			c.LastAction = appendActionString(c.LastAction, "Rewarding")
+		}
+	}
+
+	if IsActionEnabled(PUNISH) {
+		level := actionLevels[PUNISH]
+		if level > 0 {
+			c.LoseDopamine(float32(math.Tanh(float64(level))))
+			c.LastAction = appendActionString(c.LastAction, "Punishing")
+		}
+	}
+
 	// Rotation: positive level turns CCW (left), negative turns CW (right).
 	rotateAmount := float64(0)
+	massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
 	if IsActionEnabled(ROTATE) {
-		rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) * float64(responseAdjust) * s.Params.MaxRotationPerStep
+		turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
+		rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) *
+			float64(responseAdjust) *
+			s.Params.MaxRotationPerStep * float64(turnInertia)
 	}
 	if rotateAmount != 0 {
-		massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
-		massCostMult := 0.5 + massNorm
+		massCostMult := 0.5 + (massNorm * massNorm * 2.0)
 		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
 		c.LastAction = appendActionString(c.LastAction, "Rotating")
 	}
@@ -250,7 +295,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	if IsActionEnabled(MOVE) {
 		moveAmount = math.Tanh(float64(actionLevels[MOVE])) * float64(responseAdjust)
 	}
-	massFactor := 1.0 + float64(c.CurrentMass(s.Params))/255.0
+	massFactor := 1.0 + math.Pow(float64(c.CurrentMass(s.Params)/float32(s.Params.MaxMass)), 2)*5.0
 	moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
 	if math.Abs(moveAmount) < 0.001 {
@@ -262,8 +307,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 	if !s.World.IsWall(newPos) {
-		massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
-		massCostMult := 0.5 + massNorm // heavier creatures pay more energy per unit distance
+		massCostMult := 0.5 + (massNorm * massNorm * 2.0)
 		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)) * massCostMult)
 		c.LastAction = appendActionString(c.LastAction, "Moving")
 		pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
@@ -284,16 +328,40 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 		return false
 	}
 	spawnParams := *s.Params
-	if s.Params.SpawnMutationRate > s.Params.MinMutationRate {
-		spawnParams.MinMutationRate = s.Params.SpawnMutationRate
-	}
-	id := s.allocateID()
+
+	id := s.World.AddCreature(pos)
 	genome := MakeRandomGenome(&spawnParams)
 	c := NewAdultCreature(id, pos, genome, s.Params)
 	s.Population.Creatures[id] = c
-	s.World.AddCreature(id, pos)
+	s.Population.AddAlive(id)
+
 	return true
 }
+
+// SpawnGenome places a new adult creature with the given genome at a random empty location.
+func (s *Simulation) SpawnGenome(g *Genome) bool {
+	loc, ok := s.World.FindEmptyLocation()
+	if !ok {
+		return false
+	}
+	id := s.World.AddCreature(loc)
+	c := NewAdultCreature(id, loc, g, s.Params)
+	s.Population.Creatures[id] = c
+	s.Population.AddAlive(id)
+	return true
+}
+
+// CreatureGenomeCopy returns a deep copy of a living creature's genome by ID.
+func (s *Simulation) CreatureGenomeCopy(id int) (*Genome, bool) {
+	c, ok := s.Population.Creatures[id]
+	if !ok || !c.Alive {
+		return nil, false
+	}
+	return c.Genome.Copy(), true
+}
+
+// GetParams exposes the simulation parameters to the UI layer.
+func (s *Simulation) GetParams() *Parameters { return s.Params }
 
 func (s *Simulation) GridWidth() float64  { return s.Params.GridWidth }
 func (s *Simulation) GridHeight() float64 { return s.Params.GridHeight }
@@ -302,17 +370,25 @@ func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
 func (s *Simulation) FoodCount() int { return s.World.FoodCount() }
 
-func (s *Simulation) AverageAge() float64 {
-	total := 0
-	count := 0
-	for _, c := range s.Population.Creatures {
-		if c.Alive {
-			total += c.Age
-			count++
-		}
+// TotalEnergy returns the total liquid energy in the system: food energy plus the
+// immediate metabolic stores (energy + stomach contents) of all living creatures.
+func (s *Simulation) TotalEnergy() float64 {
+	energy := s.World.TotalFoodMass()
+	for _, id := range s.Population.aliveIDs {
+		c := s.Population.Creatures[id]
+		energy += float64(c.Energy) + float64(c.Stomach)
 	}
+	return energy
+}
+
+func (s *Simulation) AverageAge() float64 {
+	count := len(s.Population.aliveIDs)
 	if count == 0 {
 		return 0
+	}
+	total := 0
+	for _, id := range s.Population.aliveIDs {
+		total += s.Population.Creatures[id].Age
 	}
 	return float64(total) / float64(count)
 }
@@ -344,7 +420,72 @@ func partitionIDs(ids []int, n int) [][]int {
 func appendActionString(base, new string) string {
 	if base == "" {
 		return new
-	} else {
-		return fmt.Sprintf("%s | %s", base, new)
+	}
+	return base + " | " + new
+}
+
+func (s *Simulation) updatePopulationCaches() {
+	s.displayCache = s.displayCache[:0]
+	s.corpseCache = s.corpseCache[:0]
+
+	for id, c := range s.Population.Creatures {
+		if c.Alive {
+			// Living Creature Logic
+			r, g, b, a := c.Color.RGBA()
+			s.displayCache = append(s.displayCache, CreatureView{
+				ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
+				R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
+				CurrentMass:   float64(c.Mass),
+				SightDistance: c.Genome.SightDistance,
+				FieldOfView:   c.Genome.FieldOfView,
+			})
+		} else {
+			// Corpse Logic
+			energyFraction := float32(0.0)
+			if max := c.MaxEnergy(s.Params); max > 0 {
+				energyFraction = c.Energy / max
+			}
+
+			s.corpseCache = append(s.corpseCache, CorpseView{
+				ID:             id,
+				X:              c.Loc.X,
+				Y:              c.Loc.Y,
+				EnergyFraction: energyFraction,
+			})
+		}
+	}
+}
+
+func (s *Simulation) updateFoodCache() {
+	// Reuse the existing slice capacity
+	s.foodCache = s.foodCache[:0]
+
+	// Use our new iterator to pull only active food
+	s.World.ForEachActiveFood(func(id int, x, y float64, mass float32) {
+		s.foodCache = append(s.foodCache, FoodView{
+			ID: id,
+			X:  x,
+			Y:  y,
+			// Include mass if your FoodView supports it, otherwise remove
+			Mass: mass,
+		})
+	})
+}
+
+type StateSnapshot struct {
+	Creatures []CreatureView
+	Food      []FoodView
+	Corpses   []CorpseView
+}
+
+func (s *Simulation) GetSnapshot() StateSnapshot {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+
+	// We return a copy of the slices so the UI can iterate safely
+	return StateSnapshot{
+		Creatures: append([]CreatureView(nil), s.displayCache...),
+		Food:      append([]FoodView(nil), s.foodCache...),
+		Corpses:   append([]CorpseView(nil), s.corpseCache...),
 	}
 }
