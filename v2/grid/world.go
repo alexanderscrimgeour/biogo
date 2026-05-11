@@ -15,16 +15,21 @@ type Wall struct {
 
 // World is the continuous-space simulation arena. It tracks creature and food
 // positions via spatial-hash buckets for efficient neighbourhood queries.
+//
+// Buckets use a packed int64 key (high 32 bits = bucket-x, low 32 bits = bucket-y)
+// so Go's map uses the fast64 hash path instead of the slower memhash128 path
+// required for [2]int keys. Each bucket stores a plain []int slice rather than a
+// nested map[int]bool, eliminating inner-map iteration overhead entirely.
 type World struct {
 	Width, Height float64
 	Walls         []Wall
 
 	creaturePos map[int]Position
-	cBuckets    map[[2]int]map[int]bool
+	cBuckets    map[int64][]int // packed bucket key → creature IDs
 
 	foodPos    map[int]Position
 	foodMass   map[int]float32
-	fBuckets   map[[2]int]map[int]bool
+	fBuckets   map[int64][]int // packed bucket key → food IDs
 	nextFoodID int
 	bucketSize float64
 
@@ -38,21 +43,40 @@ func NewWorld(width, height float64, wallType int) *World {
 		Width:       width,
 		Height:      height,
 		creaturePos: make(map[int]Position),
-		cBuckets:    make(map[[2]int]map[int]bool),
+		cBuckets:    make(map[int64][]int),
 		foodPos:     make(map[int]Position),
 		foodMass:    make(map[int]float32),
-		fBuckets:    make(map[[2]int]map[int]bool),
+		fBuckets:    make(map[int64][]int),
 		bucketSize:  20.0,
 	}
 	w.createWalls(wallType)
 	return w
 }
 
-func (w *World) bucketKey(pos Position) [2]int {
-	return [2]int{
-		int(math.Floor(pos.X / w.bucketSize)),
-		int(math.Floor(pos.Y / w.bucketSize)),
+// bucketKey packs a world-space position into a single int64 map key.
+// The high 32 bits hold the x bucket index, low 32 bits hold the y bucket index.
+// This lets Go use its fast64 hash path rather than the slower memhash128 used for [2]int.
+func (w *World) bucketKey(pos Position) int64 {
+	bx := int32(math.Floor(pos.X / w.bucketSize))
+	by := int32(math.Floor(pos.Y / w.bucketSize))
+	return int64(bx)<<32 | int64(uint32(by))
+}
+
+// packedKey packs raw integer bucket coordinates, used in radius scan loops
+// to avoid constructing a Position just to compute the key.
+func packedKey(bx, by int) int64 {
+	return int64(int32(bx))<<32 | int64(uint32(int32(by)))
+}
+
+// bucketRemove removes id from the bucket slice via swap-and-truncate (O(n) scan, O(1) remove).
+func bucketRemove(bucket []int, id int) []int {
+	for i, v := range bucket {
+		if v == id {
+			bucket[i] = bucket[len(bucket)-1]
+			return bucket[:len(bucket)-1]
+		}
 	}
+	return bucket
 }
 
 // --- Creature spatial operations ---
@@ -60,27 +84,23 @@ func (w *World) bucketKey(pos Position) [2]int {
 func (w *World) AddCreature(id int, pos Position) {
 	w.creaturePos[id] = pos
 	key := w.bucketKey(pos)
-	if w.cBuckets[key] == nil {
-		w.cBuckets[key] = make(map[int]bool)
-	}
-	w.cBuckets[key][id] = true
+	w.cBuckets[key] = append(w.cBuckets[key], id)
 }
 
 func (w *World) MoveCreature(id int, newPos Position) {
 	if oldPos, ok := w.creaturePos[id]; ok {
-		delete(w.cBuckets[w.bucketKey(oldPos)], id)
+		oldKey := w.bucketKey(oldPos)
+		w.cBuckets[oldKey] = bucketRemove(w.cBuckets[oldKey], id)
 	}
 	w.creaturePos[id] = newPos
 	key := w.bucketKey(newPos)
-	if w.cBuckets[key] == nil {
-		w.cBuckets[key] = make(map[int]bool)
-	}
-	w.cBuckets[key][id] = true
+	w.cBuckets[key] = append(w.cBuckets[key], id)
 }
 
 func (w *World) RemoveCreature(id int) {
 	if pos, ok := w.creaturePos[id]; ok {
-		delete(w.cBuckets[w.bucketKey(pos)], id)
+		key := w.bucketKey(pos)
+		w.cBuckets[key] = bucketRemove(w.cBuckets[key], id)
 		delete(w.creaturePos, id)
 	}
 }
@@ -100,7 +120,7 @@ func (w *World) GetCreaturesInRadius(center Position, radius float64) []int {
 	var result []int
 	for bx := minBx; bx <= maxBx; bx++ {
 		for by := minBy; by <= maxBy; by++ {
-			for id := range w.cBuckets[[2]int{bx, by}] {
+			for _, id := range w.cBuckets[packedKey(bx, by)] {
 				pos := w.creaturePos[id]
 				dx := pos.X - center.X
 				dy := pos.Y - center.Y
@@ -141,16 +161,14 @@ func (w *World) AddFood(pos Position, mass float32) int {
 	w.foodPos[id] = pos
 	w.foodMass[id] = mass
 	key := w.bucketKey(pos)
-	if w.fBuckets[key] == nil {
-		w.fBuckets[key] = make(map[int]bool)
-	}
-	w.fBuckets[key][id] = true
+	w.fBuckets[key] = append(w.fBuckets[key], id)
 	return id
 }
 
 func (w *World) RemoveFood(id int) {
 	if pos, ok := w.foodPos[id]; ok {
-		delete(w.fBuckets[w.bucketKey(pos)], id)
+		key := w.bucketKey(pos)
+		w.fBuckets[key] = bucketRemove(w.fBuckets[key], id)
 		delete(w.foodPos, id)
 		delete(w.foodMass, id)
 	}
@@ -206,7 +224,7 @@ func (w *World) GetFoodInRadius(center Position, radius float64) []int {
 	var result []int
 	for bx := minBx; bx <= maxBx; bx++ {
 		for by := minBy; by <= maxBy; by++ {
-			for id := range w.fBuckets[[2]int{bx, by}] {
+			for _, id := range w.fBuckets[packedKey(bx, by)] {
 				pos := w.foodPos[id]
 				dx := pos.X - center.X
 				dy := pos.Y - center.Y

@@ -1,6 +1,5 @@
 package simulation
 
-
 // CreatureView is a read-only snapshot of a creature's display state.
 type CreatureView struct {
 	ID            int
@@ -92,10 +91,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		})
 	}
 	nnView.HiddenNeuronIDs = append(nnView.HiddenNeuronIDs, c.Nnet.HiddenNeuronIDs...)
-	if c.Nnet.LastSensorValues != nil {
-		nnView.SensorValues = make(map[byte]float32, len(c.Nnet.LastSensorValues))
-		for k, v := range c.Nnet.LastSensorValues {
-			nnView.SensorValues[k] = v
+	nnView.SensorValues = make(map[byte]float32, SENSOR_COUNT)
+	for sid := byte(0); sid < SENSOR_COUNT; sid++ {
+		if c.Nnet.ActiveSensors[sid] {
+			nnView.SensorValues[sid] = c.Nnet.LastSensorValues[sid]
 		}
 	}
 	if c.Nnet.LastActionValues != nil {
@@ -132,24 +131,29 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 }
 
 // CreatureViews returns a snapshot of all living creatures for rendering.
-func (s *Simulation) CreatureViews() map[int]CreatureView {
-	views := make(map[int]CreatureView, len(s.Population.Creatures))
-	for _, c := range s.Population.Creatures {
-		if !c.Alive {
+func (s *Simulation) CreatureViews() []CreatureView {
+	views := make([]CreatureView, 0, len(s.Population.aliveIDs))
+	for _, id := range s.Population.aliveIDs {
+		c, ok := s.Population.Creatures[id]
+		if !ok {
 			continue
 		}
 		r, g, b, a := c.Color.RGBA()
-		views[c.Id] = CreatureView{
-			ID: c.Id,
-			X:  c.Loc.X,
-			Y:  c.Loc.Y,
-			R:  uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
+
+		views = append(views, CreatureView{
+			ID:            int(id),
+			X:             c.Loc.X,
+			Y:             c.Loc.Y,
+			R:             uint8(r),
+			G:             uint8(g),
+			B:             uint8(b),
+			A:             uint8(a),
 			Heading:       c.Heading,
 			SightDistance: c.Genome.SightDistance,
 			FieldOfView:   c.Genome.FieldOfView,
 			Mass:          c.Genome.Mass,
 			CurrentMass:   float64(c.Mass),
-		}
+		})
 	}
 	return views
 }

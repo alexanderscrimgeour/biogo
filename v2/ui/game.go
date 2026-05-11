@@ -21,7 +21,7 @@ import (
 // SimulationState is the interface the UI requires
 type SimulationState interface {
 	Update()
-	CreatureViews() map[int]simulation.CreatureView
+	CreatureViews() []simulation.CreatureView
 	FoodViews() []simulation.FoodView
 	CorpseViews() []simulation.CorpseView
 	GridWidth() float64
@@ -39,6 +39,7 @@ type SimulationState interface {
 	SpawnGenome(g *simulation.Genome) bool
 	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
 	GetParams() *simulation.Parameters
+	GetSnapshot() simulation.StateSnapshot
 }
 
 var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
@@ -421,11 +422,12 @@ func (g *Game) Update() error {
 			g.histCount++
 		}
 
-		views := g.sim.CreatureViews()
-		currentIDs := make(map[int]bool, len(views))
+		snapshot := g.sim.GetSnapshot()
+
+		currentIDs := make(map[int]bool, len(snapshot.Creatures))
 		bs := float64(BlockSize)
 
-		for _, cv := range views {
+		for _, cv := range snapshot.Creatures {
 			currentIDs[cv.ID] = true
 			screenX := float64(cv.X * bs)
 			screenY := float64(cv.Y * bs)
@@ -457,9 +459,8 @@ func (g *Game) Update() error {
 		}
 
 		// Reconcile food
-		foodViews := g.sim.FoodViews()
-		currentFood := make(map[string]bool, len(foodViews))
-		for _, fv := range foodViews {
+		currentFood := make(map[string]bool, len(snapshot.Food))
+		for _, fv := range snapshot.Food {
 			key := foodKey(fv.X, fv.Y)
 			currentFood[key] = true
 			if _, ok := g.foodBlobsByKey[key]; !ok {
@@ -476,9 +477,8 @@ func (g *Game) Update() error {
 		}
 
 		// Reconcile corpses
-		corpseViews := g.sim.CorpseViews()
-		currentCorpses := make(map[int]bool, len(corpseViews))
-		for _, cv := range corpseViews {
+		currentCorpses := make(map[int]bool, len(snapshot.Corpses))
+		for _, cv := range snapshot.Corpses {
 			currentCorpses[cv.ID] = true
 			alpha := uint8(cv.EnergyFraction * 220)
 			corpseColor := color.RGBA{R: 120, G: 60, B: 20, A: alpha}

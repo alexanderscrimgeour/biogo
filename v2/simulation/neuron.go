@@ -21,8 +21,9 @@ type NeuralNet struct {
 	Edges            []*Gene
 	HiddenNeurons    [256]*Neuron // indexed by neuron ID; sparse, use HiddenNeuronIDs to iterate
 	HiddenNeuronIDs  []byte       // sorted list of occupied indices
+	ActiveSensors    [SENSOR_COUNT]bool // true for each sensor ID wired into at least one edge; set once at construction
 	Weights          []float32
-	LastSensorValues map[byte]float32
+	LastSensorValues [SENSOR_COUNT]float32
 	LastActionValues []float32
 }
 
@@ -131,6 +132,15 @@ func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 	sort.Slice(nnet.HiddenNeuronIDs, func(i, j int) bool {
 		return nnet.HiddenNeuronIDs[i] < nnet.HiddenNeuronIDs[j]
 	})
+
+	// Record which sensors are actually wired in so FeedForward can pre-compute
+	// them once rather than calling GetSensor once per edge.
+	for _, edge := range nnet.Edges {
+		if edge.SourceType == SENSOR {
+			nnet.ActiveSensors[edge.SourceID] = true
+		}
+	}
+
 	return &nnet
 }
 

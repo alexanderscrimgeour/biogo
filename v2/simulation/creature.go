@@ -31,9 +31,9 @@ type Creature struct {
 	Color          color.RGBA
 
 	// Genome-derived constants cached at construction to avoid recomputing each tick.
-	halfFOVCos          float64 // math.Cos(FieldOfView/2 in radians)
-	cachedMetabolicGene float32 // 0.7 + 0.6*(MetabolicRate/255)
-	cachedJuvenilePeriod int    // MinJuvenilePeriod + genome fraction * range
+	halfFOVCos           float64 // math.Cos(FieldOfView/2 in radians)
+	cachedMetabolicGene  float32 // 0.7 + 0.6*(MetabolicRate/255)
+	cachedJuvenilePeriod int     // MinJuvenilePeriod + genome fraction * range
 }
 
 func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
@@ -248,21 +248,14 @@ func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {
 		return 0
 	}
 
-	// 1. Structural Density (Efficiency)
-	// We look at how many connections (Edges) exist per hidden neuron.
-	// A high connectivity-to-node ratio suggests complex integration.
 	numHidden := float32(len(nn.HiddenNeuronIDs))
 	if numHidden == 0 {
 		numHidden = 1
 	} // Avoid division by zero for reflex-only brains
 
 	density := float32(len(nn.Edges)) / numHidden
-	// Normalize density: 15+ edges per neuron is considered "high complexity"
 	connectivityScore := clamp(density / 15.0)
 
-	// 2. Synaptic Strength (Depth of thought)
-	// We calculate the average absolute weight.
-	// Higher weights suggest "stronger" convictions or more defined behaviors.
 	var weightSum float32
 	for _, w := range nn.Weights {
 		if w < 0 {
@@ -272,19 +265,18 @@ func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {
 		}
 	}
 	avgWeight := weightSum / float32(len(nn.Weights))
-	// Standard weights in neural nets often range 0-4.0; we'll normalize to 2.0
 	weightScore := clamp(avgWeight / 2.0)
 
-	// 3. Adaptability (From Genome)
-	// We still pull LearningRate from the genome as it defines the net's potential to change.
 	plasticity := float32(g.LearningRate) / 255.0
 
-	// 4. Signal Resolution (Action/Sensor breadth)
-	// Does the brain handle many inputs/outputs?
-	ioBreadth := clamp(float32(len(nn.LastSensorValues)+len(nn.LastActionValues)) / 20.0)
+	activeSensors := 0
+	for _, active := range nn.ActiveSensors {
+		if active {
+			activeSensors++
+		}
+	}
+	ioBreadth := clamp(float32(activeSensors+len(nn.LastActionValues)) / 20.0)
 
-	// Final Weighted Score
-	// We favor Connectivity and Plasticity as the primary "Intelligence" drivers.
 	iq := (connectivityScore * 0.45) + (plasticity * 0.25) + (weightScore * 0.20) + (ioBreadth * 0.10)
 
 	return iq

@@ -81,7 +81,7 @@ func (g Genome) BinaryString() string {
 }
 
 func (g Genome) ToByteArray() []byte {
-	arr := []byte{}
+	arr := make([]byte, 0, 15+len(g.Brain)*4)
 	arr = append(arr, g.OscPeriod)
 	arr = append(arr, g.SightDistance)
 	arr = append(arr, g.FieldOfView)

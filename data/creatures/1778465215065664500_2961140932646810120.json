@@ -1,0 +1,278 @@
+{
+  "osc_period": 175,
+  "sight_distance": 10,
+  "field_of_view": 48,
+  "responsiveness": 211,
+  "mutation_rate": 164,
+  "mass": 89,
+  "min_mass": 5,
+  "reproduction_type": 0,
+  "neuron_count": 7,
+  "brain_length": 37,
+  "juvenile_period": 9,
+  "metabolic_rate": 27,
+  "stomach_size": 246,
+  "learning_rate": 159,
+  "learning_threshold": 155,
+  "brain": [
+    {
+      "source_type": 1,
+      "source_id": 231,
+      "sink_type": 2,
+      "sink_id": 156,
+      "weight": 190
+    },
+    {
+      "source_type": 0,
+      "source_id": 253,
+      "sink_type": 2,
+      "sink_id": 229,
+      "weight": 116
+    },
+    {
+      "source_type": 0,
+      "source_id": 96,
+      "sink_type": 2,
+      "sink_id": 151,
+      "weight": 55
+    },
+    {
+      "source_type": 1,
+      "source_id": 171,
+      "sink_type": 2,
+      "sink_id": 45,
+      "weight": 227
+    },
+    {
+      "source_type": 0,
+      "source_id": 209,
+      "sink_type": 2,
+      "sink_id": 149,
+      "weight": 213
+    },
+    {
+      "source_type": 1,
+      "source_id": 111,
+      "sink_type": 0,
+      "sink_id": 240,
+      "weight": 117
+    },
+    {
+      "source_type": 0,
+      "source_id": 216,
+      "sink_type": 2,
+      "sink_id": 60,
+      "weight": 219
+    },
+    {
+      "source_type": 0,
+      "source_id": 230,
+      "sink_type": 2,
+      "sink_id": 124,
+      "weight": 118
+    },
+    {
+      "source_type": 1,
+      "source_id": 174,
+      "sink_type": 2,
+      "sink_id": 78,
+      "weight": 182
+    },
+    {
+      "source_type": 1,
+      "source_id": 70,
+      "sink_type": 2,
+      "sink_id": 19,
+      "weight": 80
+    },
+    {
+      "source_type": 1,
+      "source_id": 101,
+      "sink_type": 2,
+      "sink_id": 214,
+      "weight": 152
+    },
+    {
+      "source_type": 1,
+      "source_id": 184,
+      "sink_type": 2,
+      "sink_id": 32,
+      "weight": 232
+    },
+    {
+      "source_type": 1,
+      "source_id": 246,
+      "sink_type": 2,
+      "sink_id": 232,
+      "weight": 12
+    },
+    {
+      "source_type": 0,
+      "source_id": 124,
+      "sink_type": 2,
+      "sink_id": 255,
+      "weight": 237
+    },
+    {
+      "source_type": 1,
+      "source_id": 19,
+      "sink_type": 0,
+      "sink_id": 55,
+      "weight": 251
+    },
+    {
+      "source_type": 1,
+      "source_id": 10,
+      "sink_type": 2,
+      "sink_id": 107,
+      "weight": 210
+    },
+    {
+      "source_type": 1,
+      "source_id": 235,
+      "sink_type": 2,
+      "sink_id": 2,
+      "weight": 109
+    },
+    {
+      "source_type": 0,
+      "source_id": 35,
+      "sink_type": 0,
+      "sink_id": 123,
+      "weight": 203
+    },
+    {
+      "source_type": 0,
+      "source_id": 197,
+      "sink_type": 2,
+      "sink_id": 252,
+      "weight": 249
+    },
+    {
+      "source_type": 0,
+      "source_id": 154,
+      "sink_type": 0,
+      "sink_id": 192,
+      "weight": 240
+    },
+    {
+      "source_type": 0,
+      "source_id": 86,
+      "sink_type": 0,
+      "sink_id": 193,
+      "weight": 180
+    },
+    {
+      "source_type": 1,
+      "source_id": 212,
+      "sink_type": 0,
+      "sink_id": 170,
+      "weight": 178
+    },
+    {
+      "source_type": 0,
+      "source_id": 134,
+      "sink_type": 2,
+      "sink_id": 109,
+      "weight": 156
+    },
+    {
+      "source_type": 0,
+      "source_id": 90,
+      "sink_type": 2,
+      "sink_id": 151,
+      "weight": 201
+    },
+    {
+      "source_type": 1,
+      "source_id": 172,
+      "sink_type": 0,
+      "sink_id": 174,
+      "weight": 242
+    },
+    {
+      "source_type": 1,
+      "source_id": 247,
+      "sink_type": 0,
+      "sink_id": 67,
+      "weight": 69
+    },
+    {
+      "source_type": 0,
+      "source_id": 92,
+      "sink_type": 2,
+      "sink_id": 58,
+      "weight": 154
+    },
+    {
+      "source_type": 1,
+      "source_id": 169,
+      "sink_type": 0,
+      "sink_id": 0,
+      "weight": 71
+    },
+    {
+      "source_type": 1,
+      "source_id": 69,
+      "sink_type": 2,
+      "sink_id": 16,
+      "weight": 25
+    },
+    {
+      "source_type": 0,
+      "source_id": 58,
+      "sink_type": 2,
+      "sink_id": 154,
+      "weight": 148
+    },
+    {
+      "source_type": 0,
+      "source_id": 198,
+      "sink_type": 2,
+      "sink_id": 4,
+      "weight": 140
+    },
+    {
+      "source_type": 1,
+      "source_id": 211,
+      "sink_type": 2,
+      "sink_id": 46,
+      "weight": 243
+    },
+    {
+      "source_type": 1,
+      "source_id": 190,
+      "sink_type": 2,
+      "sink_id": 17,
+      "weight": 83
+    },
+    {
+      "source_type": 1,
+      "source_id": 145,
+      "sink_type": 2,
+      "sink_id": 112,
+      "weight": 127
+    },
+    {
+      "source_type": 1,
+      "source_id": 255,
+      "sink_type": 0,
+      "sink_id": 9,
+      "weight": 183
+    },
+    {
+      "source_type": 1,
+      "source_id": 128,
+      "sink_type": 2,
+      "sink_id": 108,
+      "weight": 110
+    },
+    {
+      "source_type": 1,
+      "source_id": 186,
+      "sink_type": 0,
+      "sink_id": 44,
+      "weight": 37
+    }
+  ]
+}
