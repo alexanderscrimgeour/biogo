@@ -24,6 +24,7 @@ type DeathInstruction struct {
 
 type ReproductionInstruction struct {
 	Creature *Creature
+	Partner  *Creature // nil = asexual; non-nil = sexual (crossover)
 }
 
 type MoveInstruction struct {
@@ -43,6 +44,7 @@ type pendingInstructions struct {
 	move         []MoveInstruction
 	attack       []AttackInstruction
 	reproduction []ReproductionInstruction
+	mate         []*Creature // creatures firing the MATE action this tick
 }
 
 func NewPopulation(p *Parameters) *Population {
@@ -69,7 +71,7 @@ func (p *Population) QueueForDeath(creature *Creature) {
 }
 
 func (p *Population) QueueForReproduction(creature *Creature) {
-	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{creature})
+	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{Creature: creature})
 }
 
 // AddAlive registers a newly spawned creature in the alive-ID index.
@@ -381,42 +383,95 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters)
 		if !parent.Alive {
 			continue
 		}
-
 		if parent.Energy < params.ReproductionEnergyThreshold*parent.MaxEnergy(params) {
 			continue
 		}
-
 		if parent.Mass < float32(parent.Genome.Mass)*0.9 {
 			continue
 		}
-
 		if float32(parent.Genome.MinMass)*2 >= float32(parent.Genome.Mass) {
 			continue
 		}
 
+		// Sexual: partner must still be alive and eligible.
+		if ri.Partner != nil {
+			partner := ri.Partner
+			if !partner.Alive {
+				continue
+			}
+			if partner.Energy < params.ReproductionEnergyThreshold*partner.MaxEnergy(params) {
+				continue
+			}
+			if partner.Mass < float32(partner.Genome.Mass)*0.9 {
+				continue
+			}
+
+			offspringLoc, ok := findOffspringLocation(w, parent)
+			if !ok {
+				continue
+			}
+			ratioA := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
+			ratioB := 0.1 + (float32(partner.Genome.MassSplitRatio)/255.0)*0.4
+
+			massFromParent := parent.Mass * ratioA
+			massFromPartner := partner.Mass * ratioB
+			childMass := massFromParent + massFromPartner
+			energyFromParent := parent.Energy * ratioA
+			energyFromPartner := partner.Energy * ratioB
+			energyToSplit := energyFromParent + energyFromPartner
+			energyTransferred := energyToSplit * params.ReproductionEfficiency
+
+			parent.Mass -= massFromParent
+			parent.DrainEnergy(energyFromParent)
+
+			partner.Mass -= massFromPartner
+			partner.DrainEnergy(energyFromPartner)
+
+			radMult := radiationMult(parent.Loc.X, params)
+			childGenome := Crossover(parent.Genome, partner.Genome, params, radMult)
+			id := w.AddCreature(offspringLoc)
+			child := NewCreature(id, offspringLoc, childGenome, params)
+			child.Mass = childMass
+			child.Energy = energyTransferred
+			p.Creatures[id] = child
+			p.AddAlive(id)
+			aliveCount++
+			continue
+		}
+
+		// Asexual path.
 		offspringLoc, ok := findOffspringLocation(w, parent)
 		if !ok {
 			continue
 		}
+		splitRatio := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
+		childMass := parent.Mass * splitRatio
+		energyToSplit := parent.Energy * splitRatio
+		energyTransferred := energyToSplit * params.ReproductionEfficiency
 
-		halfMass := parent.Mass / 2
-		energyTransferred := halfMass * params.ReproductionEfficiency
-		metabolicWaste := energyTransferred * (1 - params.ReproductionEfficiency)
-		parent.Mass = halfMass
-		parent.DrainEnergy(energyTransferred + metabolicWaste)
+		parent.Mass -= childMass
+		parent.DrainEnergy(energyToSplit)
 
-		parent.Mass = halfMass
-
-		childGenome := AsexualReproduction(parent.Genome, params)
+		radMult := radiationMult(parent.Loc.X, params)
+		childGenome := AsexualReproduction(parent.Genome, params, radMult)
 		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
-		child.Mass = halfMass
+		child.Mass = childMass
 		child.Energy = energyTransferred
 		p.Creatures[id] = child
 		p.AddAlive(id)
 		aliveCount++
 	}
 	p.ReproductionQueue = p.ReproductionQueue[:0]
+}
+
+// radiationMult returns the mutation multiplier for a creature at world x-coordinate x.
+// Returns RadiationMutationMultiplier when inside the radiation zone, 1.0 otherwise.
+func radiationMult(x float64, params *Parameters) float32 {
+	if x < params.RadiationZoneWidth*params.GridWidth {
+		return params.RadiationMutationMultiplier
+	}
+	return 1.0
 }
 
 // findOffspringLocation returns a free position for an offspring, preferring a

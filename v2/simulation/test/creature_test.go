@@ -116,8 +116,8 @@ func TestMetabolicRateScalesWithMass(t *testing.T) {
 	large := simulation.NewCreature(2, grid.Position{}, genome, params)
 	large.Mass = 200
 
-	smallRate := small.MetabolicRate(params)
-	largeRate := large.MetabolicRate(params)
+	smallRate := small.MetabolicRate(params, grid.TempCold)
+	largeRate := large.MetabolicRate(params, grid.TempCold)
 
 	if largeRate <= smallRate {
 		t.Errorf("larger creature should have higher absolute metabolic rate: small=%f large=%f", smallRate, largeRate)

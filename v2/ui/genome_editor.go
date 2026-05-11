@@ -261,7 +261,33 @@ func (e *GenomeEditor) Open(g *simulation.Genome, p *simulation.Parameters) {
 	if g != nil {
 		e.genome = g.Copy()
 	} else {
-		e.genome = simulation.MakeRandomGenome(p)
+
+		e.genome = &simulation.Genome{
+			// Neural Blueprint: Zero edges, Zero internal neurons
+			Brain:            make([]simulation.Gene, 0),
+			SynapticDensity:  0,
+			CognitiveBreadth: 0,
+
+			// Physical Invariants
+			Mass:    byte(15),
+			MinMass: byte(10),
+
+			// Reproduction: Default to Asexual Circle (0)
+			ReproductionType: 0,
+			MassSplitRatio:   127, // 50% split
+
+			// Mid-range defaults for all other traits (0-255 scale)
+			MetabolicRate:     127,
+			SightDistance:     127,
+			FieldOfView:       127,
+			OscPeriod:         127,
+			JuvenilePeriod:    127,
+			MutationRate:      20, // Subtle evolution
+			Responsiveness:    127,
+			StomachSize:       127,
+			Neuroplasticity:   127,
+			LearningThreshold: 127,
+		}
 	}
 	e.draggingTrait = -1
 	e.pendingSrc = nil

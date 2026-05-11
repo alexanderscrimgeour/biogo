@@ -12,15 +12,26 @@ type point struct {
 }
 
 type RenderGrid struct {
-	position    point
-	blobSize    int
-	foodBlobs   []*Blob
-	blobs       []*Blob
-	walls       []*Line
+	position        point
+	blobSize        int
+	baseFoodImage   *ebiten.Image
+	baseCorpseImage *ebiten.Image
+	foodBlobs       []*Blob
+	blobs           []*Blob
+	walls           []*Line
 }
 
 func NewRenderGrid(xPos, yPos float64, blobSize int) *RenderGrid {
-	return &RenderGrid{position: point{X: xPos, Y: yPos}, blobSize: blobSize}
+	foodImg := ebiten.NewImage(blobSize, blobSize)
+	foodImg.Fill(color.RGBA{R: 65, G: 140, B: 55, A: 128})
+	corpseImg := ebiten.NewImage(blobSize, blobSize)
+	corpseImg.Fill(color.RGBA{R: 120, G: 60, B: 20, A: 128})
+	return &RenderGrid{
+		position:        point{X: xPos, Y: yPos},
+		blobSize:        blobSize,
+		baseFoodImage:   foodImg,
+		baseCorpseImage: corpseImg,
+	}
 }
 
 func (g *RenderGrid) DrawGrid(image *ebiten.Image) {
@@ -52,10 +63,10 @@ func (g *RenderGrid) AddLine(minX, minY, maxX, maxY float64) *Line {
 	return wall
 }
 
-func (g *RenderGrid) AddBlob(blobWidth int, c color.Color) *Blob {
-	newImage := ebiten.NewImage(blobWidth, blobWidth)
-	newImage.Fill(c)
-	blob := NewBlob(newImage, &ebiten.GeoM{})
+func (g *RenderGrid) AddBlob(scale float64) *Blob {
+	geoM := &ebiten.GeoM{}
+	geoM.Scale(scale, scale)
+	blob := NewBlob(g.baseCorpseImage, geoM)
 	g.blobs = append(g.blobs, blob)
 	return blob
 }
@@ -69,10 +80,10 @@ func (g *RenderGrid) RemoveBlob(blob *Blob) {
 	}
 }
 
-func (g *RenderGrid) AddFoodBlob(blobWidth int, c color.Color) *Blob {
-	newImage := ebiten.NewImage(blobWidth, blobWidth)
-	newImage.Fill(c)
-	blob := NewBlob(newImage, &ebiten.GeoM{})
+func (g *RenderGrid) AddFoodBlob(scale float64) *Blob {
+	geoM := &ebiten.GeoM{}
+	geoM.Scale(scale, scale)
+	blob := NewBlob(g.baseFoodImage, geoM)
 	g.foodBlobs = append(g.foodBlobs, blob)
 	return blob
 }

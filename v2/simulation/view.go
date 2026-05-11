@@ -2,14 +2,15 @@ package simulation
 
 // CreatureView is a read-only snapshot of a creature's display state.
 type CreatureView struct {
-	ID            int
-	X, Y          float64
-	R, G, B, A    uint8
-	Heading       float64 // radians
-	SightDistance byte
-	FieldOfView   byte
-	Mass          byte
-	CurrentMass   float64
+	ID               int
+	X, Y             float64
+	R, G, B, A       uint8
+	Heading          float64 // radians
+	SightDistance    byte
+	FieldOfView      byte
+	Mass             byte
+	CurrentMass      float64
+	ReproductionType byte // 0 = asexual, 1 = sexual
 }
 
 // FoodView is a read-only snapshot of a food item's position and mass for rendering.
@@ -25,6 +26,7 @@ type CorpseView struct {
 	X, Y           float64
 	IsCorpse       bool
 	EnergyFraction float32
+	Mass           float32
 }
 
 // NNEdgeView is a single weighted connection in the neural network snapshot.
@@ -46,25 +48,26 @@ type NeuralNetView struct {
 
 // CreatureDetailView is a rich snapshot of a single creature for the inspector panel.
 type CreatureDetailView struct {
-	ID              int
-	Energy          float32
-	MaxEnergy       float32
-	Age             int
-	IsJuvenile      bool
-	JuvenilePeriod  int
-	CurrentMass     float32
-	AdultMass       byte
-	LastAction      string
-	SightDistance   byte
-	FieldOfView     byte
-	Dopamine        float32
-	MutationPct     float32 // actual per-gene mutation probability as a percentage
-	R, G, B, A      uint8   // genome-derived display colour
-	MetabolicRate   float32 // energy drained per tick
-	MaxAge          int     // maximum lifespan in ticks
-	Stomach         float32
-	StomachCapacity float32
-	NeuralNet       NeuralNetView
+	ID               int
+	Energy           float32
+	MaxEnergy        float32
+	Age              int
+	IsJuvenile       bool
+	JuvenilePeriod   int
+	CurrentMass      float32
+	AdultMass        byte
+	LastAction       string
+	SightDistance    byte
+	FieldOfView      byte
+	Dopamine         float32
+	MutationPct      float32 // actual per-gene mutation probability as a percentage
+	R, G, B, A       uint8   // genome-derived display colour
+	MetabolicRate    float32 // energy drained per tick
+	MaxAge           int     // maximum lifespan in ticks
+	Stomach          float32
+	StomachCapacity  float32
+	ReproductionType byte // 0 = asexual, 1 = sexual
+	NeuralNet        NeuralNetView
 }
 
 // CreatureDetail returns a detailed view of a living creature by ID.
@@ -105,28 +108,29 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	}
 
 	return CreatureDetailView{
-		ID:              c.Id,
-		Energy:          c.Energy,
-		MaxEnergy:       c.MaxEnergy(s.Params),
-		Age:             c.Age,
-		IsJuvenile:      c.IsJuvenile(s.Params),
-		JuvenilePeriod:  c.JuvenilePeriod(s.Params),
-		CurrentMass:     c.CurrentMass(s.Params),
-		AdultMass:       c.Genome.Mass,
-		LastAction:      c.LastAction,
-		SightDistance:   c.Genome.SightDistance,
-		FieldOfView:     c.Genome.FieldOfView,
-		Dopamine:        c.Dopamine,
-		MutationPct:     s.Params.BaseMutationRate * float32(c.Genome.MutationRate),
-		R:               uint8(r >> 8),
-		G:               uint8(g >> 8),
-		B:               uint8(b >> 8),
-		A:               uint8(a >> 8),
-		MetabolicRate:   c.MetabolicRate(s.Params),
-		MaxAge:          c.MaxAge(s.Params),
-		Stomach:         c.Stomach,
-		StomachCapacity: c.StomachCapacity(s.Params),
-		NeuralNet:       nnView,
+		ID:               c.Id,
+		Energy:           c.Energy,
+		MaxEnergy:        c.MaxEnergy(s.Params),
+		Age:              c.Age,
+		IsJuvenile:       c.IsJuvenile(s.Params),
+		JuvenilePeriod:   c.JuvenilePeriod(s.Params),
+		CurrentMass:      c.CurrentMass(s.Params),
+		AdultMass:        c.Genome.Mass,
+		LastAction:       c.LastAction,
+		SightDistance:    c.Genome.SightDistance,
+		FieldOfView:      c.Genome.FieldOfView,
+		Dopamine:         c.Dopamine,
+		MutationPct:      s.Params.BaseMutationRate * float32(c.Genome.MutationRate),
+		R:                uint8(r >> 8),
+		G:                uint8(g >> 8),
+		B:                uint8(b >> 8),
+		A:                uint8(a >> 8),
+		MetabolicRate:    c.MetabolicRate(s.Params, s.World.TemperatureAt(c.Loc.Y)),
+		MaxAge:           c.MaxAge(s.Params),
+		Stomach:          c.Stomach,
+		StomachCapacity:  c.StomachCapacity(s.Params),
+		ReproductionType: c.Genome.ReproductionType,
+		NeuralNet:        nnView,
 	}, true
 }
 
@@ -141,18 +145,19 @@ func (s *Simulation) CreatureViews() []CreatureView {
 		r, g, b, a := c.Color.RGBA()
 
 		views = append(views, CreatureView{
-			ID:            int(id),
-			X:             c.Loc.X,
-			Y:             c.Loc.Y,
-			R:             uint8(r),
-			G:             uint8(g),
-			B:             uint8(b),
-			A:             uint8(a),
-			Heading:       c.Heading,
-			SightDistance: c.Genome.SightDistance,
-			FieldOfView:   c.Genome.FieldOfView,
-			Mass:          c.Genome.Mass,
-			CurrentMass:   float64(c.Mass),
+			ID:               int(id),
+			X:                c.Loc.X,
+			Y:                c.Loc.Y,
+			R:                uint8(r),
+			G:                uint8(g),
+			B:                uint8(b),
+			A:                uint8(a),
+			Heading:          c.Heading,
+			SightDistance:    c.Genome.SightDistance,
+			FieldOfView:      c.Genome.FieldOfView,
+			Mass:             c.Genome.Mass,
+			CurrentMass:      float64(c.Mass),
+			ReproductionType: c.Genome.ReproductionType,
 		})
 	}
 	return views

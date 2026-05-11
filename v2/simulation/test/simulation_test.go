@@ -196,7 +196,18 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
+		c.Genome.ReproductionType = 0   // asexual
+		c.Genome.MassSplitRatio = 128   // ~25% split
 		c.Energy = c.Mass * p.EnergyPerMassUnit
+		// Wire ENERGY sensor directly to REPRODUCE action so it fires unconditionally.
+		c.Genome.Brain = append(c.Genome.Brain, simulation.Gene{
+			SourceType: simulation.SENSOR,
+			SourceID:   simulation.ENERGY,
+			SinkType:   simulation.ACTION,
+			SinkID:     simulation.REPRODUCE,
+			Weight:     255,
+		})
+		c.CreateNeuralNet()
 	}
 
 	initialCount := sim.PopulationCount()

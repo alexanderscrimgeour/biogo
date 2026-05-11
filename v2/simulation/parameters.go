@@ -67,6 +67,8 @@ type Parameters struct {
 	// Reproduction
 	ReproductionEnergyThreshold float32
 	ReproductionEfficiency      float32 // energy cost = offspringMass * EnergyPerMassUnit * Efficiency
+	MatingRadius                float64 // max distance between two creatures for sexual mating to occur
+	MinMatingSimilarity         float32 // minimum GenomeSimilarity [0,1] required for a pair to mate
 
 	// Predation
 	BaseBiteSize          float32 // mass consumed per eating interaction for a max-mass creature; scales linearly with body mass
@@ -80,6 +82,16 @@ type Parameters struct {
 	MinLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 0
 	MaxLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 255
 
+	// Temperature effects
+	ColdMetabolicMultiplier float32 // metabolic cost multiplier at TempCold (10°C)
+	WarmMetabolicMultiplier float32 // metabolic cost multiplier at TempWarm (40°C)
+	ColdSpeedMultiplier     float32 // fraction of max move speed at TempCold (10°C); 1.0 at TempWarm
+
+	// Radiation zone (left strip of the world)
+	RadiationZoneWidth          float64 // fraction of world width that is radioactive [0, 1]
+	RadiationMutationMultiplier float32 // multiplier applied to offspring mutation rate when parent is in zone
+	RadiationDamagePerTick      float32 // base energy drained per tick (Kleiber-scaled) while in zone
+
 	// Misc
 	SavedGenomeProportion  float64
 	PopulationSensorRadius float64
@@ -88,9 +100,9 @@ type Parameters struct {
 func DefaultParams() *Parameters {
 	p := &Parameters{
 		GridWidth:                   1000,
-		GridHeight:                  600,
+		GridHeight:                  800,
 		MaxPopulation:               20000,
-		MinPopulation:               100,
+		MinPopulation:               500,
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
 		MaxMass:                     255,
@@ -110,12 +122,12 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     25000,
+		MaxFood:                     30000,
 		FoodSpawnInterval:           50,
 		FoodMass:                    10.0,
 		FoodInteractionRadius:       3.0,
-		FountainCount:               4,
-		FountainDriftSpeed:          0.3,
+		FountainCount:               10,
+		FountainDriftSpeed:          0.2,
 		FountainRadius:              50.0,
 		MinStomachSize:              5.0,
 		MaxStomachSize:              100.0,
@@ -129,6 +141,8 @@ func DefaultParams() *Parameters {
 		GrowthEnergyCostFactor:      0.2,
 		ReproductionEnergyThreshold: 0.85,
 		ReproductionEfficiency:      0.9,
+		MatingRadius:                16.0,
+		MinMatingSimilarity:         0.75,
 		BaseBiteSize:                100.0,
 		CorpseDecayRate:             0.05,
 		MinPredationMassRatio:       0.25,
@@ -137,7 +151,13 @@ func DefaultParams() *Parameters {
 		MaxNeuroplasticity:          0.05,
 		MinLearningThreshold:        0.05,
 		MaxLearningThreshold:        0.5,
-		SavedGenomeProportion:       0.01,
+		ColdMetabolicMultiplier:     1.8,
+		WarmMetabolicMultiplier:     0.8,
+		ColdSpeedMultiplier:         0.4,
+		RadiationZoneWidth:          0.2,
+		RadiationMutationMultiplier: 10.0,
+		RadiationDamagePerTick:      0.1,
+		SavedGenomeProportion:       0.5,
 		PopulationSensorRadius:      25,
 	}
 	if err := p.Validate(); err != nil {

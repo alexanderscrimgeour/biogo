@@ -21,13 +21,14 @@ type Creature struct {
 	Loc            grid.Position
 	BirthLoc       grid.Position
 	Heading        float64 // radians; 0 = east, π/2 = south (screen-down)
-	LastAction     string
 	Genome         *Genome
 	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
 	Dopamine       float32
-	LastDopamine   float32
 	Stomach        float32 // current food mass in stomach; digested into energy each tick
+	LastAction     string
+	LastDopamine   float32
 	LastStomach    float32
+	LastLoc        grid.Position
 	IsResting      bool
 	Color          color.RGBA
 
@@ -37,9 +38,11 @@ type Creature struct {
 	cachedJuvenilePeriod int     // MinJuvenilePeriod + genome fraction * range
 	Sensors              SensorContext
 	// Buffers to avoid heap allocation
-	SightFoodBuffer     []int
-	SightCreatureBuffer []int
-	LocalCreatureBuffer []int
+	SightFoodBuffer        []int
+	SightCreatureBuffer    []int
+	SightCreatureSimBuffer []float32 // parallel to SightCreatureBuffer; genome similarity to self
+	LocalCreatureBuffer    []int
+	LocalCreatureSimBuffer []float32 // parallel to LocalCreatureBuffer; genome similarity to self
 }
 
 func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
@@ -52,7 +55,7 @@ func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature 
 		Nnet:           NeuralNet{},
 		Loc:            loc,
 		BirthLoc:       loc,
-		Responsiveness: float32(utils.ClampByteAsFloat32(0, 1, g.Responsiveness)) / 2,
+		Responsiveness: float32(utils.LerpByteAsFloat32(0, 1, g.Responsiveness)) / 2,
 		Heading:        rand.Float64()*2*math.Pi - math.Pi,
 		Genome:         g,
 		Mass:           float32(g.MinMass),
@@ -74,7 +77,7 @@ func NewAdultCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Crea
 		Nnet:           NeuralNet{},
 		Loc:            loc,
 		BirthLoc:       loc,
-		Responsiveness: float32(utils.ClampByteAsFloat32(0, 1, g.Responsiveness)) / 2,
+		Responsiveness: float32(utils.LerpByteAsFloat32(0, 1, g.Responsiveness)) / 2,
 		Heading:        rand.Float64()*2*math.Pi - math.Pi,
 		Genome:         g,
 		Mass:           float32(g.Mass),
@@ -245,9 +248,20 @@ func (c *Creature) LoseDopamine(ratio float32) {
 // Follows Kleiber's Law: absolute BMR scales as Mass^0.75 — larger creatures
 // have higher absolute metabolic costs, creating genuine selective pressure against
 // runaway body size. The MetabolicRate genome gene shifts efficiency in [0.7, 1.3].
-func (c Creature) MetabolicRate(params *Parameters) float32 {
+// Ambient temperature temp (°C) further scales cost: cold environments are more
+// expensive to survive in (ColdMetabolicMultiplier at 10°C, WarmMetabolicMultiplier at 40°C).
+func (c Creature) MetabolicRate(params *Parameters, temp float32) float32 {
 	massNorm := c.Mass / float32(params.MaxMass)
-	return params.BaseBMR * float32(math.Pow(float64(massNorm), 0.75)) * c.cachedMetabolicGene
+	base := params.BaseBMR * float32(math.Pow(float64(massNorm), 0.75)) * c.cachedMetabolicGene
+	tempNorm := (temp - grid.TempCold) / (grid.TempWarm - grid.TempCold)
+	if tempNorm < 0 {
+		tempNorm = 0
+	} else if tempNorm > 1 {
+		tempNorm = 1
+	}
+	tempNorm = float32(math.Pow(float64(tempNorm), 2))
+	tempMult := params.ColdMetabolicMultiplier + (params.WarmMetabolicMultiplier-params.ColdMetabolicMultiplier)*tempNorm
+	return base * tempMult
 }
 
 // MaxAge returns the creature's maximum lifespan in ticks.

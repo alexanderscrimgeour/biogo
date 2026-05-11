@@ -36,13 +36,12 @@ type SimulationState interface {
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetSpawnMutationRate(rate float32)
 	SpawnAt(x, y float64) bool
+	SpawnClusterAt(x, y float64, count int) bool
 	SpawnGenome(g *simulation.Genome) bool
 	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
 	GetParams() *simulation.Parameters
 	GetSnapshot() simulation.StateSnapshot
 }
-
-var foodColor = color.RGBA{R: 50, G: 200, B: 60, A: 255}
 
 const historyLen = 10000
 
@@ -108,6 +107,7 @@ type creatureAnim struct {
 	r, g, b, a   uint8
 	heading      float64
 	mass         float64 // Prioritized mass
+	sexual       bool
 }
 
 type Game struct {
@@ -150,6 +150,14 @@ type Game struct {
 	unitCircle         []struct{ x, y float32 }
 	creatureVs         []ebiten.Vertex
 	creatureIs         []uint16
+	camera             Camera
+	worldLayer         *ebiten.Image
+	camDragging        bool
+	camDragMoved       bool
+	camDragStartX      int
+	camDragStartY      int
+	camDragLastX       int
+	camDragLastY       int
 }
 
 var BlockSize int = 2
@@ -192,6 +200,11 @@ func NewGame(sim SimulationState) *Game {
 	const initCapCreatures = 500
 	g.creatureVs = make([]ebiten.Vertex, 0, initCapCreatures*(1+segments+1))
 	g.creatureIs = make([]uint16, 0, initCapCreatures*segments*3)
+
+	worldW := int(sim.GridWidth()) * BlockSize
+	worldH := int(sim.GridHeight()) * BlockSize
+	g.worldLayer = ebiten.NewImage(worldW, worldH)
+	g.camera = Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0}
 
 	g.pauseBtn = &components.Button{
 		X: 10, Y: 10, W: 80, H: 24,
@@ -331,6 +344,40 @@ func (g *Game) handleContinuousInput() {
 			g.spawnMutSlider.Dragging = false
 		}
 	}
+
+	// Camera drag (left mouse, started when no UI element consumed the press)
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && g.camDragging {
+		dx := mx - g.camDragLastX
+		dy := my - g.camDragLastY
+		if !g.camDragMoved && (dx*dx+dy*dy > 9) {
+			g.camDragMoved = true
+		}
+		if g.camDragMoved {
+			g.camera.X -= float64(dx) / g.camera.Zoom
+			g.camera.Y -= float64(dy) / g.camera.Zoom
+		}
+		g.camDragLastX = mx
+		g.camDragLastY = my
+	}
+
+	// WASD pan
+	const panSpeed = 5.0
+	pan := panSpeed / g.camera.Zoom
+	if ebiten.IsKeyPressed(ebiten.KeyW) {
+		g.camera.Y -= pan
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyS) {
+		g.camera.Y += pan
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyA) {
+		g.camera.X -= pan
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) {
+		g.camera.X += pan
+	}
+	worldW := float64(g.sim.GridWidth()) * float64(BlockSize)
+	worldH := float64(g.sim.GridHeight()) * float64(BlockSize)
+	g.camera.Clamp(worldW, worldH)
 }
 
 func (g *Game) handleInput() bool {
@@ -390,8 +437,10 @@ func (g *Game) handleInput() bool {
 		}
 
 		if g.spawnPlacing {
+			sw, sh := ebiten.WindowSize()
+			wx, wy := g.camera.ScreenToWorld(float64(mx), float64(my), float64(sw), float64(sh))
 			bs := float64(BlockSize)
-			g.sim.SpawnAt(float64(mx)/bs, float64(my)/bs)
+			g.sim.SpawnClusterAt(wx/bs, wy/bs, 5)
 			return true
 		}
 	}
@@ -413,8 +462,17 @@ func (g *Game) Update() error {
 	}
 
 	_, scrollY := ebiten.Wheel()
-	if scrollY != 0 && g.savedGenomesPanel.visible {
-		g.savedGenomesPanel.Scroll(int(scrollY))
+	if scrollY != 0 {
+		if g.savedGenomesPanel.visible {
+			g.savedGenomesPanel.Scroll(int(scrollY))
+		} else {
+			g.camera.Zoom *= math.Pow(1.15, scrollY)
+			if g.camera.Zoom < 0.1 {
+				g.camera.Zoom = 0.1
+			} else if g.camera.Zoom > 10.0 {
+				g.camera.Zoom = 10.0
+			}
+		}
 	}
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
@@ -423,8 +481,19 @@ func (g *Game) Update() error {
 		} else if g.savedGenomesPanel.visible {
 			g.savedGenomesPanel.HandleInput(mx, my)
 		} else if !g.handleInput() {
-			g.trySelectCreature(mx, my)
+			g.camDragging = true
+			g.camDragStartX = mx
+			g.camDragStartY = my
+			g.camDragLastX = mx
+			g.camDragLastY = my
+			g.camDragMoved = false
 		}
+	}
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+		if g.camDragging && !g.camDragMoved {
+			g.trySelectCreature(g.camDragStartX, g.camDragStartY)
+		}
+		g.camDragging = false
 	}
 
 	if !g.paused {
@@ -464,6 +533,7 @@ func (g *Game) Update() error {
 				anim.r, anim.g, anim.b, anim.a = cv.R, cv.G, cv.B, cv.A
 				anim.heading = cv.Heading
 				anim.mass = cv.CurrentMass
+				anim.sexual = cv.ReproductionType == 1
 			} else {
 				g.animByID[cv.ID] = &creatureAnim{
 					prevX: screenX, prevY: screenY,
@@ -471,6 +541,7 @@ func (g *Game) Update() error {
 					r: cv.R, g: cv.G, b: cv.B, a: cv.A,
 					heading: cv.Heading,
 					mass:    cv.CurrentMass,
+					sexual:  cv.ReproductionType == 1,
 				}
 			}
 		}
@@ -483,9 +554,20 @@ func (g *Game) Update() error {
 		currentFood := make(map[int]bool, len(snapshot.Food))
 		for _, fv := range snapshot.Food {
 			currentFood[fv.ID] = true
-			if _, ok := g.foodBlobsByID[fv.ID]; !ok {
-				blob := g.renderGrid.AddFoodBlob(BlockSize, foodColor)
-				blob.Translate(fv.X*bs, fv.Y*bs)
+			massScale := math.Sqrt(float64(fv.Mass) / 10.0)
+			if massScale > 1.0 {
+				massScale = 1.0
+			} else if massScale < 0.2 {
+				massScale = 0.2
+			}
+			offset := bs * (1.0 - massScale) / 2.0
+			x := fv.X*bs + offset
+			y := fv.Y*bs + offset
+			if blob, ok := g.foodBlobsByID[fv.ID]; ok {
+				blob.SetScaleTranslate(massScale, x, y)
+			} else {
+				blob := g.renderGrid.AddFoodBlob(massScale)
+				blob.Translate(x, y)
 				g.foodBlobsByID[fv.ID] = blob
 			}
 		}
@@ -499,14 +581,21 @@ func (g *Game) Update() error {
 		currentCorpses := make(map[int]bool, len(snapshot.Corpses))
 		for _, cv := range snapshot.Corpses {
 			currentCorpses[cv.ID] = true
-			alpha := uint8(cv.EnergyFraction * 220)
-			corpseColor := color.RGBA{R: 120, G: 60, B: 20, A: alpha}
+			massScale := cv.Mass
+			if massScale > 1.0 {
+				massScale = 1.0
+			} else if massScale < 0 {
+				massScale = 0
+			}
+			offset := bs * (1.0 - float64(massScale)) / 2.0
+			x := cv.X*bs + offset
+			y := cv.Y*bs + offset
 			if blob, ok := g.corpseBlobsByID[cv.ID]; ok {
+				blob.SetScaleTranslate(float64(massScale), x, y)
 				blob.Move(cv.X*bs, cv.Y*bs)
-				blob.SetColor(corpseColor)
 			} else {
-				blob := g.renderGrid.AddBlob(BlockSize, corpseColor)
-				blob.Translate(cv.X*bs, cv.Y*bs)
+				blob := g.renderGrid.AddBlob(float64(massScale))
+				blob.Translate(x, y)
 				if g.corpseBlobsByID == nil {
 					g.corpseBlobsByID = make(map[int]*Blob)
 				}
@@ -528,13 +617,13 @@ func (g *Game) Update() error {
 
 	return nil
 }
+
 func (g *Game) Draw(screen *ebiten.Image) {
-	if g.isDarkBackground {
-		screen.Fill(color.RGBA{5, 5, 10, 255})
-	} else {
-		screen.Fill(color.RGBA{100, 100, 100, 255})
-	}
-	g.renderGrid.DrawBackground(screen)
+	sw, sh := screen.Bounds().Dx(), screen.Bounds().Dy()
+
+	// --- World layer ---
+	g.drawTemperatureBackground()
+	g.renderGrid.DrawBackground(g.worldLayer)
 
 	t := 1.0
 	if g.tickDuration > 0 && !g.paused {
@@ -546,7 +635,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	for _, blob := range g.corpseBlobsByID {
-		blob.Draw(screen)
+		blob.Draw(g.worldLayer)
 	}
 
 	g.creatureVs = g.creatureVs[:0]
@@ -555,9 +644,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	half := float32(BlockSize) / 2
 
 	vertsPerCreature := 1 + len(g.unitCircle)
+	maxVerts := 1 + len(g.unitCircle)
+	if maxVerts < 3 {
+		maxVerts = 3
+	}
 	flushCreatures := func() {
 		if len(g.creatureVs) > 0 {
-			screen.DrawTriangles(g.creatureVs, g.creatureIs, g.whiteImage, nil)
+			g.worldLayer.DrawTriangles(g.creatureVs, g.creatureIs, g.whiteImage, nil)
 			g.creatureVs = g.creatureVs[:0]
 			g.creatureIs = g.creatureIs[:0]
 		}
@@ -587,40 +680,71 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
 		baseIdx := uint16(len(g.creatureVs))
 
-		g.creatureVs = append(g.creatureVs, ebiten.Vertex{
-			DstX: cx, DstY: cy,
-			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
-		})
-
-		for _, unit := range g.unitCircle {
+		if anim.sexual {
+			// Vertex 0: The Nose (Extended forward)
 			g.creatureVs = append(g.creatureVs, ebiten.Vertex{
-				DstX:   cx + r*unit.x,
-				DstY:   cy + r*unit.y,
+				DstX:   cx + (r)*float32(math.Cos(anim.heading)),
+				DstY:   cy + (r)*float32(math.Sin(anim.heading)),
 				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 			})
-		}
+			// Vertex 1: Rear Left
+			g.creatureVs = append(g.creatureVs, ebiten.Vertex{
+				DstX:   cx + r*float32(math.Cos(anim.heading+2.4)),
+				DstY:   cy + r*float32(math.Sin(anim.heading+2.4)),
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			})
+			// Vertex 2: Rear Right
+			g.creatureVs = append(g.creatureVs, ebiten.Vertex{
+				DstX:   cx + r*float32(math.Cos(anim.heading-2.4)),
+				DstY:   cy + r*float32(math.Sin(anim.heading-2.4)),
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			})
 
-		for i := uint16(1); i <= uint16(len(g.unitCircle)-1); i++ {
-			g.creatureIs = append(g.creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
+			g.creatureIs = append(g.creatureIs, baseIdx, baseIdx+1, baseIdx+2)
+		} else {
+			g.creatureVs = append(g.creatureVs, ebiten.Vertex{
+				DstX: cx, DstY: cy,
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			})
+			for _, unit := range g.unitCircle {
+				g.creatureVs = append(g.creatureVs, ebiten.Vertex{
+					DstX:   cx + r*unit.x,
+					DstY:   cy + r*unit.y,
+					ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+				})
+			}
+			for i := uint16(1); i <= uint16(len(g.unitCircle)-1); i++ {
+				g.creatureIs = append(g.creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
+			}
 		}
 	}
 
 	flushCreatures()
 
-	g.drawHistoryGraph(screen)
-
 	if g.selectedCreatureID != -1 {
-		g.drawSelectionHighlight(screen)
-		if detail, ok := g.sim.CreatureDetail(g.selectedCreatureID); ok {
-			g.drawCreatureDetail(screen, detail)
-			g.drawNeuralNetGraph(screen, detail)
-
+		g.drawSelectionHighlight(g.worldLayer)
+		if g.currentSnapshot != nil {
 			if idx, found := g.lookup[g.selectedCreatureID]; found {
 				view := g.currentSnapshot.Creatures[idx]
-				g.drawFOVCones(screen, map[int]simulation.CreatureView{
+				g.drawFOVCones(g.worldLayer, map[int]simulation.CreatureView{
 					g.selectedCreatureID: view,
 				}, t)
 			}
+		}
+	}
+
+	// Apply camera transform: blit world to screen.
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM = g.camera.GeoM(float64(sw), float64(sh))
+	screen.DrawImage(g.worldLayer, op)
+
+	// --- HUD (identity transform) ---
+	g.drawHistoryGraph(screen)
+
+	if g.selectedCreatureID != -1 {
+		if detail, ok := g.sim.CreatureDetail(g.selectedCreatureID); ok {
+			g.drawCreatureDetail(screen, detail)
+			g.drawNeuralNetGraph(screen, detail)
 		} else {
 			g.selectedCreatureID = -1
 		}
@@ -662,7 +786,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.genomeEditor.Draw(screen, g.statFont)
 }
 
-func (g *Game) drawFOVCones(screen *ebiten.Image, views map[int]simulation.CreatureView, t float64) {
+func (g *Game) drawFOVCones(img *ebiten.Image, views map[int]simulation.CreatureView, t float64) {
 	bs := float64(BlockSize)
 	half := float32(BlockSize) / 2
 	for _, cv := range views {
@@ -690,21 +814,22 @@ func (g *Game) drawFOVCones(screen *ebiten.Image, views map[int]simulation.Creat
 		for i := range vs {
 			vs[i].ColorR, vs[i].ColorG, vs[i].ColorB, vs[i].ColorA = float32(clr.R)/255, float32(clr.G)/255, float32(clr.B)/255, 0.15
 		}
-		screen.DrawTriangles(vs, is, g.whiteImage, nil)
+		img.DrawTriangles(vs, is, g.whiteImage, nil)
 	}
 }
 
 func (g *Game) Layout(w, h int) (int, int) { return w, h }
 
 func (g *Game) addStatLine(img *ebiten.Image, desc string, val string, row int) {
-	x := int(g.sim.GridWidth())*BlockSize - 200
+	x := img.Bounds().Dx() - 200
 	text.Draw(img, fmt.Sprintf("%s: %s", desc, val), g.statFont, x, 20*row+3, color.White)
 }
 
 func foodKey(x, y float64) string { return fmt.Sprintf("%f,%f", x, y) }
 
 func (g *Game) trySelectCreature(mx, my int) {
-	clickX, clickY := float64(mx), float64(my)
+	sw, sh := ebiten.WindowSize()
+	clickX, clickY := g.camera.ScreenToWorld(float64(mx), float64(my), float64(sw), float64(sh))
 	half, hitRadius := float64(BlockSize)/2, float64(BlockSize)*6
 	bestID, bestDist := -1, math.Inf(1)
 	for id, anim := range g.animByID {
@@ -721,9 +846,9 @@ func (g *Game) trySelectCreature(mx, my int) {
 	}
 }
 
-func (g *Game) drawSelectionHighlight(screen *ebiten.Image) {
+func (g *Game) drawSelectionHighlight(img *ebiten.Image) {
 	if anim, ok := g.animByID[g.selectedCreatureID]; ok {
-		vector.StrokeCircle(screen, float32(anim.curX)+float32(BlockSize)/2, float32(anim.curY)+float32(BlockSize)/2, float32(BlockSize)*5, 1.5, color.RGBA{255, 240, 80, 210}, false)
+		vector.StrokeCircle(img, float32(anim.curX)+float32(BlockSize)/2, float32(anim.curY)+float32(BlockSize)/2, float32(BlockSize)*5, 1.5, color.RGBA{255, 240, 80, 210}, false)
 	}
 }
 func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDetailView) {
@@ -775,6 +900,15 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	currY += h + 15
 	mutation := &components.Label{Text: fmt.Sprintf("Mutation:  %.2f%%", d.MutationPct), Font: g.statFont, Color: color.White}
 	mutation.Draw(screen, currX, currY)
+	currY += h + 15
+	reproStr := "Asexual"
+	reproColor := color.RGBA{100, 180, 255, 255}
+	if d.ReproductionType != 0 {
+		reproStr = "Sexual"
+		reproColor = color.RGBA{255, 120, 180, 255}
+	}
+	repro := &components.Label{Text: fmt.Sprintf("Reproduction: %s", reproStr), Font: g.statFont, Color: reproColor}
+	repro.Draw(screen, currX, currY)
 	currY += h + 25
 
 	g.drawPhenotypeChart(screen, d, currX, currY)
@@ -1134,13 +1268,13 @@ func nnEdgeColor(w float32) color.RGBA {
 func nnSensorName(id byte) string {
 	names := [...]string{
 		"Age", "Energy", "Loc X", "Loc Y", "Osc 1",
-		"LocalDensity", "LocalHeading", "LocalCentreOfMass",
-		"See Pop", "See Food", "See Corpse",
-		"Random", "Satiety", "Facing", "Food Ang",
-		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd",
+		"LocalDensity", "LocalHeading", "LocalCOM",
+		"PopFwd", "PopCentroid", "FoodFws", "CorpsesFwd",
+		"Random", "Satiety", "Heading", "Food Ang",
+		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd", "KinshipNearest",
 		"Mass %", "Blocked", "Prey", "Threat Ang",
 		"Prey Ang", "Wall Prox", "Digest", "Food/Cap",
-		"Juvenile", "EnergyDelta",
+		"Juvenile", "EnergyDelta", "Temp", "TempDelta",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -1151,7 +1285,7 @@ func nnSensorName(id byte) string {
 func nnActionName(id byte) string {
 	names := [...]string{
 		"Move", "Rotate", "SetOsc", "SetResp",
-		"SetLearn", "Rest", "Attack", "Reward", "Punish",
+		"SetLearn", "Rest", "Attack", "Reward", "Punish", "Mate",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -1179,6 +1313,49 @@ func (g *Game) applySpawnMutSlider(mx int) {
 	}
 	g.spawnMutRate = float32(spawnMutRateMin + float64(t)*(spawnMutRateMax-spawnMutRateMin))
 	g.sim.SetSpawnMutationRate(g.spawnMutRate)
+}
+
+// drawTemperatureBackground paints a vertical temperature gradient onto worldLayer.
+// Top 20% of the world is cold (blue), bottom 20% is warm (red/orange), with a
+// linear gradient in between. Rendered as 4-pixel horizontal strips.
+func (g *Game) drawTemperatureBackground() {
+	worldW := float32(int(g.sim.GridWidth()) * BlockSize)
+	worldH := float32(int(g.sim.GridHeight()) * BlockSize)
+
+	var coldR, coldG, coldB uint8
+	var warmR, warmG, warmB uint8
+	if g.isDarkBackground {
+		coldR, coldG, coldB = 10, 22, 62
+		warmR, warmG, warmB = 72, 18, 8
+	} else {
+		coldR, coldG, coldB = 130, 160, 210
+		warmR, warmG, warmB = 210, 115, 55
+	}
+
+	params := g.sim.GetParams()
+	radZoneW := float32(params.RadiationZoneWidth * float64(int(g.sim.GridWidth())*BlockSize))
+
+	const bandH = float32(4)
+	for y := float32(0); y < worldH; y += bandH {
+		normY := y / worldH
+		var t float32
+		switch {
+		case normY <= 0.2:
+			t = 0
+		case normY >= 0.8:
+			t = 1
+		default:
+			t = (normY - 0.2) / 0.6
+		}
+		r := uint8(float32(coldR)*(1-t) + float32(warmR)*t)
+		gv := uint8(float32(coldG)*(1-t) + float32(warmG)*t)
+		b := uint8(float32(coldB)*(1-t) + float32(warmB)*t)
+		vector.DrawFilledRect(g.worldLayer, 0, y, worldW, bandH, color.RGBA{r, gv, b, 255}, false)
+	}
+
+	// Radiation zone: semi-transparent green-yellow tint + border
+	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 60}, false)
+	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 180}, false)
 }
 
 func (g *Game) drawSpawnMutSlider(screen *ebiten.Image) {

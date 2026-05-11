@@ -255,6 +255,7 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 	genome.Mass = 100
 	genome.MinMass = 10
+	genome.MassSplitRatio = 255 // maximum split → 50%
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
@@ -281,7 +282,8 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 	genome := simulation.MakeRandomGenome(params)
 	genome.Mass = 100
 	genome.MinMass = 10
-	genome.MutationRate = 0 // suppress mutations so child inherits same Mass
+	genome.MutationRate = 0      // suppress mutations so child inherits same Mass
+	genome.MassSplitRatio = 255  // maximum split → 50%
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)

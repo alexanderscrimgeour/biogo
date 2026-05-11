@@ -40,7 +40,7 @@ func TestDoNothingReducesMetabolicCost(t *testing.T) {
 	c.Genome.SynapticDensity = 1
 	c.CreateNeuralNet()
 
-	rate := c.MetabolicRate(p)
+	rate := c.MetabolicRate(p, sim.World.TemperatureAt(c.Loc.Y))
 	sim.Update()
 
 	// Resting refunds the full metabolic drain and charges 10% — net cost = rate * 0.1.

@@ -94,3 +94,12 @@ func (b *Blob) updateCenter(x, y float64) {
 func (b *Blob) SetColor(c color.Color) {
 	b.img.Fill(c)
 }
+
+// SetScaleTranslate resets the blob's transform to scale then translate, used to update food blob size/position.
+func (b *Blob) SetScaleTranslate(scale, x, y float64) {
+	*b.geoM = ebiten.GeoM{}
+	b.geoM.Scale(scale, scale)
+	b.geoM.Translate(x, y)
+	b.center.X = x + float64(b.img.Bounds().Dx())*scale/2
+	b.center.Y = y + float64(b.img.Bounds().Dy())*scale/2
+}

@@ -36,34 +36,39 @@ func (s *Simulation) initializeWorld() {
 	s.World.SpawnRandom(s.Params.MaxFood, s.Params.FoodMass)
 	s.World.InitFountains(s.Params.FountainCount)
 }
-
 func (s *Simulation) initializePopulation() {
 	pop := NewPopulation(s.Params)
 	savedGenomes, _ := LoadAllCreatureGenomes()
-
 	maxSeeded := int(float64(s.Params.StartingPopulation) * s.Params.SavedGenomeProportion)
 	numSaved := len(savedGenomes)
+	bubbleSize := 5
+	spawnRadius := 15.0
 
-	for i := 0; i < s.Params.StartingPopulation; i++ {
-		loc, ok := s.World.FindEmptyLocation()
+	for i := 0; i < s.Params.StartingPopulation; i += bubbleSize {
+		centerLoc, ok := s.World.FindEmptyLocation()
 		if !ok {
 			break
 		}
 
 		var genome *Genome
-
-		// If we have saved genomes and haven't hit the seeding limit,
-		// cycle through savedGenomes to ensure equal distribution.
 		if numSaved > 0 && i < maxSeeded {
-			genome = savedGenomes[i%numSaved]
+			genome = savedGenomes[(i/bubbleSize)%numSaved]
 		} else {
 			genome = MakeRandomGenome(s.Params)
 		}
 
-		id := s.World.AddCreature(loc)
-		c := NewAdultCreature(id, loc, genome, s.Params)
-		pop.Creatures[id] = c
-		pop.AddAlive(id)
+		for j := 0; j < bubbleSize; j++ {
+			if i+j >= s.Params.StartingPopulation {
+				break
+			}
+
+			loc := s.World.FindEmptyLocationNear(centerLoc, spawnRadius)
+
+			id := s.World.AddCreature(loc)
+			c := NewAdultCreature(id, loc, genome, s.Params)
+			pop.Creatures[id] = c
+			pop.AddAlive(id)
+		}
 	}
 	s.Population = pop
 }
@@ -142,12 +147,15 @@ func (s *Simulation) step() {
 	wg.Wait()
 
 	// Merge per-goroutine command buffers into the shared queues.
+	var wantMate []*Creature
 	for i := range results {
 		s.Population.DeathQueue = append(s.Population.DeathQueue, results[i].death...)
 		s.Population.MoveQueue = append(s.Population.MoveQueue, results[i].move...)
 		s.Population.AttackQueue = append(s.Population.AttackQueue, results[i].attack...)
 		s.Population.ReproductionQueue = append(s.Population.ReproductionQueue, results[i].reproduction...)
+		wantMate = append(wantMate, results[i].mate...)
 	}
+	s.pairMates(wantMate)
 
 	s.Population.ProcessMoveQueue(s.World, s.Params)
 	s.Population.ProcessAttackQueue(s.World, s.Params)
@@ -192,38 +200,37 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	c.Age++
 	c.GrowMass(s.Params)
 	c.LastAction = ""
-	c.DrainEnergy(c.MetabolicRate(s.Params))
+	temp := s.World.TemperatureAt(c.Loc.Y)
+	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
+	if c.Loc.X < s.Params.RadiationZoneWidth*s.Params.GridWidth {
+		massNorm := c.Mass / float32(s.Params.MaxMass)
+		c.DrainEnergy(s.Params.RadiationDamagePerTick * float32(math.Pow(float64(massNorm), 0.75)))
+	}
 	c.Digest(s.Params)
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
 		pending.death = append(pending.death, DeathInstruction{c})
 		return
 	}
 
-	juvenilePeriod := c.cachedJuvenilePeriod
-	reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
-	if c.Energy >= reproThreshold && c.Age >= juvenilePeriod && c.Mass >= (float32(c.Genome.Mass)*0.9) {
-		pending.reproduction = append(pending.reproduction, ReproductionInstruction{c})
-		c.LastAction = appendActionString(c.LastAction, "Reproducing")
-	}
-
 	actionLevels := c.FeedForward(s.World, s.Population, s.Tick, s.Params)
-	s.executeActionsLocal(c, actionLevels, pending)
+	s.executeActionsLocal(c, actionLevels, pending, temp)
 
 	c.LastTickEnergy = c.Energy
 	c.LastStomach = c.Stomach
+	c.LastLoc = c.Loc
 }
 
 func (s *Simulation) Print() {
 	fmt.Printf("Population Size: %d", len(s.Population.Creatures))
 }
 
-func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pending *pendingInstructions) {
+func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pending *pendingInstructions, temp float32) {
 	if IsActionEnabled(REST) {
 		level := actionLevels[REST]
 		if math.Abs(float64(level)) > 0.75 {
 			// Resting pays fraction of the basal metabolic rate: refund the base drain
 			// already charged this tick, then re-charge the lower resting rate.
-			rate := c.MetabolicRate(s.Params)
+			rate := c.MetabolicRate(s.Params, temp)
 
 			c.GainEnergy(rate, s.Params)
 			c.DrainEnergy(rate * 0.1)
@@ -274,6 +281,22 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 	}
 
+	if IsActionEnabled(REPRODUCE) {
+		level := actionLevels[REPRODUCE]
+		if math.Abs(float64(level)) > 0.5 {
+			reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
+			if c.Energy >= reproThreshold && c.Age >= c.cachedJuvenilePeriod && c.Mass >= float32(c.Genome.Mass)*0.9 {
+				if c.Genome.ReproductionType == 0 {
+					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
+					c.LastAction = appendActionString(c.LastAction, "Reproducing")
+				} else {
+					pending.mate = append(pending.mate, c)
+					c.LastAction = appendActionString(c.LastAction, "Seeking mate")
+				}
+			}
+		}
+	}
+
 	// Rotation: positive level turns CCW (left), negative turns CW (right).
 	rotateAmount := float64(0)
 	massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
@@ -298,6 +321,16 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	massFactor := 1.0 + math.Pow(float64(c.CurrentMass(s.Params)/float32(s.Params.MaxMass)), 2)*5.0
 	moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
+	// Colder temperatures slow movement (ectotherm-like muscle penalty).
+	tempNorm := float64((temp - 10.0) / 30.0)
+	if tempNorm < 0 {
+		tempNorm = 0
+	} else if tempNorm > 1 {
+		tempNorm = 1
+	}
+	speedMult := float64(s.Params.ColdSpeedMultiplier) + (1.0-float64(s.Params.ColdSpeedMultiplier))*tempNorm
+	moveAmount *= speedMult
+
 	if math.Abs(moveAmount) < 0.001 {
 		return
 	}
@@ -311,6 +344,65 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)) * massCostMult)
 		c.LastAction = appendActionString(c.LastAction, "Moving")
 		pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
+	}
+}
+
+// pairMates pairs candidates that fired MATE this tick. For each unpaired candidate it
+// finds the best candidate within MatingRadius whose genome similarity meets
+// MinMatingSimilarity, then appends a sexual ReproductionInstruction for both.
+// Each creature can only participate in one pairing per tick.
+func (s *Simulation) pairMates(candidates []*Creature) {
+	if len(candidates) < 2 {
+		return
+	}
+
+	rand.Shuffle(len(candidates), func(i, j int) {
+		candidates[i], candidates[j] = candidates[j], candidates[i]
+	})
+
+	paired := make(map[int]bool, len(candidates))
+	matingRadiusSq := s.Params.MatingRadius * s.Params.MatingRadius
+
+	for i, c := range candidates {
+		if paired[c.Id] || !c.Alive {
+			continue
+		}
+
+		bestIdx := -1
+		var bestSimilarity float32 = -1.0
+		bestDistSq := math.MaxFloat64
+
+		for j, other := range candidates {
+			if i == j || paired[other.Id] || !other.Alive {
+				continue
+			}
+
+			dx := other.Loc.X - c.Loc.X
+			dy := other.Loc.Y - c.Loc.Y
+			d2 := dx*dx + dy*dy
+
+			if d2 <= matingRadiusSq {
+				similarity := GenomeSimilarity(c.Genome, other.Genome)
+				if similarity >= s.Params.MinMatingSimilarity {
+					if similarity > bestSimilarity {
+						bestSimilarity = similarity
+						bestDistSq = d2
+						bestIdx = j
+					} else if similarity == bestSimilarity && d2 < bestDistSq {
+						bestDistSq = d2
+						bestIdx = j
+					}
+				}
+			}
+		}
+
+		if bestIdx != -1 {
+			partner := candidates[bestIdx]
+			paired[c.Id] = true
+			paired[partner.Id] = true
+			s.Population.ReproductionQueue = append(s.Population.ReproductionQueue,
+				ReproductionInstruction{Creature: c, Partner: partner})
+		}
 	}
 }
 
@@ -336,6 +428,28 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 	s.Population.AddAlive(id)
 
 	return true
+}
+
+// SpawnClusterAt creates count identical creatures near the given world-space position.
+// All creatures share the same randomly generated genome. Positions that are walls are skipped.
+func (s *Simulation) SpawnClusterAt(x, y float64, count int) bool {
+	spawnParams := *s.Params
+	genome := MakeRandomGenome(&spawnParams)
+
+	offsets := [][2]float64{{0, 0}, {4, 0}, {-4, 0}, {0, 4}, {0, -4}}
+	spawned := 0
+	for i := 0; spawned < count && i < len(offsets); i++ {
+		pos := s.World.ClampToBounds(grid.Position{X: x + offsets[i][0], Y: y + offsets[i][1]})
+		if s.World.IsWall(pos) {
+			continue
+		}
+		id := s.World.AddCreature(pos)
+		c := NewAdultCreature(id, pos, genome.Copy(), s.Params)
+		s.Population.Creatures[id] = c
+		s.Population.AddAlive(id)
+		spawned++
+	}
+	return spawned > 0
 }
 
 // SpawnGenome places a new adult creature with the given genome at a random empty location.
@@ -435,9 +549,10 @@ func (s *Simulation) updatePopulationCaches() {
 			s.displayCache = append(s.displayCache, CreatureView{
 				ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
 				R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
-				CurrentMass:   float64(c.Mass),
-				SightDistance: c.Genome.SightDistance,
-				FieldOfView:   c.Genome.FieldOfView,
+				CurrentMass:      float64(c.Mass),
+				SightDistance:    c.Genome.SightDistance,
+				FieldOfView:      c.Genome.FieldOfView,
+				ReproductionType: c.Genome.ReproductionType,
 			})
 		} else {
 			// Corpse Logic
@@ -451,6 +566,7 @@ func (s *Simulation) updatePopulationCaches() {
 				X:              c.Loc.X,
 				Y:              c.Loc.Y,
 				EnergyFraction: energyFraction,
+				Mass:           c.Mass,
 			})
 		}
 	}
