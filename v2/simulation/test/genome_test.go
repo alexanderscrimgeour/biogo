@@ -12,9 +12,6 @@ func defaultParams() *simulation.Parameters {
 
 func TestMakeRandomGene(t *testing.T) {
 	gene := simulation.MakeRandomGene()
-	if gene == nil {
-		t.Fatal("MakeRandomGene returned nil")
-	}
 	if gene.SourceType > 1 {
 		t.Errorf("SourceType must be 0 or 1, got %d", gene.SourceType)
 	}
@@ -57,10 +54,10 @@ func TestGenomeCopy(t *testing.T) {
 func TestGeneCopy(t *testing.T) {
 	gene := simulation.MakeRandomGene()
 	cp := gene.Copy()
-	if cp == gene {
-		t.Error("Gene.Copy should return a new pointer")
+	if cp != gene {
+		t.Error("Gene.Copy should return an identical value")
 	}
-	if *cp != *gene {
+	if cp != gene {
 		t.Error("Gene.Copy should produce identical gene")
 	}
 }

@@ -290,11 +290,13 @@ func (w *World) ReduceFoodMass(id int, amount float32) float32 {
 	return remaining
 }
 
-// TotalFoodMass returns the sum of all food item masses currently in the world.
+// TotalFoodMass returns the sum of all active food item masses in the world.
 func (w *World) TotalFoodMass() float64 {
 	total := float64(0)
-	for _, m := range w.foodMass {
-		total += float64(m)
+	for id, active := range w.foodActive {
+		if active {
+			total += float64(w.foodMass[id])
+		}
 	}
 	return total
 }

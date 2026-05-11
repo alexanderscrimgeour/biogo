@@ -18,7 +18,7 @@ type Neuron struct {
 }
 
 type NeuralNet struct {
-	Edges            []*Gene
+	Edges            []Gene
 	HiddenNeurons    [256]*Neuron       // indexed by neuron ID; sparse, use HiddenNeuronIDs to iterate
 	HiddenNeuronIDs  []byte             // sorted list of occupied indices
 	ActiveSensors    [SENSOR_COUNT]bool // true for each sensor ID wired into at least one edge; set once at construction
@@ -72,7 +72,7 @@ func (n NodeMap) String() string {
 
 func CreateInitialNeuronOutput() float32 { return 0.5 }
 
-func CreateNeuralNetworkFromGenome(genes []*Gene, CognitiveBreadth byte) *NeuralNet {
+func CreateNeuralNetworkFromGenome(genes []Gene, CognitiveBreadth byte) *NeuralNet {
 	neuralGenes := convertGenesToNeuronIDs(genes, CognitiveBreadth)
 	nodeMap := createNodeMap(neuralGenes)
 	finalGenes := removeUselessGenes(neuralGenes, nodeMap)
@@ -82,42 +82,32 @@ func CreateNeuralNetworkFromGenome(genes []*Gene, CognitiveBreadth byte) *Neural
 	return neuralNet
 }
 
-func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
+func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 	nnet := NeuralNet{}
 	nnet.Weights = make([]float32, len(g))
 
-	// We do this in two phases, first we add the -> neurons, then we add the -> actions. This
-	// Improves the performance of the fforward
+	// Two-pass: neuron-sink edges first (improves feedforward locality), then action-sink.
 	edgeIndex := 0
 	for _, gene := range g {
 		if gene.SinkType == NEURON {
-			// Create gene copy
-			new := *gene
-
-			// Fix the Sink id
-			new.SinkID = n[gene.SinkID].NewID
-			// If we're coming _from_ a NEURON, we need to fix it too
+			gene.SinkID = n[gene.SinkID].NewID
 			if gene.SourceType == NEURON {
-				new.SourceID = n[gene.SourceID].NewID
+				gene.SourceID = n[gene.SourceID].NewID
 			}
-			// Add the new gene to the nnet
-			nnet.Edges = append(nnet.Edges, &new)
-			// Initialise weights
-			nnet.Weights[edgeIndex] = new.WeightAsFloat32()
+			nnet.Edges = append(nnet.Edges, gene)
+			nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
 			edgeIndex++
 		}
 	}
 	for _, gene := range g {
 		if gene.SinkType == ACTION {
-			new := *gene
 			if gene.SourceType == NEURON {
-				new.SourceID = n[gene.SourceID].NewID
+				gene.SourceID = n[gene.SourceID].NewID
 			}
-			nnet.Edges = append(nnet.Edges, &new)
-			nnet.Weights[edgeIndex] = new.WeightAsFloat32()
+			nnet.Edges = append(nnet.Edges, gene)
+			nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
 			edgeIndex++
 		}
-
 	}
 	// Create the neurons; HiddenNeuronIDs is sorted for deterministic iteration.
 	nnet.HiddenNeuronIDs = make([]byte, 0, len(n))
@@ -135,9 +125,9 @@ func createNeuralNetworkFromGenesAndNodeMap(g []*Gene, n NodeMap) *NeuralNet {
 
 	// Record which sensors are actually wired in so FeedForward can pre-compute
 	// them once rather than calling GetSensor once per edge.
-	for _, edge := range nnet.Edges {
-		if edge.SourceType == SENSOR {
-			nnet.ActiveSensors[edge.SourceID] = true
+	for i := range nnet.Edges {
+		if nnet.Edges[i].SourceType == SENSOR {
+			nnet.ActiveSensors[nnet.Edges[i].SourceID] = true
 		}
 	}
 
@@ -161,7 +151,7 @@ func setNodeNewIDValues(n NodeMap) {
 		node.NewID = byte(i)
 	}
 }
-func removeUselessGenes(g []*Gene, n NodeMap) []*Gene {
+func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 	if len(n) == 0 {
 		return g
 	}
@@ -197,7 +187,7 @@ func removeUselessGenes(g []*Gene, n NodeMap) []*Gene {
 	}
 	return final
 }
-func removeConnectionsToGene(genes []*Gene, n NodeMap, key byte) []*Gene {
+func removeConnectionsToGene(genes []Gene, n NodeMap, key byte) []Gene {
 	newGenes := genes[:0]
 
 	for _, gene := range genes {
@@ -229,13 +219,13 @@ func TestRemove(nodeMap NodeMap, key byte) {
 	delete(nodeMap, key)
 }
 
-func TestRemoveList(g []*Gene) []*Gene {
+func TestRemoveList(g []Gene) []Gene {
 	g = g[:len(g)-1]
 	return g
 }
 
 // CreateNodeMap takes in
-func createNodeMap(neuralGenes []*Gene) NodeMap {
+func createNodeMap(neuralGenes []Gene) NodeMap {
 	nMap := NodeMap{}
 	ensureNode := func(id byte) {
 		if _, ok := nMap[id]; !ok {
@@ -269,29 +259,22 @@ func createNodeMap(neuralGenes []*Gene) NodeMap {
 	return nMap
 }
 
-func convertGenesToNeuronIDs(genes []*Gene, CognitiveBreadth byte) []*Gene {
-	newGenes := make([]*Gene, len(genes))
-
-	for i, gene := range genes {
-		new := *gene // Make a copy
-		if new.SourceType == NEURON && CognitiveBreadth > 0 {
-			// treat neurons as neurons ONLY if there's a CognitiveBreadth > 0
-			new.SourceID %= CognitiveBreadth
+func convertGenesToNeuronIDs(genes []Gene, CognitiveBreadth byte) []Gene {
+	newGenes := make([]Gene, len(genes))
+	for i, g := range genes {
+		if g.SourceType == NEURON && CognitiveBreadth > 0 {
+			g.SourceID %= CognitiveBreadth
 		} else {
-			// Reset the type in case of Neurons with CognitiveBreadth == 0
-			new.SourceType = SENSOR
-			new.SourceID %= SENSOR_COUNT
+			g.SourceType = SENSOR
+			g.SourceID %= SENSOR_COUNT
 		}
-
-		if new.SinkType == NEURON && CognitiveBreadth > 0 {
-			// treat neurons as neurons ONLY if there's a CognitiveBreadth > 0
-			new.SinkID %= CognitiveBreadth
+		if g.SinkType == NEURON && CognitiveBreadth > 0 {
+			g.SinkID %= CognitiveBreadth
 		} else {
-			// Reset the type in case of Neurons with CognitiveBreadth == 0
-			new.SinkType = ACTION
-			new.SinkID %= ACTION_COUNT
+			g.SinkType = ACTION
+			g.SinkID %= ACTION_COUNT
 		}
-		newGenes[i] = &new
+		newGenes[i] = g
 	}
 	return newGenes
 }

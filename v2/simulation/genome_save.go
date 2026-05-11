@@ -78,9 +78,9 @@ func toGenomeData(g *Genome) genomeData {
 }
 
 func fromGenomeData(gd genomeData) *Genome {
-	genes := make([]*Gene, len(gd.Brain))
+	genes := make([]Gene, len(gd.Brain))
 	for i, entry := range gd.Brain {
-		genes[i] = &Gene{
+		genes[i] = Gene{
 			SourceType: entry.SourceType,
 			SourceID:   entry.SourceID,
 			SinkType:   entry.SinkType,

@@ -317,7 +317,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 		if e.genome.CognitiveBreadth > e.params.MinSynapticDensity {
 			lastID := e.genome.CognitiveBreadth - 1
 			nc := e.genome.CognitiveBreadth
-			var nb []*simulation.Gene
+			var nb []simulation.Gene
 			for _, gene := range e.genome.Brain {
 				skip := (gene.SourceType == simulation.NEURON && gene.SourceID%nc == lastID) ||
 					(gene.SinkType == simulation.NEURON && gene.SinkID%nc == lastID)
@@ -396,12 +396,12 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 				}
 			} else {
 				if nh.typ == simulation.NEURON || nh.typ == simulation.ACTION {
-					e.genome.Brain = append(e.genome.Brain, &simulation.Gene{
+					e.genome.Brain = append(e.genome.Brain, simulation.Gene{
 						SourceType: e.pendingSrc.typ,
 						SourceID:   e.pendingSrc.id,
 						SinkType:   nh.typ,
 						SinkID:     nh.id,
-						Weight:     128, // neutral
+						Weight:     128,
 					})
 					e.genome.SynapticDensity = byte(len(e.genome.Brain))
 				}

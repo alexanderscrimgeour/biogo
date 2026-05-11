@@ -29,14 +29,14 @@ func TestDoNothingReducesMetabolicCost(t *testing.T) {
 
 	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into REST so it always fires.
 	c.Genome.OscPeriod = 1
-	doNothingGene := &simulation.Gene{
+	doNothingGene := simulation.Gene{
 		SourceType: simulation.SENSOR,
 		SourceID:   simulation.OSC1,
 		SinkType:   simulation.ACTION,
 		SinkID:     simulation.REST,
 		Weight:     255,
 	}
-	c.Genome.Brain = []*simulation.Gene{doNothingGene}
+	c.Genome.Brain = []simulation.Gene{doNothingGene}
 	c.Genome.SynapticDensity = 1
 	c.CreateNeuralNet()
 

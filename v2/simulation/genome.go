@@ -54,7 +54,7 @@ type Genome struct {
 	StomachSize       byte // controls stomach capacity; maps to [MinStomachSize, MaxStomachSize]
 	Neuroplasticity   byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
 	LearningThreshold byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
-	Brain             []*Gene
+	Brain             []Gene
 
 	// flat byte cache for GenomeSimilarity; recomputed after any mutation or brain change.
 	// Layout: 15 header bytes + 5 bytes per gene (SourceID, SourceType, SinkID, SinkType, Weight).
@@ -172,8 +172,8 @@ func makeRandomBool() byte {
 }
 
 // MakeRandomGene creates a random gene
-func MakeRandomGene() *Gene {
-	return &Gene{
+func MakeRandomGene() Gene {
+	return Gene{
 		SourceType: utils.MakeRandomByte() & 1,
 		SourceID:   utils.MakeRandomByte(),
 		SinkType:   byte(rand.Intn(2) * 2),
@@ -211,20 +211,14 @@ func MakeRandomGenome(p *Parameters) *Genome {
 	return &g
 }
 
-// Copy copies a gene
-func (g *Gene) Copy() *Gene {
-	new := *g
-	return &new
-}
+// Copy returns a value copy of the gene.
+func (g Gene) Copy() Gene { return g }
 
-// Copy deep copies a genome
+// Copy deep copies a genome.
 func (g *Genome) Copy() *Genome {
 	new := *g
-	temp := make([]*Gene, len(g.Brain))
-	for i, n := range g.Brain {
-		temp[i] = n.Copy()
-	}
-	new.Brain = temp
+	new.Brain = make([]Gene, len(g.Brain))
+	copy(new.Brain, g.Brain)
 	if len(g.bytes) > 0 {
 		new.bytes = make([]byte, len(g.bytes))
 		copy(new.bytes, g.bytes)
@@ -312,18 +306,14 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool) {
 	if diff > 0 {
 		for i := 0; i < diff; i++ {
 			if len(g.Brain) > 0 && rand.Float32() < 0.8 {
-				// 1. Pick a random existing gene and then change it slightly
-				sourceGene := g.Brain[rand.Intn(len(g.Brain))]
-				newGene := sourceGene.Copy()
-
+				// Pick a random existing gene and nudge it slightly.
+				newGene := g.Brain[rand.Intn(len(g.Brain))]
 				if rand.Float32() < 0.5 {
 					newGene.SourceID = utils.MakeRandomByte()
 				} else {
 					newGene.SinkID = utils.MakeRandomByte()
 				}
-
 				newGene.Weight = nudgeByte(newGene.Weight, 40)
-
 				g.Brain = append(g.Brain, newGene)
 			} else {
 				g.Brain = append(g.Brain, MakeRandomGene())

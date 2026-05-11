@@ -35,7 +35,7 @@ func TestSaveAndLoadGenomes(t *testing.T) {
 			t.Fatalf("genome[%d] brain length: want %d, got %d", i, len(g.Brain), len(l.Brain))
 		}
 		for j := range g.Brain {
-			if *g.Brain[j] != *l.Brain[j] {
+			if g.Brain[j] != l.Brain[j] {
 				t.Errorf("genome[%d] brain[%d] mismatch", i, j)
 			}
 		}

@@ -43,6 +43,7 @@ type Creature struct {
 }
 
 func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
+	g.recomputeBytes()
 	c := Creature{
 		Id:             id,
 		Age:            0,
@@ -64,6 +65,7 @@ func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature 
 }
 
 func NewAdultCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {
+	g.recomputeBytes()
 	c := Creature{
 		Id:             id,
 		Age:            0,
