@@ -2,7 +2,7 @@ package ui
 
 type EntityManager struct {
 	animByID        map[int]*creatureAnim
-	foodBlobsByKey  map[string]*Blob
+	foodBlobsByID   map[int]*Blob
 	corpseBlobsByID map[int]*Blob
 }
 

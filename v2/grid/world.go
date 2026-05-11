@@ -27,11 +27,13 @@ type World struct {
 	creaturePos map[int]Position
 	cBuckets    map[int64][]int // packed bucket key → creature IDs
 
-	foodPos    map[int]Position
-	foodMass   map[int]float32
-	fBuckets   map[int64][]int // packed bucket key → food IDs
-	nextFoodID int
-	bucketSize float64
+	foodPos     []Position
+	foodMass    []float32
+	foodActive  []bool
+	foodCount   int
+	freeFoodIDs []int
+	fBuckets    map[int64][]int // packed bucket key → food IDs
+	bucketSize  float64
 
 	// Gaussian fountain system: 3-5 drifting points that food spawns around.
 	Fountains      []Position
@@ -39,13 +41,16 @@ type World struct {
 }
 
 func NewWorld(width, height float64, wallType int) *World {
+	const initialCapacity = 25000
 	w := &World{
 		Width:       width,
 		Height:      height,
 		creaturePos: make(map[int]Position),
 		cBuckets:    make(map[int64][]int),
-		foodPos:     make(map[int]Position),
-		foodMass:    make(map[int]float32),
+		foodPos:     make([]Position, 0, initialCapacity),
+		foodMass:    make([]float32, 0, initialCapacity),
+		foodActive:  make([]bool, 0, initialCapacity),
+		freeFoodIDs: make([]int, 0, 100),
 		fBuckets:    make(map[int64][]int),
 		bucketSize:  20.0,
 	}
@@ -69,14 +74,14 @@ func packedKey(bx, by int) int64 {
 }
 
 // bucketRemove removes id from the bucket slice via swap-and-truncate (O(n) scan, O(1) remove).
-func bucketRemove(bucket []int, id int) []int {
-	for i, v := range bucket {
+func bucketRemove(slice []int, id int) []int {
+	for i, v := range slice {
 		if v == id {
-			bucket[i] = bucket[len(bucket)-1]
-			return bucket[:len(bucket)-1]
+			slice[i] = slice[len(slice)-1]
+			return slice[:len(slice)-1]
 		}
 	}
-	return bucket
+	return slice
 }
 
 // --- Creature spatial operations ---
@@ -110,68 +115,124 @@ func (w *World) GetCreaturePos(id int) (Position, bool) {
 	return pos, ok
 }
 
-// GetCreaturesInRadius returns IDs of all creatures within the given radius of center.
-func (w *World) GetCreaturesInRadius(center Position, radius float64) []int {
-	minBx := int(math.Floor((center.X - radius) / w.bucketSize))
-	maxBx := int(math.Floor((center.X + radius) / w.bucketSize))
-	minBy := int(math.Floor((center.Y - radius) / w.bucketSize))
-	maxBy := int(math.Floor((center.Y + radius) / w.bucketSize))
+func (w *World) GetCreaturesInRadius(center Position, radius float64, buffer []int) []int {
+	buffer = buffer[:0]
+
+	invBucketSize := 1.0 / w.bucketSize
 	rSq := radius * radius
-	var result []int
+
+	minBx := int((center.X - radius) * invBucketSize)
+	maxBx := int((center.X + radius) * invBucketSize)
+	minBy := int((center.Y - radius) * invBucketSize)
+	maxBy := int((center.Y + radius) * invBucketSize)
+
 	for bx := minBx; bx <= maxBx; bx++ {
 		for by := minBy; by <= maxBy; by++ {
-			for _, id := range w.cBuckets[packedKey(bx, by)] {
+			bucket := w.cBuckets[packedKey(bx, by)]
+
+			for _, id := range bucket {
 				pos := w.creaturePos[id]
+
 				dx := pos.X - center.X
 				dy := pos.Y - center.Y
-				if dx*dx+dy*dy <= rSq {
-					result = append(result, id)
+				distSq := dx*dx + dy*dy
+
+				if distSq <= rSq {
+					buffer = append(buffer, id)
 				}
 			}
 		}
 	}
-	return result
+	return buffer
 }
 
 // GetCreaturesInCone returns IDs of creatures within maxDist that lie inside
 // the cone defined by heading ± halfFOVCos (cosine of the half-angle).
-func (w *World) GetCreaturesInCone(center Position, heading float64, halfFOVCos float64, maxDist float64) []int {
+func (w *World) GetCreaturesInCone(center Position, heading float64, halfFOVCos float64, maxDist float64, buffer []int) []int {
+	buffer = buffer[:0]
+
+	// 1. Setup math constants
 	fwdX, fwdY := HeadingToVec(heading)
-	var result []int
-	for _, id := range w.GetCreaturesInRadius(center, maxDist) {
-		pos := w.creaturePos[id]
-		dx := pos.X - center.X
-		dy := pos.Y - center.Y
-		if dx == 0 && dy == 0 {
-			continue
-		}
-		if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
-			result = append(result, id)
+	invBucketSize := 1.0 / w.bucketSize
+	rSq := maxDist * maxDist
+
+	// 2. Define search bounds in the grid
+	minBx := int((center.X - maxDist) * invBucketSize)
+	maxBx := int((center.X + maxDist) * invBucketSize)
+	minBy := int((center.Y - maxDist) * invBucketSize)
+	maxBy := int((center.Y + maxDist) * invBucketSize)
+
+	// 3. Single-pass spatial search and filtering
+	for bx := minBx; bx <= maxBx; bx++ {
+		for by := minBy; by <= maxBy; by++ {
+			bucket := w.cBuckets[packedKey(bx, by)]
+
+			for _, id := range bucket {
+				// If you haven't switched creatures to a slice yet,
+				// this is still a map lookup.
+				pos := w.creaturePos[id]
+
+				dx := pos.X - center.X
+				dy := pos.Y - center.Y
+				distSq := dx*dx + dy*dy
+
+				// Check radius first (cheapest math)
+				if distSq <= rSq {
+					// Avoid checking similarity against self (center)
+					if dx == 0 && dy == 0 {
+						continue
+					}
+
+					// Check cone angle (more expensive math)
+					if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
+						buffer = append(buffer, id)
+					}
+				}
+			}
 		}
 	}
-	return result
+	return buffer
 }
 
 // --- Food spatial operations ---
 
 // AddFood places a food item with the given mass at pos and returns its ID.
 func (w *World) AddFood(pos Position, mass float32) int {
-	w.nextFoodID++
-	id := w.nextFoodID
-	w.foodPos[id] = pos
-	w.foodMass[id] = mass
+	var id int
+	if len(w.freeFoodIDs) > 0 {
+		lastIdx := len(w.freeFoodIDs) - 1
+		id = w.freeFoodIDs[lastIdx]
+		w.freeFoodIDs = w.freeFoodIDs[:lastIdx]
+		w.foodPos[id] = pos
+		w.foodMass[id] = mass
+		w.foodActive[id] = true
+	} else {
+		id = len(w.foodPos)
+		w.foodPos = append(w.foodPos, pos)
+		w.foodMass = append(w.foodMass, mass)
+		w.foodActive = append(w.foodActive, true)
+	}
+
+	w.foodCount++
+
 	key := w.bucketKey(pos)
 	w.fBuckets[key] = append(w.fBuckets[key], id)
 	return id
 }
 
 func (w *World) RemoveFood(id int) {
-	if pos, ok := w.foodPos[id]; ok {
-		key := w.bucketKey(pos)
-		w.fBuckets[key] = bucketRemove(w.fBuckets[key], id)
-		delete(w.foodPos, id)
-		delete(w.foodMass, id)
+	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
+		return
 	}
+
+	pos := w.foodPos[id]
+	key := w.bucketKey(pos)
+
+	w.fBuckets[key] = bucketRemove(w.fBuckets[key], id)
+
+	w.foodActive[id] = false
+	w.foodCount--
+	w.freeFoodIDs = append(w.freeFoodIDs, id)
 }
 
 func (w *World) GetFoodPos(id int) Position {
@@ -206,53 +267,84 @@ func (w *World) TotalFoodMass() float64 {
 }
 
 func (w *World) FoodCount() int {
-	return len(w.foodPos)
+	return w.foodCount
 }
 
 // FoodPositions returns the live food map (read-only use; do not mutate).
-func (w *World) FoodPositions() map[int]Position {
+func (w *World) FoodPositions() []Position {
 	return w.foodPos
 }
 
 // GetFoodInRadius returns IDs of food items within radius of center.
-func (w *World) GetFoodInRadius(center Position, radius float64) []int {
-	minBx := int(math.Floor((center.X - radius) / w.bucketSize))
-	maxBx := int(math.Floor((center.X + radius) / w.bucketSize))
-	minBy := int(math.Floor((center.Y - radius) / w.bucketSize))
-	maxBy := int(math.Floor((center.Y + radius) / w.bucketSize))
+func (w *World) GetFoodInRadius(center Position, radius float64, buffer []int) []int {
+	buffer = buffer[:0]
+
+	invBucketSize := 1.0 / w.bucketSize
+
+	minBx := int((center.X - radius) * invBucketSize)
+	maxBx := int((center.X + radius) * invBucketSize)
+	minBy := int((center.Y - radius) * invBucketSize)
+	maxBy := int((center.Y + radius) * invBucketSize)
+
 	rSq := radius * radius
-	var result []int
+
 	for bx := minBx; bx <= maxBx; bx++ {
 		for by := minBy; by <= maxBy; by++ {
-			for _, id := range w.fBuckets[packedKey(bx, by)] {
+			bucket := w.fBuckets[packedKey(bx, by)]
+
+			for _, id := range bucket {
+				if !w.foodActive[id] {
+					continue
+				}
+
 				pos := w.foodPos[id]
 				dx := pos.X - center.X
 				dy := pos.Y - center.Y
+
 				if dx*dx+dy*dy <= rSq {
-					result = append(result, id)
+					buffer = append(buffer, id)
 				}
 			}
 		}
 	}
-	return result
+	return buffer
 }
 
-// GetFoodInCone returns food IDs within maxDist inside the heading cone.
-func (w *World) GetFoodInCone(center Position, heading float64, halfFOVCos float64, maxDist float64) []int {
+func (w *World) GetFoodInCone(center Position, heading float64, halfFOVCos float64, maxDist float64, buffer []int) []int {
+	buffer = buffer[:0]
+
 	fwdX, fwdY := HeadingToVec(heading)
-	var result []int
-	for _, id := range w.GetFoodInRadius(center, maxDist) {
-		pos := w.foodPos[id]
-		dx := pos.X - center.X
-		dy := pos.Y - center.Y
-		if dx == 0 && dy == 0 {
-			continue
-		}
-		if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
-			result = append(result, id)
+	invBucketSize := 1.0 / w.bucketSize
+	rSq := maxDist * maxDist
+
+	minBx := int((center.X - maxDist) * invBucketSize)
+	maxBx := int((center.X + maxDist) * invBucketSize)
+	minBy := int((center.Y - maxDist) * invBucketSize)
+	maxBy := int((center.Y + maxDist) * invBucketSize)
+
+	for bx := minBx; bx <= maxBx; bx++ {
+		for by := minBy; by <= maxBy; by++ {
+			for _, id := range w.fBuckets[packedKey(bx, by)] {
+				if !w.foodActive[id] {
+					continue
+				}
+
+				pos := w.foodPos[id]
+				dx := pos.X - center.X
+				dy := pos.Y - center.Y
+				distSq := dx*dx + dy*dy
+
+				// Check Radius first (cheaper math)
+				if distSq <= rSq {
+					// Check Cone second (more expensive math)
+					if dx == 0 && dy == 0 || CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
+						buffer = append(buffer, id)
+					}
+				}
+			}
 		}
 	}
-	return result
+	return buffer
 }
 
 // --- World geometry ---
@@ -393,6 +485,15 @@ func (w *World) SpawnRandom(n int, mass float32) {
 		pos, ok := w.FindEmptyLocation()
 		if ok {
 			w.AddFood(pos, mass)
+		}
+	}
+}
+
+func (w *World) ForEachActiveFood(fn func(id int, x, y float64, mass float32)) {
+	for id, active := range w.foodActive {
+		if active {
+			pos := w.foodPos[id]
+			fn(id, pos.X, pos.Y, w.foodMass[id])
 		}
 	}
 }

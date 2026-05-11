@@ -434,17 +434,21 @@ func (s *Simulation) updatePopulationCaches() {
 		}
 	}
 }
-func (s *Simulation) updateFoodCache() {
-	foodMap := s.World.FoodPositions()
-	newFood := make([]FoodView, 0, len(foodMap))
 
-	for _, pos := range foodMap {
-		newFood = append(newFood, FoodView{
-			X: pos.X,
-			Y: pos.Y,
+func (s *Simulation) updateFoodCache() {
+	// Reuse the existing slice capacity
+	s.foodCache = s.foodCache[:0]
+
+	// Use our new iterator to pull only active food
+	s.World.ForEachActiveFood(func(id int, x, y float64, mass float32) {
+		s.foodCache = append(s.foodCache, FoodView{
+			ID: id,
+			X:  x,
+			Y:  y,
+			// Include mass if your FoodView supports it, otherwise remove
+			Mass: mass,
 		})
-	}
-	s.foodCache = newFood
+	})
 }
 
 type StateSnapshot struct {

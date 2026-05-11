@@ -44,12 +44,14 @@ type SensorContext struct {
 	LocalCreatureIDs []int
 }
 
-func (c *Creature) BuildSensorContext(world *grid.World, params *Parameters) *SensorContext {
-	return &SensorContext{
-		SightFoodIDs:     world.GetFoodInRadius(c.Loc, float64(c.Genome.SightDistance)),
-		SightCreatureIDs: world.GetCreaturesInRadius(c.Loc, float64(c.Genome.SightDistance)),
-		LocalCreatureIDs: world.GetCreaturesInRadius(c.Loc, params.PopulationSensorRadius),
-	}
+func (c *Creature) UpdateSensorContext(world *grid.World, params *Parameters) {
+	c.SightFoodBuffer = world.GetFoodInRadius(c.Loc, float64(c.Genome.SightDistance), c.SightFoodBuffer)
+	c.SightCreatureBuffer = world.GetCreaturesInRadius(c.Loc, float64(c.Genome.SightDistance), c.SightCreatureBuffer)
+	c.LocalCreatureBuffer = world.GetCreaturesInRadius(c.Loc, params.PopulationSensorRadius, c.LocalCreatureBuffer)
+
+	c.Sensors.SightFoodIDs = c.SightFoodBuffer
+	c.Sensors.SightCreatureIDs = c.SightCreatureBuffer
+	c.Sensors.LocalCreatureIDs = c.LocalCreatureBuffer
 }
 
 func (c Creature) GetSensor(sensorID byte, w *grid.World, p *Population, ctx *SensorContext, simStep int, params *Parameters) float32 {

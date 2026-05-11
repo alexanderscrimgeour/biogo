@@ -113,7 +113,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 			// only the appropriate portion is taken and the item stays in the world
 			// with its remaining mass.
 			if stomachSpace > 0 {
-				foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, interactionRadius)
+				foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, interactionRadius, c.SightFoodBuffer)
 				if len(foodIDs) > 0 {
 					closestID := foodIDs[0]
 					closestDistSq := math.MaxFloat64
@@ -142,7 +142,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 			}
 
 			// Eat the nearest corpse and/or the nearest live creature within interaction radius.
-			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, interactionRadius)
+			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, interactionRadius, c.SightCreatureBuffer)
 			if len(creatureIDs) > 0 {
 				closestCorpseID := -1
 				closestPreyID := -1

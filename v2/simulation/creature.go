@@ -34,6 +34,11 @@ type Creature struct {
 	halfFOVCos           float64 // math.Cos(FieldOfView/2 in radians)
 	cachedMetabolicGene  float32 // 0.7 + 0.6*(MetabolicRate/255)
 	cachedJuvenilePeriod int     // MinJuvenilePeriod + genome fraction * range
+	Sensors              SensorContext
+	// Buffers to avoid heap allocation
+	SightFoodBuffer     []int
+	SightCreatureBuffer []int
+	LocalCreatureBuffer []int
 }
 
 func NewCreature(id int, loc grid.Position, g *Genome, p *Parameters) *Creature {

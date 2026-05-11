@@ -113,7 +113,7 @@ type creatureAnim struct {
 type Game struct {
 	sim                SimulationState
 	renderGrid         *RenderGrid
-	foodBlobsByKey     map[string]*Blob
+	foodBlobsByID      map[int]*Blob
 	corpseBlobsByID    map[int]*Blob
 	statFont           font.Face
 	whiteImage         *ebiten.Image
@@ -145,6 +145,9 @@ type Game struct {
 	detailsPanel       *components.Panel
 	genomeEditor       *GenomeEditor
 	savedGenomesPanel  *SavedGenomesPanel
+	currentSnapshot    *simulation.StateSnapshot
+	lookup             map[int]int
+	unitCircle         []struct{ x, y float32 }
 }
 
 var BlockSize int = 2
@@ -163,7 +166,7 @@ func NewGame(sim SimulationState) *Game {
 	g := &Game{
 		sim:                sim,
 		renderGrid:         NewRenderGrid(0, 0, BlockSize),
-		foodBlobsByKey:     make(map[string]*Blob),
+		foodBlobsByID:      make(map[int]*Blob),
 		corpseBlobsByID:    make(map[int]*Blob),
 		statFont:           statFont,
 		whiteImage:         wImg,
@@ -173,6 +176,15 @@ func NewGame(sim SimulationState) *Game {
 		selectedCreatureID: -1,
 		spawnMutRate:       0.01,
 		isDarkBackground:   true,
+	}
+
+	const segments = 12
+	for i := 0; i <= segments; i++ {
+		angle := float64(i) * 2 * math.Pi / segments
+		g.unitCircle = append(g.unitCircle, struct{ x, y float32 }{
+			x: float32(math.Cos(angle)),
+			y: float32(math.Sin(angle)),
+		})
 	}
 	g.pauseBtn = &components.Button{
 		X: 10, Y: 10, W: 80, H: 24,
@@ -199,10 +211,10 @@ func NewGame(sim SimulationState) *Game {
 		OnClick: func() {
 			g.sim.Reset()
 			g.animByID = make(map[int]*creatureAnim)
-			for _, b := range g.foodBlobsByKey {
+			for _, b := range g.foodBlobsByID {
 				g.renderGrid.RemoveFoodBlob(b)
 			}
-			g.foodBlobsByKey = make(map[string]*Blob)
+			g.foodBlobsByID = make(map[int]*Blob)
 			for _, b := range g.corpseBlobsByID {
 				g.renderGrid.RemoveBlob(b)
 			}
@@ -423,11 +435,14 @@ func (g *Game) Update() error {
 		}
 
 		snapshot := g.sim.GetSnapshot()
+		g.currentSnapshot = &snapshot
 
+		g.lookup = make(map[int]int, len(snapshot.Creatures))
 		currentIDs := make(map[int]bool, len(snapshot.Creatures))
 		bs := float64(BlockSize)
 
-		for _, cv := range snapshot.Creatures {
+		for i, cv := range snapshot.Creatures {
+			g.lookup[cv.ID] = i
 			currentIDs[cv.ID] = true
 			screenX := float64(cv.X * bs)
 			screenY := float64(cv.Y * bs)
@@ -441,7 +456,7 @@ func (g *Game) Update() error {
 				anim.curX, anim.curY = screenX, screenY
 				anim.r, anim.g, anim.b, anim.a = cv.R, cv.G, cv.B, cv.A
 				anim.heading = cv.Heading
-				anim.mass = cv.CurrentMass // Prioritise mass
+				anim.mass = cv.CurrentMass
 			} else {
 				g.animByID[cv.ID] = &creatureAnim{
 					prevX: screenX, prevY: screenY,
@@ -458,36 +473,33 @@ func (g *Game) Update() error {
 			}
 		}
 
-		// Reconcile food
-		currentFood := make(map[string]bool, len(snapshot.Food))
+		currentFood := make(map[int]bool, len(snapshot.Food))
 		for _, fv := range snapshot.Food {
-			key := foodKey(fv.X, fv.Y)
-			currentFood[key] = true
-			if _, ok := g.foodBlobsByKey[key]; !ok {
+			currentFood[fv.ID] = true
+			if _, ok := g.foodBlobsByID[fv.ID]; !ok {
 				blob := g.renderGrid.AddFoodBlob(BlockSize, foodColor)
-				blob.Translate(float64(fv.X*bs), float64(fv.Y*bs))
-				g.foodBlobsByKey[key] = blob
+				blob.Translate(fv.X*bs, fv.Y*bs)
+				g.foodBlobsByID[fv.ID] = blob
 			}
 		}
-		for key, blob := range g.foodBlobsByKey {
-			if !currentFood[key] {
+		for id, blob := range g.foodBlobsByID {
+			if !currentFood[id] {
 				g.renderGrid.RemoveFoodBlob(blob)
-				delete(g.foodBlobsByKey, key)
+				delete(g.foodBlobsByID, id)
 			}
 		}
 
-		// Reconcile corpses
 		currentCorpses := make(map[int]bool, len(snapshot.Corpses))
 		for _, cv := range snapshot.Corpses {
 			currentCorpses[cv.ID] = true
 			alpha := uint8(cv.EnergyFraction * 220)
 			corpseColor := color.RGBA{R: 120, G: 60, B: 20, A: alpha}
 			if blob, ok := g.corpseBlobsByID[cv.ID]; ok {
-				blob.Move(float64(cv.X*bs), float64(cv.Y*bs))
+				blob.Move(cv.X*bs, cv.Y*bs)
 				blob.SetColor(corpseColor)
 			} else {
 				blob := g.renderGrid.AddBlob(BlockSize, corpseColor)
-				blob.Translate(float64(cv.X*bs), float64(cv.Y*bs))
+				blob.Translate(cv.X*bs, cv.Y*bs)
 				if g.corpseBlobsByID == nil {
 					g.corpseBlobsByID = make(map[int]*Blob)
 				}
@@ -509,7 +521,6 @@ func (g *Game) Update() error {
 
 	return nil
 }
-
 func (g *Game) Draw(screen *ebiten.Image) {
 	if g.isDarkBackground {
 		screen.Fill(color.RGBA{5, 5, 10, 255})
@@ -534,19 +545,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	var creatureVs []ebiten.Vertex
 	var creatureIs []uint16
 	massRange := float64(g.maxCreatureMass) - float64(g.minCreatureMass)
-	half := float64(BlockSize) / 2
+	half := float32(BlockSize) / 2
 
 	for _, anim := range g.animByID {
-		// 1. Calculate Interpolated Position
 		lerpX := anim.prevX + (anim.curX-anim.prevX)*t
 		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
-		cx, cy := float32(lerpX+half), float32(lerpY+half)
+		cx, cy := float32(lerpX)+half, float32(lerpY)+half
 
-		// 2. Calculate Scaled Radius based on Mass
-		var r float32
-		minRadius := float32(BlockSize) * 0.8
-		maxExtraRadius := float32(BlockSize) * 4.0
-
+		var r float32 = float32(BlockSize) * 0.8
 		if massRange > 0 {
 			massT := (float64(anim.mass) - float64(g.minCreatureMass)) / massRange
 			if massT < 0 {
@@ -555,36 +561,26 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if massT > 1 {
 				massT = 1
 			}
-			// Scale r: Starting at 80% BlockSize, growing up to +400% based on mass
-			r = minRadius + (float32(massT) * maxExtraRadius)
-		} else {
-			r = minRadius
+			r += float32(massT) * float32(BlockSize) * 4.0
 		}
 
-		// 3. Prepare Colors
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
-
-		// 4. Generate Circle Vertices (12 segments)
 		baseIdx := uint16(len(creatureVs))
-		const segments = 12
 
-		// Center vertex for the triangle fan
 		creatureVs = append(creatureVs, ebiten.Vertex{
 			DstX: cx, DstY: cy,
 			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 		})
 
-		for i := 0; i <= segments; i++ {
-			angle := float64(i) * 2 * math.Pi / segments
+		for _, unit := range g.unitCircle {
 			creatureVs = append(creatureVs, ebiten.Vertex{
-				DstX:   cx + r*float32(math.Cos(angle)),
-				DstY:   cy + r*float32(math.Sin(angle)),
+				DstX:   cx + r*unit.x,
+				DstY:   cy + r*unit.y,
 				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
 			})
 		}
 
-		// 5. Build Indices for the Fan
-		for i := uint16(1); i <= segments; i++ {
+		for i := uint16(1); i <= uint16(len(g.unitCircle)-1); i++ {
 			creatureIs = append(creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
 		}
 	}
@@ -594,32 +590,39 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	g.drawHistoryGraph(screen)
+
 	if g.selectedCreatureID != -1 {
 		g.drawSelectionHighlight(screen)
 		if detail, ok := g.sim.CreatureDetail(g.selectedCreatureID); ok {
 			g.drawCreatureDetail(screen, detail)
 			g.drawNeuralNetGraph(screen, detail)
-			g.drawFOVCones(screen, map[int]simulation.CreatureView{g.selectedCreatureID: g.sim.CreatureViews()[g.selectedCreatureID]}, t)
+
+			if idx, found := g.lookup[g.selectedCreatureID]; found {
+				view := g.currentSnapshot.Creatures[idx]
+				g.drawFOVCones(screen, map[int]simulation.CreatureView{
+					g.selectedCreatureID: view,
+				}, t)
+			}
 		} else {
 			g.selectedCreatureID = -1
 		}
 	}
+
 	g.pauseBtn.Draw(screen, g.statFont)
 	g.themeBtn.Draw(screen, g.statFont)
 	g.newGameBtn.Draw(screen, g.statFont)
 	if g.spawnMutSlider != nil {
 		g.drawSpawnMutSlider(screen)
 	}
+
+	g.spawnRandomBtn.Label = "Spawn Random"
 	if g.spawnPlacing {
-		g.spawnRandomBtn.Color = components.ColorButtonGreen
 		g.spawnRandomBtn.Label = "Cancel Spawn"
-	} else {
-		g.spawnRandomBtn.Color = components.ColorDefault
-		g.spawnRandomBtn.Label = "Spawn Random"
 	}
 	g.spawnRandomBtn.Draw(screen, g.statFont)
 	g.createGenomeBtn.Draw(screen, g.statFont)
 	g.spawnSavedBtn.Draw(screen, g.statFont)
+
 	if g.spawnPlacing {
 		mx, my := ebiten.CursorPosition()
 		cx, cy := float32(mx), float32(my)
@@ -637,7 +640,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.addStatLine(screen, "Tick Rate", fmt.Sprintf("%.0f/s", tickRate), 4)
 	}
 
-	// Overlays — drawn last so they sit above everything
 	g.savedGenomesPanel.Draw(screen, g.statFont)
 	g.genomeEditor.Draw(screen, g.statFont)
 }

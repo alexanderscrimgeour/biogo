@@ -163,11 +163,17 @@ func (s *Simulation) CreatureMaxMass() byte { return s.Params.MaxMass }
 
 // FoodViews returns a snapshot of all current food locations and masses for rendering.
 func (s *Simulation) FoodViews() []FoodView {
-	food := s.World.FoodPositions()
-	views := make([]FoodView, 0, len(food))
-	for id, pos := range food {
-		views = append(views, FoodView{ID: id, X: pos.X, Y: pos.Y, Mass: s.World.GetFoodMass(id)})
-	}
+	views := make([]FoodView, 0)
+
+	s.World.ForEachActiveFood(func(id int, x, y float64, mass float32) {
+		views = append(views, FoodView{
+			ID:   id,
+			X:    x,
+			Y:    y,
+			Mass: mass,
+		})
+	})
+
 	return views
 }
 
