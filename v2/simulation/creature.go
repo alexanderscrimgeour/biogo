@@ -229,16 +229,17 @@ func (c *Creature) GainEnergy(amount float32, params *Parameters) {
 }
 
 func (c *Creature) GainDopamine(ratio float32) {
-	spike := ratio * 10
-	c.Dopamine += spike
-	if c.Dopamine > 1.2 {
-		c.Dopamine = 1.2
-	}
+	gain := ratio * 2.0
+
+	current := c.Dopamine + gain
+	c.Dopamine = 1.2 * (current / (1.0 + float32(math.Abs(float64(current)))))
 }
 
 func (c *Creature) LoseDopamine(ratio float32) {
-	spike := ratio * 10
-	c.Dopamine -= spike
+	drop := ratio * 2.0
+
+	c.Dopamine -= drop
+
 	if c.Dopamine < -1.2 {
 		c.Dopamine = -1.2
 	}

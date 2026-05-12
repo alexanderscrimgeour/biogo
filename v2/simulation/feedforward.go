@@ -10,9 +10,9 @@ const decayRate = 0.0005
 const energyCostOfLearning = 0.005
 
 func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *Parameters) []float32 {
-	var NeuroplasticityMod float32
+	var neuroplasticityMod float32
 	if len(c.Nnet.LastActionValues) > int(SET_LEARNING_RATE) {
-		NeuroplasticityMod = float32(math.Tanh(float64(c.Nnet.LastActionValues[SET_LEARNING_RATE])))
+		neuroplasticityMod = softsign(c.Nnet.LastActionValues[SET_LEARNING_RATE])
 	}
 
 	if len(c.Nnet.LastActionValues) != int(ACTION_COUNT) {
@@ -50,9 +50,9 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 	}
 	surpriseFactor := float32(1.0) + absDelta
 
-	Neuroplasticity := genomeNeuroplasticity * (1 + NeuroplasticityMod) * surpriseFactor
-	if Neuroplasticity < 0 {
-		Neuroplasticity = 0
+	neuroplasticity := genomeNeuroplasticity * (1 + neuroplasticityMod) * surpriseFactor
+	if neuroplasticity < 0 {
+		neuroplasticity = 0
 	}
 
 	for i, gene := range c.Nnet.Edges {
@@ -66,9 +66,12 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		if gene.SinkType == ACTION && !neuronOutputsEvaluated {
 			for _, key := range c.Nnet.HiddenNeuronIDs {
 				if neuron := c.Nnet.HiddenNeurons[key]; neuron != nil && neuron.Driven {
-					output := float32(math.Tanh(float64(neuronAccumulators[key])))
+					sum := neuronAccumulators[key] * neuron.Sensitivity
+
+					output := float32(math.Tanh(float64(sum)))
 					neuron.Output = output
-					absOutput := output
+					absOutput := float32(math.Abs(float64(output)))
+					neuron.AverageOutput = (neuron.AverageOutput * 0.99) + (absOutput * 0.01)
 					if absOutput < 0 {
 						absOutput = -absOutput
 					}
@@ -98,7 +101,7 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			neuronAccumulators[gene.SinkID] += inputVal * currentWeight
 		}
 
-		if isNeuron || (isAction && len(c.Nnet.HiddenNeuronIDs) == 0) {
+		if isNeuron || isAction {
 			var sinkOutput float32
 			if isNeuron {
 				if neuron := c.Nnet.HiddenNeurons[gene.SinkID]; neuron != nil {
@@ -115,14 +118,14 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 			if absDopamine < 0 {
 				absDopamine = -absDopamine
 			}
-			if c.Energy > energyThreshold && absDopamine > 0.1 {
-				learningSignal := correlation * c.Dopamine
+			if c.Energy > energyThreshold {
+				learningSignal := correlation * softsign(dopamineDelta)
 				absSignal := learningSignal
 				if absSignal < 0 {
 					absSignal = -absSignal
 				}
 				if absSignal > learningThreshold {
-					c.Nnet.Weights[i] += Neuroplasticity * learningSignal
+					c.Nnet.Weights[i] += neuroplasticity * learningSignal
 					c.Energy -= energyCostOfLearning
 
 					if c.Nnet.Weights[i] > 4.0 {
@@ -135,6 +138,63 @@ func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *P
 		}
 	}
 
+	var weightSumsNeurons [256]float32
+	var weightSumsActions [ACTION_COUNT]float32
+
+	for i, gene := range c.Nnet.Edges {
+		absWeight := float32(math.Abs(float64(c.Nnet.Weights[i])))
+		if gene.SinkType == NEURON {
+			weightSumsNeurons[gene.SinkID] += absWeight
+		} else {
+			weightSumsActions[gene.SinkID] += absWeight
+		}
+	}
+
+	const neuronBudget = 8.0
+	const actionBudget = 12.0 // Actions get a bit more "room" to fire strongly
+
+	for i, gene := range c.Nnet.Edges {
+		if gene.SinkType == NEURON {
+			total := weightSumsNeurons[gene.SinkID]
+			if total > neuronBudget {
+				c.Nnet.Weights[i] *= (neuronBudget / total)
+			}
+		} else {
+			total := weightSumsActions[gene.SinkID]
+			if total > actionBudget {
+				c.Nnet.Weights[i] *= (actionBudget / total)
+			}
+		}
+	}
+
+	const targetActivity = 0.4 // We want the neuron firing at 40% intensity on average
+	const adjustmentSpeed = 0.001
+	for _, key := range c.Nnet.HiddenNeuronIDs {
+		neuron := c.Nnet.HiddenNeurons[key]
+		if neuron == nil {
+			continue
+		}
+
+		// Error = Target - Actual
+		// If Actual > Target, error is negative, Sensitivity decreases.
+		// If Actual < Target, error is positive, Sensitivity increases.
+		neuron.Sensitivity += (targetActivity - neuron.AverageOutput) * adjustmentSpeed
+
+		// Clamp sensitivity so it doesn't go to zero or infinity
+		if neuron.Sensitivity < 0.1 {
+			neuron.Sensitivity = 0.1
+		}
+		if neuron.Sensitivity > 5.0 {
+			neuron.Sensitivity = 5.0
+		}
+	}
 	c.LastDopamine = c.Dopamine
 	return actionLevels
+}
+
+func softsign(x float32) float32 {
+	if x >= 0 {
+		return x / (1 + x)
+	}
+	return x / (1 - x)
 }

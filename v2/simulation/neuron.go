@@ -13,8 +13,10 @@ const (
 )
 
 type Neuron struct {
-	Output float32
-	Driven bool
+	Output        float32
+	Driven        bool
+	AverageOutput float32
+	Sensitivity   float32
 }
 
 type NeuralNet struct {
@@ -113,8 +115,9 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 	nnet.HiddenNeuronIDs = make([]byte, 0, len(n))
 	for _, node := range n {
 		neuron := &Neuron{
-			Output: CreateInitialNeuronOutput(),
-			Driven: node.InputCount != 0,
+			Output:      CreateInitialNeuronOutput(),
+			Driven:      node.InputCount != 0,
+			Sensitivity: 1.0,
 		}
 		nnet.HiddenNeurons[node.NewID] = neuron
 		nnet.HiddenNeuronIDs = append(nnet.HiddenNeuronIDs, node.NewID)

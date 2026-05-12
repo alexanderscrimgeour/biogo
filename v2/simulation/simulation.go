@@ -33,7 +33,7 @@ func New(params *Parameters) *Simulation {
 
 func (s *Simulation) initializeWorld() {
 	s.World = grid.NewWorld(s.Params.GridWidth, s.Params.GridHeight, 1)
-	s.World.SpawnRandom(s.Params.MaxFood, s.Params.FoodMass)
+	s.World.SpawnRandom(s.Params.MaxFood*2, s.Params.FoodMass)
 	s.World.InitFountains(s.Params.FountainCount)
 }
 func (s *Simulation) initializePopulation() {
@@ -172,25 +172,15 @@ func (s *Simulation) step() {
 		}
 	}
 
-	spawnParams := *s.Params
-
 	aliveCount := s.Population.AliveCount()
+	const toSpawn = 5
 	for aliveCount < s.Params.MinPopulation {
 		loc, ok := s.World.FindEmptyLocation()
 		if !ok {
 			break
 		}
-		var genome *Genome
-		if source := s.Population.OldestGenome(); source != nil {
-			genome = ArtificialReproduction(source, &spawnParams)
-		} else {
-			genome = MakeRandomGenome(&spawnParams)
-		}
-		id := s.World.AddCreature(loc)
-		c := NewAdultCreature(id, loc, genome, s.Params)
-		s.Population.Creatures[id] = c
-		s.Population.AddAlive(id)
-		aliveCount++
+		s.SpawnClusterAt(loc.X, loc.Y, toSpawn)
+		aliveCount += toSpawn
 	}
 
 	s.Tick++
@@ -225,6 +215,7 @@ func (s *Simulation) Print() {
 }
 
 func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pending *pendingInstructions, temp float32) {
+	c.IsResting = false
 	if IsActionEnabled(REST) {
 		level := actionLevels[REST]
 		if math.Abs(float64(level)) > 0.75 {
@@ -237,10 +228,8 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			c.IsResting = true
 
 			c.LastAction = appendActionString(c.LastAction, "Resting")
-			return
 		}
 	}
-	c.IsResting = false
 
 	if IsActionEnabled(SET_RESPONSIVENESS) {
 		c.Responsiveness = (float32(math.Tanh(float64(actionLevels[SET_RESPONSIVENESS]))) + 1) / 2
@@ -296,54 +285,55 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			}
 		}
 	}
+	if !c.IsResting {
+		// Rotation: positive level turns CCW (left), negative turns CW (right).
+		rotateAmount := float64(0)
+		massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
+		if IsActionEnabled(ROTATE) {
+			turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
+			rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) *
+				float64(responseAdjust) *
+				s.Params.MaxRotationPerStep * float64(turnInertia)
+		}
+		if rotateAmount != 0 {
+			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
+			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
+			c.LastAction = appendActionString(c.LastAction, "Rotating")
+		}
+		c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
 
-	// Rotation: positive level turns CCW (left), negative turns CW (right).
-	rotateAmount := float64(0)
-	massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
-	if IsActionEnabled(ROTATE) {
-		turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
-		rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) *
-			float64(responseAdjust) *
-			s.Params.MaxRotationPerStep * float64(turnInertia)
-	}
-	if rotateAmount != 0 {
-		massCostMult := 0.5 + (massNorm * massNorm * 2.0)
-		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
-		c.LastAction = appendActionString(c.LastAction, "Rotating")
-	}
-	c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
+		// Forward/backward movement: positive = forward, negative = backward.
+		moveAmount := float64(0)
+		if IsActionEnabled(MOVE) {
+			moveAmount = math.Tanh(float64(actionLevels[MOVE])) * float64(responseAdjust)
+		}
+		massFactor := 1.0 + math.Pow(float64(c.CurrentMass(s.Params)/float32(s.Params.MaxMass)), 2)*5.0
+		moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
-	// Forward/backward movement: positive = forward, negative = backward.
-	moveAmount := float64(0)
-	if IsActionEnabled(MOVE) {
-		moveAmount = math.Tanh(float64(actionLevels[MOVE])) * float64(responseAdjust)
-	}
-	massFactor := 1.0 + math.Pow(float64(c.CurrentMass(s.Params)/float32(s.Params.MaxMass)), 2)*5.0
-	moveAmount *= s.Params.MaxSpeedPerStep / massFactor
+		// Colder temperatures slow movement (ectotherm-like muscle penalty).
+		tempNorm := float64((temp - 10.0) / 30.0)
+		if tempNorm < 0 {
+			tempNorm = 0
+		} else if tempNorm > 1 {
+			tempNorm = 1
+		}
+		speedMult := float64(s.Params.ColdSpeedMultiplier) + (1.0-float64(s.Params.ColdSpeedMultiplier))*tempNorm
+		moveAmount *= speedMult
 
-	// Colder temperatures slow movement (ectotherm-like muscle penalty).
-	tempNorm := float64((temp - 10.0) / 30.0)
-	if tempNorm < 0 {
-		tempNorm = 0
-	} else if tempNorm > 1 {
-		tempNorm = 1
-	}
-	speedMult := float64(s.Params.ColdSpeedMultiplier) + (1.0-float64(s.Params.ColdSpeedMultiplier))*tempNorm
-	moveAmount *= speedMult
+		if math.Abs(moveAmount) < 0.001 {
+			return
+		}
 
-	if math.Abs(moveAmount) < 0.001 {
-		return
-	}
+		dx := math.Cos(c.Heading) * moveAmount
+		dy := math.Sin(c.Heading) * moveAmount
+		newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
-	dx := math.Cos(c.Heading) * moveAmount
-	dy := math.Sin(c.Heading) * moveAmount
-	newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
-
-	if !s.World.IsWall(newPos) {
-		massCostMult := 0.5 + (massNorm * massNorm * 2.0)
-		c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)) * massCostMult)
-		c.LastAction = appendActionString(c.LastAction, "Moving")
-		pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
+		if !s.World.IsWall(newPos) {
+			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
+			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)) * massCostMult)
+			c.LastAction = appendActionString(c.LastAction, "Moving")
+			pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
+		}
 	}
 }
 
@@ -582,7 +572,7 @@ func (s *Simulation) updateFoodCache() {
 			ID: id,
 			X:  x,
 			Y:  y,
-			// Include mass if your FoodView supports it, otherwise remove
+			// Include mass if your FoodView supports it, otherwen remove
 			Mass: mass,
 		})
 	})

@@ -305,21 +305,21 @@ func NewGame(sim SimulationState) *Game {
 		BaseColor: color.RGBA{8, 10, 22, 215},   // Dark translucent navy
 		Border:    color.RGBA{90, 90, 150, 255}, // Muted blue-gray
 	}
-	const wallThickness = 10.0
-	bs := float64(BlockSize)
-	cx := sim.GridWidth() / 2
-	cy := sim.GridHeight() / 2
+	// const wallThickness = 10.0
+	// bs := float64(BlockSize)
+	// cx := sim.GridWidth() / 2
+	// cy := sim.GridHeight() / 2
 
 	// Vertical bar of the cross
-	g.renderGrid.AddLine(
-		(cx-wallThickness/2)*bs, sim.GridHeight()/4*bs,
-		(cx+wallThickness/2)*bs, sim.GridHeight()*3/4*bs,
-	)
-	// Horizontal bar of the cross
-	g.renderGrid.AddLine(
-		sim.GridWidth()/4*bs, (cy-wallThickness/2)*bs,
-		sim.GridWidth()*3/4*bs, (cy+wallThickness/2)*bs,
-	)
+	// g.renderGrid.AddLine(
+	// 	(cx-wallThickness/2)*bs, sim.GridHeight()/4*bs,
+	// 	(cx+wallThickness/2)*bs, sim.GridHeight()*3/4*bs,
+	// )
+	// // Horizontal bar of the cross
+	// g.renderGrid.AddLine(
+	// 	sim.GridWidth()/4*bs, (cy-wallThickness/2)*bs,
+	// 	sim.GridWidth()*3/4*bs, (cy+wallThickness/2)*bs,
+	// )
 	return g
 }
 
@@ -1249,20 +1249,23 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 	footerY := int(py+panelH) - nnPadding - 2
 	text.Draw(screen, fmt.Sprintf("Learning Rate: %.4f", baseNeuroplasticity*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
 }
-
 func nnEdgeColor(w float32) color.RGBA {
-	absW := w
-	if absW < 0 {
-		absW = -absW
+	absW := float32(math.Abs(float64(w)))
+
+	intensity := absW / 4.0
+	if intensity > 1.0 {
+		intensity = 1.0
 	}
-	brightness := absW
-	if brightness > 1 {
-		brightness = 1
-	}
+
+	v := uint8(intensity * 255)
+
+	alpha := uint8(30 + (intensity * 190))
+
 	if w >= 0 {
-		return color.RGBA{0, uint8(brightness*200 + 30), 0, 180}
+		return color.RGBA{R: 10, G: v, B: 10, A: alpha}
 	}
-	return color.RGBA{uint8(brightness*180 + 30), uint8(brightness * 40), 0, 160}
+
+	return color.RGBA{R: v, G: 10, B: 10, A: alpha}
 }
 
 func nnSensorName(id byte) string {

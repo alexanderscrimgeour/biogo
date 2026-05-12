@@ -43,7 +43,7 @@ type World struct {
 	fountainAngles []float64
 }
 
-func NewWorld(width, height float64, wallType int) *World {
+func NewWorld(width, height float64, _ int) *World {
 	const initialCapacity = 25000
 	const creatureCapacity = 20000
 	// Pre-allocate slot 0 so that IDs start at StartingCreatureID (1).
@@ -61,7 +61,7 @@ func NewWorld(width, height float64, wallType int) *World {
 		fBuckets:        make(map[int64][]int),
 		bucketSize:      20.0,
 	}
-	w.createWalls(wallType)
+	// w.createWalls(wallType)
 	return w
 }
 
@@ -508,21 +508,21 @@ func (w *World) SpawnFood(n int, sigma float64, mass float32) {
 		return
 	}
 
-	randomScatterFactor := 0.15 // 15% of food spawns anywhere
+	randomScatterFactor := 0.05 // 5% of food spawns anywhere
 	randomCount := int(float64(n) * randomScatterFactor)
 	clusterCount := n - randomCount
 
-	multiplier := rand.NormFloat64()*0.083 + 0.75
+	// multiplier := rand.NormFloat64()*0.083 + 0.75
 
-	// Clamp to strictly enforce the 50%-100% boundary
-	if multiplier < 0.5 {
-		multiplier = 0.5
-	}
-	if multiplier > 1.0 {
-		multiplier = 1.0
-	}
+	// // Clamp to strictly enforce the 50%-100% boundary
+	// if multiplier < 0.5 {
+	// 	multiplier = 0.5
+	// }
+	// if multiplier > 1.0 {
+	// 	multiplier = 1.0
+	// }
 
-	mass = mass * float32(multiplier)
+	// mass = mass * float32(multiplier)
 	if randomCount > 0 {
 		w.SpawnRandom(randomCount, mass)
 	}
