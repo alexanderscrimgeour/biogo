@@ -88,7 +88,7 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 	nnet := NeuralNet{}
 	nnet.Weights = make([]float32, len(g))
 
-	// Two-pass: neuron-sink edges first (improves feedforward locality), then action-sink.
+	// Two-pass: neuron-sink edges first, then action-sink.
 	edgeIndex := 0
 	for _, gene := range g {
 		if gene.SinkType == NEURON {
@@ -190,6 +190,7 @@ func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 	}
 	return final
 }
+
 func removeConnectionsToGene(genes []Gene, n NodeMap, key byte) []Gene {
 	newGenes := genes[:0]
 
@@ -227,7 +228,7 @@ func TestRemoveList(g []Gene) []Gene {
 	return g
 }
 
-// CreateNodeMap takes in
+// createNodeMap takes in
 func createNodeMap(neuralGenes []Gene) NodeMap {
 	nMap := NodeMap{}
 	ensureNode := func(id byte) {

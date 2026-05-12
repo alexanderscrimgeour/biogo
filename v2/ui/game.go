@@ -24,8 +24,8 @@ type SimulationState interface {
 	CreatureViews() []simulation.CreatureView
 	FoodViews() []simulation.FoodView
 	CorpseViews() []simulation.CorpseView
-	GridWidth() float64
-	GridHeight() float64
+	WorldWidth() float64
+	WorldHeight() float64
 	PopulationCount() int
 	FoodCount() int
 	AverageAge() float64
@@ -201,8 +201,8 @@ func NewGame(sim SimulationState) *Game {
 	g.creatureVs = make([]ebiten.Vertex, 0, initCapCreatures*(1+segments+1))
 	g.creatureIs = make([]uint16, 0, initCapCreatures*segments*3)
 
-	worldW := int(sim.GridWidth()) * BlockSize
-	worldH := int(sim.GridHeight()) * BlockSize
+	worldW := int(sim.WorldWidth()) * BlockSize
+	worldH := int(sim.WorldHeight()) * BlockSize
 	g.worldLayer = ebiten.NewImage(worldW, worldH)
 	g.camera = Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0}
 
@@ -307,18 +307,18 @@ func NewGame(sim SimulationState) *Game {
 	}
 	// const wallThickness = 10.0
 	// bs := float64(BlockSize)
-	// cx := sim.GridWidth() / 2
-	// cy := sim.GridHeight() / 2
+	// cx := sim.WorldWidth() / 2
+	// cy := sim.WorldHeight() / 2
 
 	// Vertical bar of the cross
 	// g.renderGrid.AddLine(
-	// 	(cx-wallThickness/2)*bs, sim.GridHeight()/4*bs,
-	// 	(cx+wallThickness/2)*bs, sim.GridHeight()*3/4*bs,
+	// 	(cx-wallThickness/2)*bs, sim.WorldHeight()/4*bs,
+	// 	(cx+wallThickness/2)*bs, sim.WorldHeight()*3/4*bs,
 	// )
 	// // Horizontal bar of the cross
 	// g.renderGrid.AddLine(
-	// 	sim.GridWidth()/4*bs, (cy-wallThickness/2)*bs,
-	// 	sim.GridWidth()*3/4*bs, (cy+wallThickness/2)*bs,
+	// 	sim.WorldWidth()/4*bs, (cy-wallThickness/2)*bs,
+	// 	sim.WorldWidth()*3/4*bs, (cy+wallThickness/2)*bs,
 	// )
 	return g
 }
@@ -375,8 +375,8 @@ func (g *Game) handleContinuousInput() {
 	if ebiten.IsKeyPressed(ebiten.KeyD) {
 		g.camera.X += pan
 	}
-	worldW := float64(g.sim.GridWidth()) * float64(BlockSize)
-	worldH := float64(g.sim.GridHeight()) * float64(BlockSize)
+	worldW := float64(g.sim.WorldWidth()) * float64(BlockSize)
+	worldH := float64(g.sim.WorldHeight()) * float64(BlockSize)
 	g.camera.Clamp(worldW, worldH)
 }
 
@@ -1190,26 +1190,57 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 
 	// Sensor nodes + right-aligned labels + left-anchored activity bars.
 	for _, s := range sensors {
-		nx := px + float32(nnColSensor)
-		ny := sensorY[s]
-		vector.DrawFilledCircle(screen, nx, ny, nnNodeR, color.RGBA{80, 150, 220, 255}, false)
-		lbl := nnSensorName(s)
-		lblW := float32(len(lbl)) * 8
-		labelX := nx - lblW - 10
-		if labelX < px+2 {
-			labelX = px + 2
-		}
-		text.Draw(screen, lbl, g.statFont, int(labelX), int(ny)+5, color.RGBA{160, 180, 220, 255})
-		if val, ok := nn.SensorValues[s]; ok {
-			barX := px + float32(nnPadding)
-			barY := ny - float32(nnBarH)/2
-			fillW := float32(nnBarMaxW) * clamp(val)
-			vector.DrawFilledRect(screen, barX, barY, float32(nnBarMaxW), float32(nnBarH), color.RGBA{20, 40, 70, 180}, false)
-			if fillW > 0 {
-				vector.DrawFilledRect(screen, barX, barY, fillW, float32(nnBarH), color.RGBA{80, 160, 240, 220}, false)
-			}
-		}
-	}
+    nx := px + float32(nnColSensor)
+    ny := sensorY[s]
+    vector.DrawFilledCircle(screen, nx, ny, nnNodeR, color.RGBA{80, 150, 220, 255}, false)
+
+    lbl := nnSensorName(s)
+    lblW := float32(len(lbl)) * 8
+    labelX := nx - lblW - 20
+    if labelX < px+4 {
+        labelX = px + 4
+    }
+    text.Draw(screen, lbl, g.statFont, int(labelX), int(ny)+5, color.RGBA{160, 180, 220, 255})
+
+    if val, ok := nn.SensorValues[s]; ok {
+        barMaxW := float32(nnBarMaxW)
+        barX := px + float32(nnPadding)
+        barY := ny - float32(nnBarH)/2
+        centerX := barX + (barMaxW / 2)
+
+        // 1. Draw Background Track (Dark)
+        vector.DrawFilledRect(screen, barX, barY, barMaxW, float32(nnBarH), color.RGBA{20, 40, 70, 180}, false)
+
+        // 2. Draw Center "Zero" Line (Optional but helpful for visual reference)
+        vector.StrokeLine(screen, centerX, barY, centerX, barY+float32(nnBarH), 1, color.RGBA{255, 255, 255, 50}, false)
+
+        // 3. Calculate Fill Width and Position
+        // Clamp value to [-1, 1] just in case
+        cVal := val
+        if cVal > 1 { cVal = 1 } else if cVal < -1 { cVal = -1 }
+
+        halfWidth := (barMaxW / 2) * cVal
+
+        var fillColor color.RGBA
+        var fillX float32
+
+        if halfWidth >= 0 {
+            // Positive: Grow right from center
+            fillX = centerX
+            fillColor = color.RGBA{80, 160, 240, 220} // Blueish
+        } else {
+            // Negative: Grow left from center
+            fillX = centerX + halfWidth // halfWidth is negative, so this moves left
+            halfWidth = -halfWidth      // Rect width must be positive
+            fillColor = color.RGBA{240, 80, 80, 220}  // Reddish
+        }
+
+        // 4. Draw the actual value bar
+        if halfWidth > 0 {
+            vector.DrawFilledRect(screen, fillX, barY, halfWidth, float32(nnBarH), fillColor, false)
+        }
+    }
+}
 
 	// Hidden neuron nodes — one column per depth layer.
 	for _, id := range neurons {
@@ -1270,10 +1301,10 @@ func nnEdgeColor(w float32) color.RGBA {
 
 func nnSensorName(id byte) string {
 	names := [...]string{
-		"Age", "Energy", "Loc X", "Loc Y", "Osc 1",
+		"Bias", "Age", "Energy", "Loc X", "Loc Y", "Osc",
 		"LocalDensity", "LocalHeading", "LocalCOM",
 		"PopFwd", "PopCentroid", "FoodFws", "CorpsesFwd",
-		"Random", "Satiety", "Heading", "Food Ang",
+		"Random", "Satiety", "Heading", "Velocity", "Food Ang",
 		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd", "KinshipNearest",
 		"Mass %", "Blocked", "Prey", "Threat Ang",
 		"Prey Ang", "Wall Prox", "Digest", "Food/Cap",
@@ -1322,8 +1353,8 @@ func (g *Game) applySpawnMutSlider(mx int) {
 // Top 20% of the world is cold (blue), bottom 20% is warm (red/orange), with a
 // linear gradient in between. Rendered as 4-pixel horizontal strips.
 func (g *Game) drawTemperatureBackground() {
-	worldW := float32(int(g.sim.GridWidth()) * BlockSize)
-	worldH := float32(int(g.sim.GridHeight()) * BlockSize)
+	worldW := float32(int(g.sim.WorldWidth()) * BlockSize)
+	worldH := float32(int(g.sim.WorldHeight()) * BlockSize)
 
 	var coldR, coldG, coldB uint8
 	var warmR, warmG, warmB uint8
@@ -1336,7 +1367,7 @@ func (g *Game) drawTemperatureBackground() {
 	}
 
 	params := g.sim.GetParams()
-	radZoneW := float32(params.RadiationZoneWidth * float64(int(g.sim.GridWidth())*BlockSize))
+	radZoneW := float32(params.RadiationZoneWidth * float64(int(g.sim.WorldWidth())*BlockSize))
 
 	const bandH = float32(4)
 	for y := float32(0); y < worldH; y += bandH {

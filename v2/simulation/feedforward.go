@@ -1,7 +1,7 @@
 package simulation
 
 import (
-	"biogo/v2/grid"
+	"biogo/v2/world"
 	"math"
 )
 
@@ -9,7 +9,7 @@ const energyCostOfFiring = 0.0001
 const decayRate = 0.0005
 const energyCostOfLearning = 0.005
 
-func (c *Creature) FeedForward(w *grid.World, p *Population, step int, params *Parameters) []float32 {
+func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *Parameters) []float32 {
 	var neuroplasticityMod float32
 	if len(c.Nnet.LastActionValues) > int(SET_LEARNING_RATE) {
 		neuroplasticityMod = softsign(c.Nnet.LastActionValues[SET_LEARNING_RATE])

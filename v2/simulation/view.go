@@ -6,8 +6,8 @@ type CreatureView struct {
 	X, Y             float64
 	R, G, B, A       uint8
 	Heading          float64 // radians
-	SightDistance    byte
-	FieldOfView      byte
+	SightDistance    float64
+	FieldOfView      float64
 	Mass             byte
 	CurrentMass      float64
 	ReproductionType byte // 0 = asexual, 1 = sexual
@@ -57,8 +57,8 @@ type CreatureDetailView struct {
 	CurrentMass      float32
 	AdultMass        byte
 	LastAction       string
-	SightDistance    byte
-	FieldOfView      byte
+	SightDistance    float64
+	FieldOfView      float64
 	Dopamine         float32
 	MutationPct      float32 // actual per-gene mutation probability as a percentage
 	R, G, B, A       uint8   // genome-derived display colour
@@ -117,8 +117,8 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		CurrentMass:      c.CurrentMass(s.Params),
 		AdultMass:        c.Genome.Mass,
 		LastAction:       c.LastAction,
-		SightDistance:    c.Genome.SightDistance,
-		FieldOfView:      c.Genome.FieldOfView,
+		SightDistance:    c.GetSightDistance(params),
+		FieldOfView:      c.FieldOfView(),
 		Dopamine:         c.Dopamine,
 		MutationPct:      s.Params.BaseMutationRate * float32(c.Genome.MutationRate),
 		R:                uint8(r >> 8),
@@ -153,8 +153,8 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			B:                uint8(b),
 			A:                uint8(a),
 			Heading:          c.Heading,
-			SightDistance:    c.Genome.SightDistance,
-			FieldOfView:      c.Genome.FieldOfView,
+			SightDistance:    c.GetSightDistance(params),
+			FieldOfView:      c.FieldOfView(),
 			Mass:             c.Genome.Mass,
 			CurrentMass:      float64(c.Mass),
 			ReproductionType: c.Genome.ReproductionType,

@@ -7,8 +7,8 @@ import (
 
 type Parameters struct {
 	// World geometry
-	GridWidth  float64
-	GridHeight float64
+	WorldWidth  float64
+	WorldHeight float64
 
 	// Population
 	MaxPopulation      int
@@ -99,8 +99,8 @@ type Parameters struct {
 
 func DefaultParams() *Parameters {
 	p := &Parameters{
-		GridWidth:                   1000,
-		GridHeight:                  800,
+		WorldWidth:                  1000,
+		WorldHeight:                 800,
 		MaxPopulation:               20000,
 		MinPopulation:               500,
 		StartingPopulation:          1000,
@@ -122,13 +122,13 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     20000,
-		FoodSpawnInterval:           50,
+		MaxFood:                     25000,
+		FoodSpawnInterval:           100,
 		FoodMass:                    10.0,
 		FoodInteractionRadius:       3.0,
-		FountainCount:               5,
+		FountainCount:               10,
 		FountainDriftSpeed:          0.02,
-		FountainRadius:              50.0,
+		FountainRadius:              25.0,
 		MinStomachSize:              5.0,
 		MaxStomachSize:              100.0,
 		DigestionRate:               0.5,

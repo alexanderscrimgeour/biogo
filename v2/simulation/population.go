@@ -1,8 +1,8 @@
 ﻿package simulation
 
 import (
-	"biogo/v2/grid"
 	"biogo/v2/utils"
+	"biogo/v2/world"
 	"math"
 	"math/rand"
 	"runtime"
@@ -29,7 +29,7 @@ type ReproductionInstruction struct {
 
 type MoveInstruction struct {
 	Creature   *Creature
-	Loc        grid.Position
+	Loc        world.Position
 	MoveAmount float64
 }
 
@@ -58,7 +58,7 @@ func NewPopulation(p *Parameters) *Population {
 	}
 }
 
-func (p *Population) QueueForMove(creature *Creature, newLoc grid.Position, moveAmount float64) {
+func (p *Population) QueueForMove(creature *Creature, newLoc world.Position, moveAmount float64) {
 	p.MoveQueue = append(p.MoveQueue, MoveInstruction{creature, newLoc, moveAmount})
 }
 
@@ -102,7 +102,7 @@ func (p *Population) AliveCount() int {
 
 // ProcessMoveQueue moves each queued creature to its target position and
 // consumes the nearest food item within interaction radius if one is present.
-func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessMoveQueue(w *world.World, params *Parameters) {
 	for _, instruction := range p.MoveQueue {
 		c := instruction.Creature
 		if !c.Alive {
@@ -211,7 +211,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 // creature within its FOV cone. Damage scales with the attacker/prey mass ratio.
 // Unlike passive predation, there is no minimum mass requirement — smaller creatures
 // can attack larger ones but deal proportionally less damage.
-func (p *Population) ProcessAttackQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 	for _, instruction := range p.AttackQueue {
 		c := instruction.Creature
 		if !c.Alive {
@@ -299,7 +299,7 @@ func (p *Population) ProcessAttackQueue(w *grid.World, params *Parameters) {
 
 // ProcessDeathQueue marks queued creatures as dead. Corpses remain in the world
 // and decay over time, preserving their mass as a food source.
-func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 	if len(p.DeathQueue) == 0 {
 		return
 	}
@@ -331,7 +331,7 @@ func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 
 // ProcessCorpseDecay drains mass from every dead creature. Fully decayed
 // corpses are removed from both the world and the population map.
-func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
+func (p *Population) ProcessCorpseDecay(w *world.World, params *Parameters) {
 	corpseIDs := make([]int, 0, len(p.Creatures))
 	for id, c := range p.Creatures {
 		if !c.Alive {
@@ -373,7 +373,7 @@ func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 // Energy cost scales with offspring mass (tissue = stored energy).
 // On reproduction the parent loses energy and half its body mass; the child
 // is created at that half-mass size and grows back to full mass over time.
-func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters) {
 	aliveCount := p.AliveCount()
 	for _, ri := range p.ReproductionQueue {
 		if aliveCount >= params.MaxPopulation {
@@ -468,7 +468,7 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters)
 // radiationMult returns the mutation multiplier for a creature at world x-coordinate x.
 // Returns RadiationMutationMultiplier when inside the radiation zone, 1.0 otherwise.
 func radiationMult(x float64, params *Parameters) float32 {
-	if x < params.RadiationZoneWidth*params.GridWidth {
+	if x < params.RadiationZoneWidth*params.WorldWidth {
 		return params.RadiationMutationMultiplier
 	}
 	return 1.0
@@ -476,17 +476,17 @@ func radiationMult(x float64, params *Parameters) float32 {
 
 // findOffspringLocation returns a free position for an offspring, preferring a
 // spot 5 units behind the parent and falling back to random nearby positions.
-func findOffspringLocation(w *grid.World, parent *Creature) (grid.Position, bool) {
+func findOffspringLocation(w *world.World, parent *Creature) (world.Position, bool) {
 	backX := -math.Cos(parent.Heading) * 5.0
 	backY := -math.Sin(parent.Heading) * 5.0
-	behind := grid.Position{X: parent.Loc.X + backX, Y: parent.Loc.Y + backY}
+	behind := world.Position{X: parent.Loc.X + backX, Y: parent.Loc.Y + backY}
 	if w.IsInBounds(behind) && !w.IsWall(behind) {
 		return behind, true
 	}
 	for i := 0; i < 20; i++ {
 		angle := rand.Float64() * 2 * math.Pi
 		dist := rand.Float64()*8.0 + 2.0
-		pos := grid.Position{
+		pos := world.Position{
 			X: parent.Loc.X + math.Cos(angle)*dist,
 			Y: parent.Loc.Y + math.Sin(angle)*dist,
 		}
@@ -494,7 +494,7 @@ func findOffspringLocation(w *grid.World, parent *Creature) (grid.Position, bool
 			return pos, true
 		}
 	}
-	return grid.Position{}, false
+	return world.Position{}, false
 }
 
 // OldestGenome returns the genome of the oldest living creature, or nil if none.

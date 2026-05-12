@@ -1,7 +1,7 @@
 ﻿package simulation
 
 import (
-	"biogo/v2/grid"
+	"biogo/v2/world"
 	"fmt"
 	"math"
 	"math/rand"
@@ -10,7 +10,7 @@ import (
 )
 
 type Simulation struct {
-	World        *grid.World
+	World        *world.World
 	Population   *Population
 	Tick         int
 	Params       *Parameters
@@ -32,7 +32,7 @@ func New(params *Parameters) *Simulation {
 }
 
 func (s *Simulation) initializeWorld() {
-	s.World = grid.NewWorld(s.Params.GridWidth, s.Params.GridHeight, 1)
+	s.World = world.NewWorld(s.Params.WorldWidth, s.Params.WorldHeight, 1)
 	s.World.SpawnRandom(s.Params.MaxFood*2, s.Params.FoodMass)
 	s.World.InitFountains(s.Params.FountainCount)
 }
@@ -192,7 +192,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	c.LastAction = ""
 	temp := s.World.TemperatureAt(c.Loc.Y)
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
-	if c.Loc.X < s.Params.RadiationZoneWidth*s.Params.GridWidth {
+	if c.Loc.X < s.Params.RadiationZoneWidth*s.Params.WorldWidth {
 		massNorm := c.Mass / float32(s.Params.MaxMass)
 		c.DrainEnergy(s.Params.RadiationDamagePerTick * float32(math.Pow(float64(massNorm), 0.75)))
 	}
@@ -238,12 +238,19 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	responseAdjust := responseCurve(c.Responsiveness, s.Params.ResponseCurveKFactor)
 
 	if IsActionEnabled(SET_OSCILLATOR_PERIOD) {
-		periodf := actionLevels[SET_OSCILLATOR_PERIOD]
-		newPeriodf := float32(math.Tanh(float64(periodf)+1) / 2)
-		newPeriod := 1 + int(1.5+math.Exp(7*float64(newPeriodf)))
-		if newPeriod >= 2 && newPeriod <= math.MaxUint8 {
-			c.Clock = newPeriod
+		actionVal := actionLevels[SET_OSCILLATOR_PERIOD] // [-1, 1]
+
+		geneNorm := float64(c.Genome.OscPeriod) / 255.0
+		baseTicks := 2.0 * math.Pow(5000.0/2.0, geneNorm)
+
+		multiplier := math.Pow(2, float64(actionVal))
+
+		finalTicks := baseTicks / multiplier
+
+		if finalTicks < 2 {
+			finalTicks = 2
 		}
+		c.Clock = int(finalTicks)
 	}
 
 	if IsActionEnabled(ATTACK) {
@@ -300,7 +307,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
 			c.LastAction = appendActionString(c.LastAction, "Rotating")
 		}
-		c.Heading = grid.NormalizeAngle(c.Heading + rotateAmount)
+		c.Heading = world.NormalizeAngle(c.Heading + rotateAmount)
 
 		// Forward/backward movement: positive = forward, negative = backward.
 		moveAmount := float64(0)
@@ -326,7 +333,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 
 		dx := math.Cos(c.Heading) * moveAmount
 		dy := math.Sin(c.Heading) * moveAmount
-		newPos := s.World.ClampToBounds(grid.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
+		newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 		if !s.World.IsWall(newPos) {
 			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
@@ -405,7 +412,7 @@ func (s *Simulation) SetSpawnMutationRate(rate float32) {
 // SpawnAt creates a new random creature at the given world-space position.
 // Returns false if the position is inside a wall.
 func (s *Simulation) SpawnAt(x, y float64) bool {
-	pos := s.World.ClampToBounds(grid.Position{X: x, Y: y})
+	pos := s.World.ClampToBounds(world.Position{X: x, Y: y})
 	if s.World.IsWall(pos) {
 		return false
 	}
@@ -429,7 +436,7 @@ func (s *Simulation) SpawnClusterAt(x, y float64, count int) bool {
 	offsets := [][2]float64{{0, 0}, {4, 0}, {-4, 0}, {0, 4}, {0, -4}}
 	spawned := 0
 	for i := 0; spawned < count && i < len(offsets); i++ {
-		pos := s.World.ClampToBounds(grid.Position{X: x + offsets[i][0], Y: y + offsets[i][1]})
+		pos := s.World.ClampToBounds(world.Position{X: x + offsets[i][0], Y: y + offsets[i][1]})
 		if s.World.IsWall(pos) {
 			continue
 		}
@@ -467,8 +474,8 @@ func (s *Simulation) CreatureGenomeCopy(id int) (*Genome, bool) {
 // GetParams exposes the simulation parameters to the UI layer.
 func (s *Simulation) GetParams() *Parameters { return s.Params }
 
-func (s *Simulation) GridWidth() float64  { return s.Params.GridWidth }
-func (s *Simulation) GridHeight() float64 { return s.Params.GridHeight }
+func (s *Simulation) WorldWidth() float64  { return s.Params.WorldWidth }
+func (s *Simulation) WorldHeight() float64 { return s.Params.WorldHeight }
 
 func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
@@ -477,12 +484,14 @@ func (s *Simulation) FoodCount() int { return s.World.FoodCount() }
 // TotalEnergy returns the total liquid energy in the system: food energy plus the
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
 func (s *Simulation) TotalEnergy() float64 {
-	energy := s.World.TotalFoodMass()
-	for _, id := range s.Population.aliveIDs {
-		c := s.Population.Creatures[id]
-		energy += float64(c.Energy) + float64(c.Stomach)
+	mass := s.World.TotalFoodMass()
+	for _, c := range s.Population.Creatures {
+		mass += float64(c.Mass)
+		// energy in mass
+		mass += float64(c.Stomach)
 	}
-	return energy
+
+	return mass * float64(s.Params.EnergyPerMassUnit)
 }
 
 func (s *Simulation) AverageAge() float64 {
@@ -540,8 +549,8 @@ func (s *Simulation) updatePopulationCaches() {
 				ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
 				R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
 				CurrentMass:      float64(c.Mass),
-				SightDistance:    c.Genome.SightDistance,
-				FieldOfView:      c.Genome.FieldOfView,
+				SightDistance:    c.GetSightDistance(params),
+				FieldOfView:      c.halfFOVCos,
 				ReproductionType: c.Genome.ReproductionType,
 			})
 		} else {

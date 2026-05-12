@@ -1,7 +1,7 @@
 package test
 
 import (
-	"biogo/v2/grid"
+	"biogo/v2/world"
 	"math"
 	"testing"
 )
