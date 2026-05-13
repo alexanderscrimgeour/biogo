@@ -295,7 +295,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	if !c.IsResting {
 		// Rotation: positive level turns CCW (left), negative turns CW (right).
 		rotateAmount := float64(0)
-		massNorm := c.CurrentMass(s.Params) / float32(s.Params.MaxMass)
+		massNorm := c.CurrentMass() / float32(s.Params.MaxMass)
 		if IsActionEnabled(ROTATE) {
 			turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
 			rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) *
@@ -314,7 +314,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if IsActionEnabled(MOVE) {
 			moveAmount = math.Tanh(float64(actionLevels[MOVE])) * float64(responseAdjust)
 		}
-		massFactor := 1.0 + math.Pow(float64(c.CurrentMass(s.Params)/float32(s.Params.MaxMass)), 2)*5.0
+		massFactor := 1.0 + math.Pow(float64(c.CurrentMass()/float32(s.Params.MaxMass)), 2)*5.0
 		moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
 		// Colder temperatures slow movement (ectotherm-like muscle penalty).
@@ -484,14 +484,15 @@ func (s *Simulation) FoodCount() int { return s.World.FoodCount() }
 // TotalEnergy returns the total liquid energy in the system: food energy plus the
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
 func (s *Simulation) TotalEnergy() float64 {
-	mass := s.World.TotalFoodMass()
+	// Energy In food
+	energy := s.World.TotalFoodMass() * float64(s.Params.EnergyPerMassUnit)
+
+	// Total mass and energy in creatures
 	for _, c := range s.Population.Creatures {
-		mass += float64(c.Mass)
-		// energy in mass
-		mass += float64(c.Stomach)
+		energy += float64(c.Energy) + (float64(c.Mass)+c.Stomach)*float64(s.Params.EnergyPerMassUnit)
 	}
 
-	return mass * float64(s.Params.EnergyPerMassUnit)
+	return energy
 }
 
 func (s *Simulation) AverageAge() float64 {
@@ -549,23 +550,19 @@ func (s *Simulation) updatePopulationCaches() {
 				ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
 				R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
 				CurrentMass:      float64(c.Mass),
-				SightDistance:    c.GetSightDistance(params),
-				FieldOfView:      c.halfFOVCos,
+				SightDistance:    c.GetSightDistance(),
+				FieldOfView:      c.FieldOfView(),
+				Radius:           c.Radius,
 				ReproductionType: c.Genome.ReproductionType,
 			})
 		} else {
-			// Corpse Logic
-			energyFraction := float32(0.0)
-			if max := c.MaxEnergy(s.Params); max > 0 {
-				energyFraction = c.Energy / max
-			}
 
 			s.corpseCache = append(s.corpseCache, CorpseView{
-				ID:             id,
-				X:              c.Loc.X,
-				Y:              c.Loc.Y,
-				EnergyFraction: energyFraction,
-				Mass:           c.Mass,
+				ID:     id,
+				X:      c.Loc.X,
+				Y:      c.Loc.Y,
+				Mass:   c.Mass,
+				Radius: c.Radius,
 			})
 		}
 	}
@@ -576,13 +573,12 @@ func (s *Simulation) updateFoodCache() {
 	s.foodCache = s.foodCache[:0]
 
 	// Use our new iterator to pull only active food
-	s.World.ForEachActiveFood(func(id int, x, y float64, mass float32) {
+	s.World.ForEachActiveFood(func(id int, x, y float64, r float64) {
 		s.foodCache = append(s.foodCache, FoodView{
-			ID: id,
-			X:  x,
-			Y:  y,
-			// Include mass if your FoodView supports it, otherwen remove
-			Mass: mass,
+			ID:     id,
+			X:      x,
+			Y:      y,
+			Radius: r,
 		})
 	})
 }

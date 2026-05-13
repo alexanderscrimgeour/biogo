@@ -1,7 +1,6 @@
 package test
 
 import (
-	"biogo/v2/world"
 	"biogo/v2/simulation"
 	"testing"
 )
@@ -13,7 +12,7 @@ func TestCurrentMassAtBirth(t *testing.T) {
 	genome.MinMass = 10
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
-	got := c.CurrentMass(params)
+	got := c.CurrentMass()
 	want := float32(genome.MinMass)
 	if got != want {
 		t.Errorf("CurrentMass at age 0: got %f, want %f", got, want)
@@ -27,7 +26,7 @@ func TestCurrentMassAtAdulthood(t *testing.T) {
 
 	c := simulation.NewAdultCreature(1, grid.Position{}, genome, params)
 
-	got := c.CurrentMass(params)
+	got := c.CurrentMass()
 	want := float32(genome.Mass)
 	if got != want {
 		t.Errorf("CurrentMass at adulthood: got %f, want %f", got, want)
@@ -45,13 +44,13 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
-	startMass := c.CurrentMass(params)
+	startMass := c.CurrentMass()
 
 	for i := 0; i < 50; i++ {
 		c.GrowMass(params)
 	}
 
-	midMass := c.CurrentMass(params)
+	midMass := c.CurrentMass()
 	if midMass <= startMass {
 		t.Errorf("mass should grow after 50 ticks: start=%f mid=%f", startMass, midMass)
 	}
@@ -62,7 +61,7 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 	for i := 0; i < 5000; i++ {
 		c.GrowMass(params)
 	}
-	finalMass := c.CurrentMass(params)
+	finalMass := c.CurrentMass()
 	if finalMass > float32(genome.Mass) {
 		t.Errorf("mass should never exceed genome.Mass: got %f, max %d", finalMass, genome.Mass)
 	}
@@ -130,7 +129,7 @@ func TestCurrentMassNeverExceedsGenomeMass(t *testing.T) {
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 	for tick := 0; tick <= params.MaxJuvenilePeriod+10; tick++ {
-		s := c.CurrentMass(params)
+		s := c.CurrentMass()
 		if s > float32(genome.Mass) {
 			t.Errorf("CurrentMass %f exceeds genome.Mass %d at tick %d", s, genome.Mass, tick)
 		}

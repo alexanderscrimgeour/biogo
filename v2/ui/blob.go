@@ -56,7 +56,6 @@ func (b *Blob) Translate(x, y float64) {
 }
 
 func (b *Blob) Move(x, y float64) {
-
 	moveX := x - b.center.X
 	moveY := y - b.center.Y
 	b.geoM.Translate(moveX, moveY)

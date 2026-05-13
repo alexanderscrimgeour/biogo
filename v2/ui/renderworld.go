@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 type point struct {
@@ -11,9 +12,9 @@ type point struct {
 	Y float64
 }
 
-type RenderGrid struct {
+type RenderWorld struct {
 	position        point
-	blobSize        int
+	unitSize        int
 	baseFoodImage   *ebiten.Image
 	baseCorpseImage *ebiten.Image
 	foodBlobs       []*Blob
@@ -21,34 +22,30 @@ type RenderGrid struct {
 	walls           []*Line
 }
 
-func NewRenderGrid(xPos, yPos float64, blobSize int) *RenderGrid {
-	foodImg := ebiten.NewImage(blobSize, blobSize)
-	foodImg.Fill(color.RGBA{R: 65, G: 140, B: 55, A: 128})
-	corpseImg := ebiten.NewImage(blobSize, blobSize)
-	corpseImg.Fill(color.RGBA{R: 120, G: 60, B: 20, A: 128})
-	return &RenderGrid{
+func NewRenderWorld(xPos, yPos float64, unitSize int) *RenderWorld {
+	foodImg := ebiten.NewImage(unitSize+10, unitSize+10)
+	corpseImg := ebiten.NewImage(unitSize+10, unitSize+10)
+
+	foodImg.Fill(color.Transparent)
+	corpseImg.Fill(color.Transparent)
+
+	c := float32(unitSize+10) / 2
+	r := (float32(unitSize) / 2) - 0.5
+
+	vector.DrawFilledCircle(foodImg, c, c, r, color.RGBA{65, 140, 55, 250}, true)
+	vector.DrawFilledCircle(corpseImg, c, c, r, color.RGBA{120, 60, 20, 250}, true)
+
+	return &RenderWorld{
 		position:        point{X: xPos, Y: yPos},
-		blobSize:        blobSize,
+		unitSize:        unitSize,
 		baseFoodImage:   foodImg,
 		baseCorpseImage: corpseImg,
 	}
 }
 
-func (g *RenderGrid) DrawGrid(image *ebiten.Image) {
-	for _, wall := range g.walls {
-		wall.Draw(image)
-	}
-	for _, blob := range g.foodBlobs {
-		blob.Draw(image)
-	}
-	for _, blob := range g.blobs {
-		blob.Draw(image)
-	}
-}
-
 // DrawBackground draws only the static elements (walls and food).
 // Creatures are excluded so the caller can render them with interpolation.
-func (g *RenderGrid) DrawBackground(image *ebiten.Image) {
+func (g *RenderWorld) DrawBackground(image *ebiten.Image) {
 	for _, wall := range g.walls {
 		wall.Draw(image)
 	}
@@ -57,21 +54,24 @@ func (g *RenderGrid) DrawBackground(image *ebiten.Image) {
 	}
 }
 
-func (g *RenderGrid) AddLine(minX, minY, maxX, maxY float64) *Line {
+func (g *RenderWorld) AddLine(minX, minY, maxX, maxY float64) *Line {
 	wall := NewLine(minX, minY, maxX, maxY)
 	g.walls = append(g.walls, wall)
 	return wall
 }
 
-func (g *RenderGrid) AddBlob(scale float64) *Blob {
+func (g *RenderWorld) AddBlob(scale float64) *Blob {
 	geoM := &ebiten.GeoM{}
+	w := float64(g.baseFoodImage.Bounds().Dx())
+	h := float64(g.baseFoodImage.Bounds().Dy())
+	geoM.Translate(-w/2, -h/2)
 	geoM.Scale(scale, scale)
 	blob := NewBlob(g.baseCorpseImage, geoM)
 	g.blobs = append(g.blobs, blob)
 	return blob
 }
 
-func (g *RenderGrid) RemoveBlob(blob *Blob) {
+func (g *RenderWorld) RemoveBlob(blob *Blob) {
 	for i, b := range g.blobs {
 		if b == blob {
 			g.blobs = append(g.blobs[:i], g.blobs[i+1:]...)
@@ -80,15 +80,19 @@ func (g *RenderGrid) RemoveBlob(blob *Blob) {
 	}
 }
 
-func (g *RenderGrid) AddFoodBlob(scale float64) *Blob {
+func (g *RenderWorld) AddFoodBlob(scale float64) *Blob {
 	geoM := &ebiten.GeoM{}
+
+	w := float64(g.baseFoodImage.Bounds().Dx())
+	h := float64(g.baseFoodImage.Bounds().Dy())
+	geoM.Translate(-w/2, -h/2)
 	geoM.Scale(scale, scale)
+
 	blob := NewBlob(g.baseFoodImage, geoM)
 	g.foodBlobs = append(g.foodBlobs, blob)
 	return blob
 }
-
-func (g *RenderGrid) RemoveFoodBlob(blob *Blob) {
+func (g *RenderWorld) RemoveFoodBlob(blob *Blob) {
 	for i, b := range g.foodBlobs {
 		if b == blob {
 			g.foodBlobs = append(g.foodBlobs[:i], g.foodBlobs[i+1:]...)

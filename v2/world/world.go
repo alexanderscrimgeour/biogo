@@ -59,7 +59,7 @@ func NewWorld(width, height float64, _ int) *World {
 		foodActive:      make([]bool, 0, initialCapacity),
 		freeFoodIDs:     make([]int, 0, 100),
 		fBuckets:        make(map[int64][]int),
-		bucketSize:      20.0,
+		bucketSize:      100.0,
 	}
 	// w.createWalls(wallType)
 	return w
@@ -586,11 +586,12 @@ func (w *World) TemperatureAt(y float64) float32 {
 	return TempCold + t*(TempWarm-TempCold)
 }
 
-func (w *World) ForEachActiveFood(fn func(id int, x, y float64, mass float32)) {
+func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64)) {
 	for id, active := range w.foodActive {
 		if active {
 			pos := w.foodPos[id]
-			fn(id, pos.X, pos.Y, w.foodMass[id])
+			r := math.Sqrt(float64(w.foodMass[id]) * math.Pi)
+			fn(id, pos.X, pos.Y, r)
 		}
 	}
 }

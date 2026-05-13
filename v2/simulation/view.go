@@ -8,6 +8,7 @@ type CreatureView struct {
 	Heading          float64 // radians
 	SightDistance    float64
 	FieldOfView      float64
+	Radius           float64
 	Mass             byte
 	CurrentMass      float64
 	ReproductionType byte // 0 = asexual, 1 = sexual
@@ -15,18 +16,18 @@ type CreatureView struct {
 
 // FoodView is a read-only snapshot of a food item's position and mass for rendering.
 type FoodView struct {
-	ID   int
-	X, Y float64
-	Mass float32
+	ID     int
+	X, Y   float64
+	Radius float64
 }
 
 // CorpseView is a read-only snapshot of a dead creature for rendering.
 type CorpseView struct {
-	ID             int
-	X, Y           float64
-	IsCorpse       bool
-	EnergyFraction float32
-	Mass           float32
+	ID       int
+	X, Y     float64
+	IsCorpse bool
+	Mass     float32
+	Radius   float64
 }
 
 // NNEdgeView is a single weighted connection in the neural network snapshot.
@@ -64,8 +65,8 @@ type CreatureDetailView struct {
 	R, G, B, A       uint8   // genome-derived display colour
 	MetabolicRate    float32 // energy drained per tick
 	MaxAge           int     // maximum lifespan in ticks
-	Stomach          float32
-	StomachCapacity  float32
+	Stomach          float64
+	StomachCapacity  float64
 	ReproductionType byte // 0 = asexual, 1 = sexual
 	NeuralNet        NeuralNetView
 }
@@ -114,10 +115,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		Age:              c.Age,
 		IsJuvenile:       c.IsJuvenile(s.Params),
 		JuvenilePeriod:   c.JuvenilePeriod(s.Params),
-		CurrentMass:      c.CurrentMass(s.Params),
+		CurrentMass:      c.CurrentMass(),
 		AdultMass:        c.Genome.Mass,
 		LastAction:       c.LastAction,
-		SightDistance:    c.GetSightDistance(params),
+		SightDistance:    c.GetSightDistance(),
 		FieldOfView:      c.FieldOfView(),
 		Dopamine:         c.Dopamine,
 		MutationPct:      s.Params.BaseMutationRate * float32(c.Genome.MutationRate),
@@ -153,8 +154,9 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			B:                uint8(b),
 			A:                uint8(a),
 			Heading:          c.Heading,
-			SightDistance:    c.GetSightDistance(params),
+			SightDistance:    c.GetSightDistance(),
 			FieldOfView:      c.FieldOfView(),
+			Radius:           c.Radius,
 			Mass:             c.Genome.Mass,
 			CurrentMass:      float64(c.Mass),
 			ReproductionType: c.Genome.ReproductionType,
@@ -165,44 +167,3 @@ func (s *Simulation) CreatureViews() []CreatureView {
 
 func (s *Simulation) CreatureMinMass() byte { return 1 }
 func (s *Simulation) CreatureMaxMass() byte { return s.Params.MaxMass }
-
-// FoodViews returns a snapshot of all current food locations and masses for rendering.
-func (s *Simulation) FoodViews() []FoodView {
-	views := make([]FoodView, 0)
-
-	s.World.ForEachActiveFood(func(id int, x, y float64, mass float32) {
-		views = append(views, FoodView{
-			ID:   id,
-			X:    x,
-			Y:    y,
-			Mass: mass,
-		})
-	})
-
-	return views
-}
-
-// CorpseViews returns a snapshot of all decaying corpses for rendering.
-func (s *Simulation) CorpseViews() []CorpseView {
-	views := make([]CorpseView, 0)
-	for _, c := range s.Population.Creatures {
-		if c.Alive {
-			continue
-		}
-		// Decay fraction: remaining mass relative to genome adult mass.
-		frac := float32(0)
-		if c.Genome.Mass > 0 {
-			frac = c.Mass / float32(c.Genome.Mass)
-		}
-		if frac > 1 {
-			frac = 1
-		}
-		views = append(views, CorpseView{
-			ID:             c.Id,
-			X:              c.Loc.X,
-			Y:              c.Loc.Y,
-			EnergyFraction: frac,
-		})
-	}
-	return views
-}

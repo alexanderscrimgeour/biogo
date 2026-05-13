@@ -42,7 +42,7 @@ type Gene struct {
 type Genome struct {
 	OscPeriod         byte
 	SightDistance     byte
-	FieldOfView       byte // total FOV angle in degrees (0–180)
+	FieldOfView       byte
 	Responsiveness    byte
 	MutationRate      byte
 	Mass              byte
@@ -52,7 +52,7 @@ type Genome struct {
 	SynapticDensity   byte
 	JuvenilePeriod    byte
 	MetabolicRate     byte
-	StomachSize       byte // controls stomach capacity; maps to [MinStomachSize, MaxStomachSize]
+	StomachSize       byte
 	Neuroplasticity   byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
 	LearningThreshold byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
 	MassSplitRatio    byte // fraction of mass (and energy) transferred to daughter on asexual reproduction; maps to [0, 0.5]
@@ -192,8 +192,8 @@ func MakeRandomGenome(p *Parameters) *Genome {
 	maxMinMass := (mass - 1) / 2
 	g := Genome{
 		OscPeriod:         utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		SightDistance:     utils.LerpByte(p.MinSightDistance, p.MaxSightDistance, utils.MakeRandomByte()),
-		FieldOfView:       utils.LerpByte(p.MinFieldOfView, p.MaxFieldOfView, utils.MakeRandomByte()),
+		SightDistance:     utils.MakeRandomByte(),
+		FieldOfView:       utils.MakeRandomByte(),
 		Responsiveness:    utils.MakeRandomByte(),
 		MutationRate:      utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
 		Mass:              mass,
@@ -259,9 +259,9 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) 
 		}
 	}
 
-	mutateTarget(&g.OscPeriod, 1, 255, 15)
-	mutateTarget(&g.SightDistance, p.MinSightDistance, p.MaxSightDistance, 10)
-	mutateTarget(&g.FieldOfView, p.MinFieldOfView, p.MaxFieldOfView, 10)
+	mutateTarget(&g.OscPeriod, 0, 255, 15)
+	mutateTarget(&g.SightDistance, 0, 255, 10)
+	mutateTarget(&g.FieldOfView, 0, 255, 10)
 	mutateTarget(&g.Responsiveness, 0, 255, 20)
 	mutateTarget(&g.MutationRate, 1, 255, 5)
 	mutateTarget(&g.Mass, 3, p.MaxMass, 12)
@@ -473,4 +473,12 @@ func GenomeSimilarity(g1, g2 *Genome) float32 {
 		return 1.0
 	}
 	return 1.0 - float32(diff)/float32(totalBits)
+}
+
+func MapGeneToRange(gene byte, minRange, maxRange float64) float64 {
+	// 1. Normalize the gene (0-255) to a 0.0-1.0 percentage
+	percentage := float64(gene) / 255.0
+
+	// 2. Map that percentage to the [min, max] range
+	return minRange + (percentage * (maxRange - minRange))
 }
