@@ -1,4 +1,4 @@
-package grid
+package world
 
 import (
 	"math"
@@ -43,7 +43,7 @@ type World struct {
 	fountainAngles []float64
 }
 
-func NewWorld(width, height float64, wallType int) *World {
+func NewWorld(width, height float64, _ int) *World {
 	const initialCapacity = 25000
 	const creatureCapacity = 20000
 	// Pre-allocate slot 0 so that IDs start at StartingCreatureID (1).
@@ -59,9 +59,9 @@ func NewWorld(width, height float64, wallType int) *World {
 		foodActive:      make([]bool, 0, initialCapacity),
 		freeFoodIDs:     make([]int, 0, 100),
 		fBuckets:        make(map[int64][]int),
-		bucketSize:      20.0,
+		bucketSize:      100.0,
 	}
-	w.createWalls(wallType)
+	// w.createWalls(wallType)
 	return w
 }
 
@@ -290,11 +290,13 @@ func (w *World) ReduceFoodMass(id int, amount float32) float32 {
 	return remaining
 }
 
-// TotalFoodMass returns the sum of all food item masses currently in the world.
+// TotalFoodMass returns the sum of all active food item masses in the world.
 func (w *World) TotalFoodMass() float64 {
 	total := float64(0)
-	for _, m := range w.foodMass {
-		total += float64(m)
+	for id, active := range w.foodActive {
+		if active {
+			total += float64(w.foodMass[id])
+		}
 	}
 	return total
 }
@@ -441,6 +443,22 @@ func (w *World) FindEmptyLocation() (Position, bool) {
 	return Position{}, false
 }
 
+// FindEmptyLocationNear returns a random non-wall position within radius of center.
+// Falls back to FindEmptyLocation if no nearby position is found.
+func (w *World) FindEmptyLocationNear(center Position, radius float64) Position {
+	for i := 0; i < 30; i++ {
+		angle := rand.Float64() * 2 * math.Pi
+		dist := rand.Float64() * radius
+		pos := Position{X: center.X + math.Cos(angle)*dist, Y: center.Y + math.Sin(angle)*dist}
+		pos = w.ClampToBounds(pos)
+		if !w.IsWall(pos) {
+			return pos
+		}
+	}
+	pos, _ := w.FindEmptyLocation()
+	return pos
+}
+
 // --- Fountain system ---
 
 // InitFountains places count fountain points at random valid locations with random drift angles.
@@ -490,10 +508,21 @@ func (w *World) SpawnFood(n int, sigma float64, mass float32) {
 		return
 	}
 
-	randomScatterFactor := 0.15 // 15% of food spawns anywhere
+	randomScatterFactor := 0.05 // 5% of food spawns anywhere
 	randomCount := int(float64(n) * randomScatterFactor)
 	clusterCount := n - randomCount
 
+	// multiplier := rand.NormFloat64()*0.083 + 0.75
+
+	// // Clamp to strictly enforce the 50%-100% boundary
+	// if multiplier < 0.5 {
+	// 	multiplier = 0.5
+	// }
+	// if multiplier > 1.0 {
+	// 	multiplier = 1.0
+	// }
+
+	// mass = mass * float32(multiplier)
 	if randomCount > 0 {
 		w.SpawnRandom(randomCount, mass)
 	}
@@ -534,11 +563,35 @@ func (w *World) SpawnRandom(n int, mass float32) {
 	}
 }
 
-func (w *World) ForEachActiveFood(fn func(id int, x, y float64, mass float32)) {
+// TempCold and TempWarm define the ambient temperature range across the world's
+// Y axis. The top 20% is TempCold, the bottom 20% is TempWarm, with a linear
+// gradient in between.
+const (
+	TempCold = float32(10.0)
+	TempWarm = float32(40.0)
+)
+
+// TemperatureAt returns the ambient temperature in Celsius at world y-coordinate y.
+func (w *World) TemperatureAt(y float64) float32 {
+	const coldBandEnd = 0.2
+	const warmBandStart = 0.8
+	norm := y / w.Height
+	if norm <= coldBandEnd {
+		return TempCold
+	}
+	if norm >= warmBandStart {
+		return TempWarm
+	}
+	t := float32((norm - coldBandEnd) / (warmBandStart - coldBandEnd))
+	return TempCold + t*(TempWarm-TempCold)
+}
+
+func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64)) {
 	for id, active := range w.foodActive {
 		if active {
 			pos := w.foodPos[id]
-			fn(id, pos.X, pos.Y, w.foodMass[id])
+			r := math.Sqrt(float64(w.foodMass[id]) * math.Pi)
+			fn(id, pos.X, pos.Y, r)
 		}
 	}
 }

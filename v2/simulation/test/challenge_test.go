@@ -1,7 +1,7 @@
 package test
 
 import (
-	"biogo/v2/grid"
+	"biogo/v2/world"
 	"biogo/v2/simulation"
 	"testing"
 )
@@ -14,8 +14,8 @@ func TestPassedSurvivalCriteriaAllSurvive(t *testing.T) {
 	p := defaultParams()
 	p.StartingPopulation = 1
 	p.MaxPopulation = 1
-	p.GridWidth = 20
-	p.GridHeight = 20
+	p.WorldWidth = 20
+	p.WorldHeight = 20
 	p.MaxFood = 100
 	sim := makeSimulation(p)
 
@@ -28,8 +28,8 @@ func TestPassedSurvivalCriteriaAllSurvive(t *testing.T) {
 
 func TestPassedSurvivalCriteriaLeftSurvive(t *testing.T) {
 	p := defaultParams()
-	p.GridWidth = 20
-	p.GridHeight = 20
+	p.WorldWidth = 20
+	p.WorldHeight = 20
 	p.StartingPopulation = 0
 	p.MaxPopulation = 0
 	p.MinPopulation = 0
@@ -49,8 +49,8 @@ func TestPassedSurvivalCriteriaLeftSurvive(t *testing.T) {
 
 func TestPassedSurvivalCriteriaRightSurvive(t *testing.T) {
 	p := defaultParams()
-	p.GridWidth = 20
-	p.GridHeight = 20
+	p.WorldWidth = 20
+	p.WorldHeight = 20
 	p.StartingPopulation = 0
 	p.MaxPopulation = 0
 	p.MinPopulation = 0
@@ -70,8 +70,8 @@ func TestPassedSurvivalCriteriaRightSurvive(t *testing.T) {
 
 func TestPassedSurvivalCriteriaCenter(t *testing.T) {
 	p := defaultParams()
-	p.GridWidth = 200
-	p.GridHeight = 200
+	p.WorldWidth = 200
+	p.WorldHeight = 200
 	p.StartingPopulation = 0
 	p.MaxPopulation = 0
 	p.MinPopulation = 0

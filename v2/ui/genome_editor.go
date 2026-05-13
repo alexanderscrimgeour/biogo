@@ -64,15 +64,15 @@ func makeTraitDefs() []traitDef {
 			label: "Sight Dist",
 			get:   func(g *simulation.Genome) byte { return g.SightDistance },
 			set:   func(g *simulation.Genome, v byte) { g.SightDistance = v },
-			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinSightDistance },
-			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxSightDistance },
+			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return 0 },
+			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return 255 },
 		},
 		{
 			label: "Field of View",
 			get:   func(g *simulation.Genome) byte { return g.FieldOfView },
 			set:   func(g *simulation.Genome, v byte) { g.FieldOfView = v },
-			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinFieldOfView },
-			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxFieldOfView },
+			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return 0 },
+			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return 255 },
 		},
 		{
 			label: "Responsive",
@@ -261,7 +261,33 @@ func (e *GenomeEditor) Open(g *simulation.Genome, p *simulation.Parameters) {
 	if g != nil {
 		e.genome = g.Copy()
 	} else {
-		e.genome = simulation.MakeRandomGenome(p)
+
+		e.genome = &simulation.Genome{
+			// Neural Blueprint: Zero edges, Zero internal neurons
+			Brain:            make([]simulation.Gene, 0),
+			SynapticDensity:  0,
+			CognitiveBreadth: 0,
+
+			// Physical Invariants
+			Mass:    byte(15),
+			MinMass: byte(10),
+
+			// Reproduction: Default to Asexual Circle (0)
+			ReproductionType: 0,
+			MassSplitRatio:   127, // 50% split
+
+			// Mid-range defaults for all other traits (0-255 scale)
+			MetabolicRate:     127,
+			SightDistance:     127,
+			FieldOfView:       127,
+			OscPeriod:         127,
+			JuvenilePeriod:    127,
+			MutationRate:      20, // Subtle evolution
+			Responsiveness:    127,
+			StomachSize:       127,
+			Neuroplasticity:   127,
+			LearningThreshold: 127,
+		}
 	}
 	e.draggingTrait = -1
 	e.pendingSrc = nil
@@ -317,7 +343,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 		if e.genome.CognitiveBreadth > e.params.MinSynapticDensity {
 			lastID := e.genome.CognitiveBreadth - 1
 			nc := e.genome.CognitiveBreadth
-			var nb []*simulation.Gene
+			var nb []simulation.Gene
 			for _, gene := range e.genome.Brain {
 				skip := (gene.SourceType == simulation.NEURON && gene.SourceID%nc == lastID) ||
 					(gene.SinkType == simulation.NEURON && gene.SinkID%nc == lastID)
@@ -396,12 +422,12 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 				}
 			} else {
 				if nh.typ == simulation.NEURON || nh.typ == simulation.ACTION {
-					e.genome.Brain = append(e.genome.Brain, &simulation.Gene{
+					e.genome.Brain = append(e.genome.Brain, simulation.Gene{
 						SourceType: e.pendingSrc.typ,
 						SourceID:   e.pendingSrc.id,
 						SinkType:   nh.typ,
 						SinkID:     nh.id,
-						Weight:     128, // neutral
+						Weight:     128,
 					})
 					e.genome.SynapticDensity = byte(len(e.genome.Brain))
 				}

@@ -23,11 +23,11 @@ func RestrictByte(min, max, val byte) byte {
 	return MinByte(MaxByte(val, min), max)
 }
 
-func ClampByte(min, max, val byte) byte {
+func LerpByte(min, max, val byte) byte {
 	return byte(((float32(val) / math.MaxUint8) * float32(max-min)) + float32(min))
 }
 
-func ClampByteAsFloat32(min, max, val byte) float32 {
+func LerpByteAsFloat32(min, max, val byte) float32 {
 	return ((float32(val) / math.MaxUint8) * float32(max-min)) + float32(min)
 }
 

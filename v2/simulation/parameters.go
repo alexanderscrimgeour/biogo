@@ -7,8 +7,8 @@ import (
 
 type Parameters struct {
 	// World geometry
-	GridWidth  float64
-	GridHeight float64
+	WorldWidth  float64
+	WorldHeight float64
 
 	// Population
 	MaxPopulation      int
@@ -24,10 +24,10 @@ type Parameters struct {
 	MaxCognitiveBreadth      byte
 	MinSynapticDensity       byte
 	MaxSynapticDensity       byte
-	MinSightDistance         byte
-	MaxSightDistance         byte
-	MinFieldOfView           byte
-	MaxFieldOfView           byte
+	MinSightDistance         float64
+	MaxSightDistance         float64
+	MinFieldOfView           float64
+	MaxFieldOfView           float64
 	ResponseCurveKFactor     float32
 
 	// Mutation
@@ -51,9 +51,9 @@ type Parameters struct {
 	FountainRadius     float64 // Gaussian sigma for food placement around a fountain
 
 	// Stomach / digestion
-	MinStomachSize float32 // stomach capacity at StomachSize gene = 0
-	MaxStomachSize float32 // stomach capacity at StomachSize gene = 255
-	DigestionRate  float32 // stomach mass converted to energy per tick
+	MinStomachSize float64 // stomach capacity at StomachSize gene = 0
+	MaxStomachSize float64 // stomach capacity at StomachSize gene = 255
+	DigestionRate  float64 // stomach mass converted to energy per tick
 
 	// Energy / metabolism
 	BaseBMR                float32 // basal metabolic rate at MaxMass (Kleiber-scaled down for smaller mass)
@@ -67,9 +67,11 @@ type Parameters struct {
 	// Reproduction
 	ReproductionEnergyThreshold float32
 	ReproductionEfficiency      float32 // energy cost = offspringMass * EnergyPerMassUnit * Efficiency
+	MatingRadius                float64 // max distance between two creatures for sexual mating to occur
+	MinMatingSimilarity         float32 // minimum GenomeSimilarity [0,1] required for a pair to mate
 
 	// Predation
-	BaseBiteSize          float32 // mass consumed per eating interaction for a max-mass creature; scales linearly with body mass
+	BaseBiteSize          float64 // mass consumed per eating interaction for a max-mass creature; scales linearly with body mass
 	CorpseDecayRate       float32
 	MinPredationMassRatio float32 // attacker must be >= this fraction of prey mass to initiate an attack
 	AttackEnergyCost      float32 // energy drained from attacker per successful bite on a live creature
@@ -80,6 +82,16 @@ type Parameters struct {
 	MinLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 0
 	MaxLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 255
 
+	// Temperature effects
+	ColdMetabolicMultiplier float32 // metabolic cost multiplier at TempCold (10°C)
+	WarmMetabolicMultiplier float32 // metabolic cost multiplier at TempWarm (40°C)
+	ColdSpeedMultiplier     float32 // fraction of max move speed at TempCold (10°C); 1.0 at TempWarm
+
+	// Radiation zone (left strip of the world)
+	RadiationZoneWidth          float64 // fraction of world width that is radioactive [0, 1]
+	RadiationMutationMultiplier float32 // multiplier applied to offspring mutation rate when parent is in zone
+	RadiationDamagePerTick      float32 // base energy drained per tick (Kleiber-scaled) while in zone
+
 	// Misc
 	SavedGenomeProportion  float64
 	PopulationSensorRadius float64
@@ -87,10 +99,10 @@ type Parameters struct {
 
 func DefaultParams() *Parameters {
 	p := &Parameters{
-		GridWidth:                   1000,
-		GridHeight:                  600,
-		MaxPopulation:               20000,
-		MinPopulation:               100,
+		WorldWidth:                  2500,
+		WorldHeight:                 2000,
+		MaxPopulation:               25000,
+		MinPopulation:               1,
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
 		MaxMass:                     255,
@@ -98,10 +110,10 @@ func DefaultParams() *Parameters {
 		MaxSpawnCognitiveBreadth:    40,
 		MinCognitiveBreadth:         5,
 		MaxCognitiveBreadth:         64,
-		MinSynapticDensity:          20,
+		MinSynapticDensity:          5,
 		MaxSynapticDensity:          100,
-		MinSightDistance:            5,
-		MaxSightDistance:            50,
+		MinSightDistance:            50,
+		MaxSightDistance:            150,
 		MinFieldOfView:              10,
 		MaxFieldOfView:              180,
 		ResponseCurveKFactor:        2,
@@ -110,34 +122,42 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     25000,
-		FoodSpawnInterval:           50,
-		FoodMass:                    10.0,
+		MaxFood:                     50000,
+		FoodSpawnInterval:           100,
+		FoodMass:                    1.0,
 		FoodInteractionRadius:       3.0,
-		FountainCount:               4,
-		FountainDriftSpeed:          0.3,
-		FountainRadius:              50.0,
-		MinStomachSize:              5.0,
-		MaxStomachSize:              100.0,
+		FountainCount:               10,
+		FountainDriftSpeed:          0.02,
+		FountainRadius:              25.0,
+		MinStomachSize:              1.0, // TODO: Calculate based on Radius? Or Max Mass
+		MaxStomachSize:              10.0,
 		DigestionRate:               0.5,
 		BaseBMR:                     0.1,
 		EnergyPerMassUnit:           1.0,
 		MoveCost:                    0.01,
-		MaxSpeedPerStep:             2.0,
+		MaxSpeedPerStep:             10.0,
 		MaxRotationPerStep:          math.Pi / 4,
 		MaxGrowthRatePerTick:        1.0,
 		GrowthEnergyCostFactor:      0.2,
 		ReproductionEnergyThreshold: 0.85,
 		ReproductionEfficiency:      0.9,
-		BaseBiteSize:                100.0,
+		MatingRadius:                16.0,
+		MinMatingSimilarity:         0.75,
+		BaseBiteSize:                5.0,
 		CorpseDecayRate:             0.05,
 		MinPredationMassRatio:       0.25,
 		AttackEnergyCost:            0.1,
-		MinNeuroplasticity:          0.001,
-		MaxNeuroplasticity:          0.05,
+		MinNeuroplasticity:          0.0005,
+		MaxNeuroplasticity:          0.001,
 		MinLearningThreshold:        0.05,
 		MaxLearningThreshold:        0.5,
-		SavedGenomeProportion:       0.01,
+		ColdMetabolicMultiplier:     1.8,
+		WarmMetabolicMultiplier:     0.8,
+		ColdSpeedMultiplier:         0.4,
+		RadiationZoneWidth:          0.2,
+		RadiationMutationMultiplier: 10.0,
+		RadiationDamagePerTick:      0.1,
+		SavedGenomeProportion:       0.5,
 		PopulationSensorRadius:      25,
 	}
 	if err := p.Validate(); err != nil {
@@ -159,29 +179,33 @@ func (p *Parameters) Validate() error {
 	if p.EnergyPerMassUnit <= 0 {
 		return fmt.Errorf("EnergyPerMassUnit (%v) must be > 0", p.EnergyPerMassUnit)
 	}
+
 	if p.ReproductionEnergyThreshold <= 0 || p.ReproductionEnergyThreshold > 1 {
 		return fmt.Errorf("ReproductionEnergyThreshold (%v) must be in (0, 1]", p.ReproductionEnergyThreshold)
 	}
 	if p.ReproductionEfficiency <= 0 || p.ReproductionEfficiency > 2 {
 		return fmt.Errorf("ReproductionEfficiency (%v) must be in (0, 2]", p.ReproductionEfficiency)
 	}
-	if p.MinJuvenilePeriod > p.MaxJuvenilePeriod {
-		return fmt.Errorf("MinJuvenilePeriod (%d) > MaxJuvenilePeriod (%d)", p.MinJuvenilePeriod, p.MaxJuvenilePeriod)
-	}
-	type bytePair struct {
-		min, max byte
+
+	type rangePair struct {
+		min, max float64
 		name     string
 	}
-	for _, pair := range []bytePair{
-		{p.MinSpawnCognitiveBreadth, p.MaxSpawnCognitiveBreadth, "SpawnCognitiveBreadth"},
-		{p.MinCognitiveBreadth, p.MaxCognitiveBreadth, "CognitiveBreadth"},
-		{p.MinSynapticDensity, p.MaxSynapticDensity, "SynapticDensity"},
+
+	ranges := []rangePair{
+		{float64(p.MinJuvenilePeriod), float64(p.MaxJuvenilePeriod), "JuvenilePeriod"},
 		{p.MinSightDistance, p.MaxSightDistance, "SightDistance"},
 		{p.MinFieldOfView, p.MaxFieldOfView, "FieldOfView"},
-	} {
-		if pair.min >= pair.max {
-			return fmt.Errorf("Min%s (%d) >= Max%s (%d)", pair.name, pair.min, pair.name, pair.max)
+		{float64(p.MinSpawnCognitiveBreadth), float64(p.MaxSpawnCognitiveBreadth), "SpawnCognitiveBreadth"},
+		{float64(p.MinCognitiveBreadth), float64(p.MaxCognitiveBreadth), "CognitiveBreadth"},
+		{float64(p.MinSynapticDensity), float64(p.MaxSynapticDensity), "SynapticDensity"},
+	}
+
+	for _, pair := range ranges {
+		if pair.min > pair.max {
+			return fmt.Errorf("Min%s (%v) > Max%s (%v)", pair.name, pair.min, pair.name, pair.max)
 		}
 	}
+
 	return nil
 }

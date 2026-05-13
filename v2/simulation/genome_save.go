@@ -42,8 +42,9 @@ type genomeData struct {
 	MetabolicRate    byte       `json:"metabolic_rate"`
 	StomachSize      byte       `json:"stomach_size"`
 	Neuroplasticity     byte       `json:"learning_rate"`
-	LearningThreshold byte      `json:"learning_threshold"`
-	Brain            []geneData `json:"brain"`
+	LearningThreshold byte       `json:"learning_threshold"`
+	MassSplitRatio    byte       `json:"mass_split_ratio"`
+	Brain             []geneData `json:"brain"`
 }
 
 func toGenomeData(g *Genome) genomeData {
@@ -71,16 +72,17 @@ func toGenomeData(g *Genome) genomeData {
 		JuvenilePeriod:   g.JuvenilePeriod,
 		MetabolicRate:     g.MetabolicRate,
 		StomachSize:       g.StomachSize,
-		Neuroplasticity:      g.Neuroplasticity,
+		Neuroplasticity:   g.Neuroplasticity,
 		LearningThreshold: g.LearningThreshold,
+		MassSplitRatio:    g.MassSplitRatio,
 		Brain:             genes,
 	}
 }
 
 func fromGenomeData(gd genomeData) *Genome {
-	genes := make([]*Gene, len(gd.Brain))
+	genes := make([]Gene, len(gd.Brain))
 	for i, entry := range gd.Brain {
-		genes[i] = &Gene{
+		genes[i] = Gene{
 			SourceType: entry.SourceType,
 			SourceID:   entry.SourceID,
 			SinkType:   entry.SinkType,
@@ -115,6 +117,7 @@ func fromGenomeData(gd genomeData) *Genome {
 		StomachSize:       gd.StomachSize,
 		Neuroplasticity:   gd.Neuroplasticity,
 		LearningThreshold: gd.LearningThreshold,
+		MassSplitRatio:    gd.MassSplitRatio,
 		Brain:             genes,
 	}
 	g.recomputeBytes()

@@ -1,7 +1,7 @@
 package test
 
 import (
-	"biogo/v2/grid"
+	"biogo/v2/world"
 	"biogo/v2/simulation"
 	"math"
 	"testing"
@@ -29,18 +29,18 @@ func TestDoNothingReducesMetabolicCost(t *testing.T) {
 
 	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into REST so it always fires.
 	c.Genome.OscPeriod = 1
-	doNothingGene := &simulation.Gene{
+	doNothingGene := simulation.Gene{
 		SourceType: simulation.SENSOR,
 		SourceID:   simulation.OSC1,
 		SinkType:   simulation.ACTION,
 		SinkID:     simulation.REST,
 		Weight:     255,
 	}
-	c.Genome.Brain = []*simulation.Gene{doNothingGene}
+	c.Genome.Brain = []simulation.Gene{doNothingGene}
 	c.Genome.SynapticDensity = 1
 	c.CreateNeuralNet()
 
-	rate := c.MetabolicRate(p)
+	rate := c.MetabolicRate(p, sim.World.TemperatureAt(c.Loc.Y))
 	sim.Update()
 
 	// Resting refunds the full metabolic drain and charges 10% — net cost = rate * 0.1.

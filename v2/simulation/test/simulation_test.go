@@ -7,8 +7,8 @@ import (
 
 func smallParams() *simulation.Parameters {
 	p := simulation.DefaultParams()
-	p.GridWidth = 50
-	p.GridHeight = 50
+	p.WorldWidth = 50
+	p.WorldHeight = 50
 	p.StartingPopulation = 10
 	p.MaxPopulation = 20
 	p.MinPopulation = 5
@@ -60,11 +60,11 @@ func TestSimulationCreatureViews(t *testing.T) {
 		t.Errorf("CreatureViews returned %d views, want %d", len(views), p.StartingPopulation)
 	}
 	for _, v := range views {
-		if v.X < 0 || v.X >= p.GridWidth {
-			t.Errorf("creature X=%f out of world bounds [0,%.0f)", v.X, p.GridWidth)
+		if v.X < 0 || v.X >= p.WorldWidth {
+			t.Errorf("creature X=%f out of world bounds [0,%.0f)", v.X, p.WorldWidth)
 		}
-		if v.Y < 0 || v.Y >= p.GridHeight {
-			t.Errorf("creature Y=%f out of world bounds [0,%.0f)", v.Y, p.GridHeight)
+		if v.Y < 0 || v.Y >= p.WorldHeight {
+			t.Errorf("creature Y=%f out of world bounds [0,%.0f)", v.Y, p.WorldHeight)
 		}
 	}
 }
@@ -73,11 +73,11 @@ func TestSimulationInterfaceMethods(t *testing.T) {
 	p := smallParams()
 	sim := simulation.New(p)
 
-	if sim.GridWidth() != p.GridWidth {
-		t.Errorf("GridWidth() = %.0f, want %.0f", sim.GridWidth(), p.GridWidth)
+	if sim.WorldWidth() != p.WorldWidth {
+		t.Errorf("WorldWidth() = %.0f, want %.0f", sim.WorldWidth(), p.WorldWidth)
 	}
-	if sim.GridHeight() != p.GridHeight {
-		t.Errorf("GridHeight() = %.0f, want %.0f", sim.GridHeight(), p.GridHeight)
+	if sim.WorldHeight() != p.WorldHeight {
+		t.Errorf("WorldHeight() = %.0f, want %.0f", sim.WorldHeight(), p.WorldHeight)
 	}
 	if sim.PopulationCount() != p.StartingPopulation {
 		t.Errorf("PopulationCount() = %d, want %d", sim.PopulationCount(), p.StartingPopulation)
@@ -106,7 +106,7 @@ func TestSimulationFoodViews(t *testing.T) {
 		t.Errorf("FoodViews len %d != FoodCount %d", len(views), sim.FoodCount())
 	}
 	for _, v := range views {
-		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
+		if v.X < 0 || v.X >= p.WorldWidth || v.Y < 0 || v.Y >= p.WorldHeight {
 			t.Errorf("food at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 	}
@@ -124,7 +124,7 @@ func TestSimulationCorpseViews(t *testing.T) {
 
 	views := sim.CorpseViews()
 	for _, v := range views {
-		if v.X < 0 || v.X >= p.GridWidth || v.Y < 0 || v.Y >= p.GridHeight {
+		if v.X < 0 || v.X >= p.WorldWidth || v.Y < 0 || v.Y >= p.WorldHeight {
 			t.Errorf("corpse at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 		if v.EnergyFraction < 0 || v.EnergyFraction > 1 {
@@ -196,7 +196,18 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
+		c.Genome.ReproductionType = 0   // asexual
+		c.Genome.MassSplitRatio = 128   // ~25% split
 		c.Energy = c.Mass * p.EnergyPerMassUnit
+		// Wire ENERGY sensor directly to REPRODUCE action so it fires unconditionally.
+		c.Genome.Brain = append(c.Genome.Brain, simulation.Gene{
+			SourceType: simulation.SENSOR,
+			SourceID:   simulation.ENERGY,
+			SinkType:   simulation.ACTION,
+			SinkID:     simulation.REPRODUCE,
+			Weight:     255,
+		})
+		c.CreateNeuralNet()
 	}
 
 	initialCount := sim.PopulationCount()

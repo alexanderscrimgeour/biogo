@@ -56,7 +56,6 @@ func (b *Blob) Translate(x, y float64) {
 }
 
 func (b *Blob) Move(x, y float64) {
-
 	moveX := x - b.center.X
 	moveY := y - b.center.Y
 	b.geoM.Translate(moveX, moveY)
@@ -93,4 +92,13 @@ func (b *Blob) updateCenter(x, y float64) {
 // SetColor fills the blob's image with a new color, e.g. to update corpse alpha.
 func (b *Blob) SetColor(c color.Color) {
 	b.img.Fill(c)
+}
+
+// SetScaleTranslate resets the blob's transform to scale then translate, used to update food blob size/position.
+func (b *Blob) SetScaleTranslate(scale, x, y float64) {
+	*b.geoM = ebiten.GeoM{}
+	b.geoM.Scale(scale, scale)
+	b.geoM.Translate(x, y)
+	b.center.X = x + float64(b.img.Bounds().Dx())*scale/2
+	b.center.Y = y + float64(b.img.Bounds().Dy())*scale/2
 }

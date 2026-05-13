@@ -12,9 +12,6 @@ func defaultParams() *simulation.Parameters {
 
 func TestMakeRandomGene(t *testing.T) {
 	gene := simulation.MakeRandomGene()
-	if gene == nil {
-		t.Fatal("MakeRandomGene returned nil")
-	}
 	if gene.SourceType > 1 {
 		t.Errorf("SourceType must be 0 or 1, got %d", gene.SourceType)
 	}
@@ -57,10 +54,10 @@ func TestGenomeCopy(t *testing.T) {
 func TestGeneCopy(t *testing.T) {
 	gene := simulation.MakeRandomGene()
 	cp := gene.Copy()
-	if cp == gene {
-		t.Error("Gene.Copy should return a new pointer")
+	if cp != gene {
+		t.Error("Gene.Copy should return an identical value")
 	}
-	if *cp != *gene {
+	if cp != gene {
 		t.Error("Gene.Copy should produce identical gene")
 	}
 }
@@ -71,7 +68,7 @@ func TestMutateChangesGenome(t *testing.T) {
 	p.BaseMutationRate = 1.0 // force mutation on every gene
 	g := simulation.MakeRandomGenome(p)
 	original := g.String()
-	simulation.Mutate(g, p, false)
+	simulation.Mutate(g, p, false, 1.0)
 	// With 100% mutation rate, genome string very likely changes
 	if g.String() == original {
 		t.Log("Mutate did not change the genome (probabilistic, rare)")
@@ -81,7 +78,7 @@ func TestMutateChangesGenome(t *testing.T) {
 func TestAsexualReproduction(t *testing.T) {
 	p := defaultParams()
 	parent := simulation.MakeRandomGenome(p)
-	child := simulation.AsexualReproduction(parent, p)
+	child := simulation.AsexualReproduction(parent, p, 1.0)
 	if child == parent {
 		t.Error("AsexualReproduction should return a new genome pointer")
 	}
@@ -128,7 +125,7 @@ func TestMutatePreservesMinMassConstraint(t *testing.T) {
 	p.BaseMutationRate = 1.0 // force mutations on every gene
 	for i := 0; i < 200; i++ {
 		g := simulation.MakeRandomGenome(p)
-		simulation.Mutate(g, p, false)
+		simulation.Mutate(g, p, false, 1.0)
 		if float32(g.MinMass)*2 >= float32(g.Mass) {
 			t.Fatalf("Mutate violated MinMass constraint: MinMass=%d, Mass=%d", g.MinMass, g.Mass)
 		}
@@ -168,7 +165,7 @@ func TestMutateNeverZeroMutationRate(t *testing.T) {
 	p.BaseMutationRate = 1.0
 	for i := 0; i < 1000; i++ {
 		g := simulation.MakeRandomGenome(p)
-		simulation.Mutate(g, p, false)
+		simulation.Mutate(g, p, false, 1.0)
 		if g.MutationRate == 0 {
 			t.Fatalf("Mutate produced MutationRate=0 on iteration %d", i)
 		}

@@ -10,6 +10,7 @@ const (
 	ATTACK
 	REWARD
 	PUNISH
+	REPRODUCE // signal to reproduce this tick (asexual: splits daughter cell; sexual: seeks mate)
 
 	ACTION_COUNT
 )

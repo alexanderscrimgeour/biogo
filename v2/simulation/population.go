@@ -1,8 +1,8 @@
 ﻿package simulation
 
 import (
-	"biogo/v2/grid"
 	"biogo/v2/utils"
+	"biogo/v2/world"
 	"math"
 	"math/rand"
 	"runtime"
@@ -24,11 +24,12 @@ type DeathInstruction struct {
 
 type ReproductionInstruction struct {
 	Creature *Creature
+	Partner  *Creature // nil = asexual; non-nil = sexual (crossover)
 }
 
 type MoveInstruction struct {
 	Creature   *Creature
-	Loc        grid.Position
+	Loc        world.Position
 	MoveAmount float64
 }
 
@@ -43,6 +44,7 @@ type pendingInstructions struct {
 	move         []MoveInstruction
 	attack       []AttackInstruction
 	reproduction []ReproductionInstruction
+	mate         []*Creature // creatures firing the MATE action this tick
 }
 
 func NewPopulation(p *Parameters) *Population {
@@ -56,7 +58,7 @@ func NewPopulation(p *Parameters) *Population {
 	}
 }
 
-func (p *Population) QueueForMove(creature *Creature, newLoc grid.Position, moveAmount float64) {
+func (p *Population) QueueForMove(creature *Creature, newLoc world.Position, moveAmount float64) {
 	p.MoveQueue = append(p.MoveQueue, MoveInstruction{creature, newLoc, moveAmount})
 }
 
@@ -69,7 +71,7 @@ func (p *Population) QueueForDeath(creature *Creature) {
 }
 
 func (p *Population) QueueForReproduction(creature *Creature) {
-	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{creature})
+	p.ReproductionQueue = append(p.ReproductionQueue, ReproductionInstruction{Creature: creature})
 }
 
 // AddAlive registers a newly spawned creature in the alive-ID index.
@@ -100,7 +102,7 @@ func (p *Population) AliveCount() int {
 
 // ProcessMoveQueue moves each queued creature to its target position and
 // consumes the nearest food item within interaction radius if one is present.
-func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessMoveQueue(w *world.World, params *Parameters) {
 	for _, instruction := range p.MoveQueue {
 		c := instruction.Creature
 		if !c.Alive {
@@ -112,19 +114,19 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 			halfFOVCos := c.halfFOVCos
 
 			bite := c.BiteSize(params)
-			stomachSpace := c.StomachCapacity(params) - c.Stomach
 			massRatio := float64(c.Mass / float32(params.MaxMass))
 			if massRatio > 1.0 {
 				massRatio = 1.0
 			}
-			interactionRadius := params.FoodInteractionRadius * (1.0 + massRatio)
 
 			// Consume the nearest food item within interaction radius.
 			// If the item has more mass than the bite or the remaining stomach space,
 			// only the appropriate portion is taken and the item stays in the world
 			// with its remaining mass.
+
+			stomachSpace := c.StomachCapacity(params) - c.Stomach
 			if stomachSpace > 0 {
-				foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, interactionRadius, c.SightFoodBuffer)
+				foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, c.Radius, c.SightFoodBuffer)
 				if len(foodIDs) > 0 {
 					closestID := foodIDs[0]
 					closestDistSq := math.MaxFloat64
@@ -140,20 +142,20 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 					}
 					foodMass := w.GetFoodMass(closestID)
 					eaten := bite
-					if eaten > foodMass {
-						eaten = foodMass
+					if eaten > float64(foodMass) {
+						eaten = float64(foodMass)
 					}
 					if eaten > stomachSpace {
 						eaten = stomachSpace
 					}
 					c.Stomach += eaten
 					stomachSpace -= eaten
-					w.ReduceFoodMass(closestID, eaten)
+					w.ReduceFoodMass(closestID, float32(eaten))
 				}
 			}
 
 			// Eat the nearest corpse within interaction radius.
-			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, interactionRadius, c.SightCreatureBuffer)
+			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, c.Radius, c.SightCreatureBuffer)
 			if len(creatureIDs) > 0 {
 				closestCorpseID := -1
 				closestCorpseDistSq := math.MaxFloat64
@@ -178,18 +180,19 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 					}
 				}
 
+				stomachSpace := c.StomachCapacity(params) - c.Stomach
 				if closestCorpseID != -1 && stomachSpace > 0 {
 					if target, ok := p.Creatures[closestCorpseID]; ok {
 						eaten := bite
-						if eaten > target.Mass {
-							eaten = target.Mass
+						if eaten > float64(target.Mass) {
+							eaten = float64(target.Mass)
 						}
 						if eaten > stomachSpace {
 							eaten = stomachSpace
 						}
-						c.Stomach += eaten
-						stomachSpace -= eaten
-						target.Mass -= eaten
+						c.Stomach += eaten * 0.1
+						target.Mass -= float32(eaten)
+						target.UpdateSize()
 						if target.Mass <= 0 {
 							w.RemoveCreature(closestCorpseID)
 							delete(p.Creatures, closestCorpseID)
@@ -209,7 +212,7 @@ func (p *Population) ProcessMoveQueue(w *grid.World, params *Parameters) {
 // creature within its FOV cone. Damage scales with the attacker/prey mass ratio.
 // Unlike passive predation, there is no minimum mass requirement — smaller creatures
 // can attack larger ones but deal proportionally less damage.
-func (p *Population) ProcessAttackQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 	for _, instruction := range p.AttackQueue {
 		c := instruction.Creature
 		if !c.Alive {
@@ -226,9 +229,8 @@ func (p *Population) ProcessAttackQueue(w *grid.World, params *Parameters) {
 		if massRatio > 1.0 {
 			massRatio = 1.0
 		}
-		interactionRadius := params.FoodInteractionRadius * (1.0 + massRatio)
 
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, interactionRadius, c.SightCreatureBuffer)
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		closestPreyDistSq := math.MaxFloat64
@@ -265,20 +267,23 @@ func (p *Population) ProcessAttackQueue(w *grid.World, params *Parameters) {
 		sizeRatio := c.Mass / target.Mass
 
 		defenseFactor := 0.5 + (0.5 * utils.MinFloat32(1.0, sizeRatio))
-		effectiveBite := bite * defenseFactor
+		effectiveBite := bite * float64(defenseFactor)
 
 		eaten := effectiveBite
-		if eaten > target.Mass {
-			eaten = target.Mass
+		if eaten > float64(target.Mass) {
+			eaten = float64(target.Mass)
 		}
+
+		stomachSpace = c.StomachCapacity(params) - c.Stomach
 		if eaten > stomachSpace {
 			eaten = stomachSpace
 		}
 
 		c.Stomach += eaten
-		target.Mass -= eaten
+		target.Mass -= float32(eaten)
+		target.UpdateSize()
 
-		target.DrainEnergy(eaten * params.EnergyPerMassUnit)
+		target.DrainEnergy(float32(eaten) * params.EnergyPerMassUnit)
 		struggleCost := params.AttackEnergyCost
 		if sizeRatio < 1.0 {
 			// Gradually increases cost as target gets larger, maxing at 1.5x
@@ -297,7 +302,7 @@ func (p *Population) ProcessAttackQueue(w *grid.World, params *Parameters) {
 
 // ProcessDeathQueue marks queued creatures as dead. Corpses remain in the world
 // and decay over time, preserving their mass as a food source.
-func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 	if len(p.DeathQueue) == 0 {
 		return
 	}
@@ -314,7 +319,6 @@ func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 			defer wg.Done()
 			for _, di := range batch {
 				di.Creature.Alive = false
-				di.Creature.Mass = di.Creature.CurrentMass(params)
 				di.Creature.Energy = 0
 			}
 		}(p.DeathQueue[i:end])
@@ -329,7 +333,7 @@ func (p *Population) ProcessDeathQueue(w *grid.World, params *Parameters) {
 
 // ProcessCorpseDecay drains mass from every dead creature. Fully decayed
 // corpses are removed from both the world and the population map.
-func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
+func (p *Population) ProcessCorpseDecay(w *world.World, params *Parameters) {
 	corpseIDs := make([]int, 0, len(p.Creatures))
 	for id, c := range p.Creatures {
 		if !c.Alive {
@@ -352,6 +356,7 @@ func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 			defer wg.Done()
 			for _, id := range b {
 				p.Creatures[id].Mass -= params.CorpseDecayRate
+				p.Creatures[id].UpdateSize()
 			}
 		}(batch)
 	}
@@ -371,7 +376,7 @@ func (p *Population) ProcessCorpseDecay(w *grid.World, params *Parameters) {
 // Energy cost scales with offspring mass (tissue = stored energy).
 // On reproduction the parent loses energy and half its body mass; the child
 // is created at that half-mass size and grows back to full mass over time.
-func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters) {
+func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters) {
 	aliveCount := p.AliveCount()
 	for _, ri := range p.ReproductionQueue {
 		if aliveCount >= params.MaxPopulation {
@@ -381,36 +386,89 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters)
 		if !parent.Alive {
 			continue
 		}
-
 		if parent.Energy < params.ReproductionEnergyThreshold*parent.MaxEnergy(params) {
 			continue
 		}
-
 		if parent.Mass < float32(parent.Genome.Mass)*0.9 {
 			continue
 		}
-
 		if float32(parent.Genome.MinMass)*2 >= float32(parent.Genome.Mass) {
 			continue
 		}
 
+		// Sexual: partner must still be alive and eligible.
+		if ri.Partner != nil {
+			partner := ri.Partner
+			if !partner.Alive {
+				continue
+			}
+			if partner.Energy < params.ReproductionEnergyThreshold*partner.MaxEnergy(params) {
+				continue
+			}
+			if partner.Mass < float32(partner.Genome.Mass)*0.9 {
+				continue
+			}
+
+			offspringLoc, ok := findOffspringLocation(w, parent)
+			if !ok {
+				continue
+			}
+
+			radMult := radiationMult(parent.Loc.X, params)
+			childGenome := Crossover(parent.Genome, partner.Genome, params, radMult)
+			childStartingMass := float32(childGenome.Mass)
+
+			ratioA := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
+			ratioB := 0.1 + (float32(partner.Genome.MassSplitRatio)/255.0)*0.4
+			totalRatio := ratioA + ratioB
+			shareA := ratioA / totalRatio
+			shareB := ratioB / totalRatio
+
+			massFromParent := childStartingMass * shareA
+			massFromPartner := childStartingMass * shareB
+
+			energyFromParent := parent.Energy * ratioA
+			energyFromPartner := partner.Energy * ratioB
+			energyToSplit := energyFromParent + energyFromPartner
+			energyTransferred := energyToSplit * params.ReproductionEfficiency
+
+			parent.Mass -= massFromParent
+			parent.DrainEnergy(energyFromParent)
+			parent.UpdateSize()
+
+			partner.Mass -= massFromPartner
+			partner.DrainEnergy(energyFromPartner)
+			parent.UpdateSize()
+
+			id := w.AddCreature(offspringLoc)
+			child := NewCreature(id, offspringLoc, childGenome, params)
+			child.GainEnergy(energyTransferred, params)
+			p.Creatures[id] = child
+			p.AddAlive(id)
+			aliveCount++
+			continue
+		}
+
+		// Asexual path.
 		offspringLoc, ok := findOffspringLocation(w, parent)
 		if !ok {
 			continue
 		}
+		splitRatio := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
+		childMass := parent.Mass * splitRatio
+		energyToSplit := parent.Energy * splitRatio
+		energyTransferred := energyToSplit * params.ReproductionEfficiency
 
-		halfMass := parent.Mass / 2
-		energyTransferred := halfMass * params.ReproductionEfficiency
-		metabolicWaste := energyTransferred * (1 - params.ReproductionEfficiency)
-		parent.Mass = halfMass
-		parent.DrainEnergy(energyTransferred + metabolicWaste)
+		parent.Mass -= childMass
+		parent.UpdateSize()
+		parent.DrainEnergy(energyToSplit)
 
-		parent.Mass = halfMass
-
-		childGenome := AsexualReproduction(parent.Genome, params)
+		radMult := radiationMult(parent.Loc.X, params)
+		childGenome := AsexualReproduction(parent.Genome, params, radMult)
 		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
-		child.Mass = halfMass
+		child.Mass = childMass
+		child.UpdateSize()
 		child.Energy = energyTransferred
 		p.Creatures[id] = child
 		p.AddAlive(id)
@@ -419,19 +477,28 @@ func (p *Population) ProcessReproductionQueue(w *grid.World, params *Parameters)
 	p.ReproductionQueue = p.ReproductionQueue[:0]
 }
 
+// radiationMult returns the mutation multiplier for a creature at world x-coordinate x.
+// Returns RadiationMutationMultiplier when inside the radiation zone, 1.0 otherwise.
+func radiationMult(x float64, params *Parameters) float32 {
+	if x < params.RadiationZoneWidth*params.WorldWidth {
+		return params.RadiationMutationMultiplier
+	}
+	return 1.0
+}
+
 // findOffspringLocation returns a free position for an offspring, preferring a
 // spot 5 units behind the parent and falling back to random nearby positions.
-func findOffspringLocation(w *grid.World, parent *Creature) (grid.Position, bool) {
+func findOffspringLocation(w *world.World, parent *Creature) (world.Position, bool) {
 	backX := -math.Cos(parent.Heading) * 5.0
 	backY := -math.Sin(parent.Heading) * 5.0
-	behind := grid.Position{X: parent.Loc.X + backX, Y: parent.Loc.Y + backY}
+	behind := world.Position{X: parent.Loc.X + backX, Y: parent.Loc.Y + backY}
 	if w.IsInBounds(behind) && !w.IsWall(behind) {
 		return behind, true
 	}
 	for i := 0; i < 20; i++ {
 		angle := rand.Float64() * 2 * math.Pi
 		dist := rand.Float64()*8.0 + 2.0
-		pos := grid.Position{
+		pos := world.Position{
 			X: parent.Loc.X + math.Cos(angle)*dist,
 			Y: parent.Loc.Y + math.Sin(angle)*dist,
 		}
@@ -439,7 +506,7 @@ func findOffspringLocation(w *grid.World, parent *Creature) (grid.Position, bool
 			return pos, true
 		}
 	}
-	return grid.Position{}, false
+	return world.Position{}, false
 }
 
 // OldestGenome returns the genome of the oldest living creature, or nil if none.
