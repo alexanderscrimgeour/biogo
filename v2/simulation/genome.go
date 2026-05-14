@@ -6,7 +6,13 @@ import (
 	"math"
 	"math/bits"
 	"math/rand"
+	"sync/atomic"
 )
+
+// genomeUIDSeq is a monotonically increasing counter; each call to
+// recomputeBytes() claims one value, giving every genome a unique identity
+// that changes when the genome mutates. Used by the per-creature sim cache.
+var genomeUIDSeq uint64
 
 const (
 	OSC_PERIOD = iota
@@ -56,14 +62,18 @@ type Genome struct {
 	Neuroplasticity   byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
 	LearningThreshold byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
 	MassSplitRatio    byte // fraction of mass (and energy) transferred to daughter on asexual reproduction; maps to [0, 0.5]
-	Brain             []Gene
+	Brain []Gene
 
 	// flat byte cache for GenomeSimilarity; recomputed after any mutation or brain change.
 	// Layout: 15 header bytes + 5 bytes per gene (SourceID, SourceType, SinkID, SinkType, Weight).
 	bytes []byte
+	// uid is assigned by recomputeBytes() from a global counter; it lets the
+	// per-creature sim cache detect stale entries when an ID is recycled.
+	uid uint64
 }
 
-// recomputeBytes refreshes the flat byte cache used by GenomeSimilarity.
+// recomputeBytes refreshes the flat byte cache used by GenomeSimilarity and
+// stamps a new uid so per-creature similarity caches can detect stale entries.
 // Call this after any field change or Brain modification.
 func (g *Genome) recomputeBytes() {
 	need := 16 + len(g.Brain)*5
@@ -97,6 +107,7 @@ func (g *Genome) recomputeBytes() {
 		b[off+3] = gn.SinkType
 		b[off+4] = gn.Weight
 	}
+	g.uid = atomic.AddUint64(&genomeUIDSeq, 1)
 }
 
 func (g Gene) String() string {

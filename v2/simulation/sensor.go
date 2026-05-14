@@ -60,7 +60,8 @@ type SensorContext struct {
 func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params *Parameters) {
 	c.SightFoodBuffer = world.GetFoodInRadius(c.Loc, c.GetSightDistance(), c.SightFoodBuffer)
 	c.SightCreatureBuffer = world.GetCreaturesInRadius(c.Loc, c.GetSightDistance(), c.SightCreatureBuffer)
-	c.LocalCreatureBuffer = world.GetCreaturesInRadius(c.Loc, c.GetSightDistance(), c.LocalCreatureBuffer)
+	// LocalCreatureBuffer contains the same set — copy instead of a second query.
+	c.LocalCreatureBuffer = append(c.LocalCreatureBuffer[:0], c.SightCreatureBuffer...)
 
 	c.Sensors.SightFoodIDs = c.SightFoodBuffer
 	c.Sensors.SightCreatureIDs = c.SightCreatureBuffer
@@ -78,24 +79,14 @@ func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params
 	for i, id := range c.SightCreatureBuffer {
 		if id != c.Id {
 			if other, ok := p.Creatures[id]; ok {
-				c.SightCreatureSimBuffer[i] = GenomeSimilarity(c.Genome, other.Genome)
+				c.SightCreatureSimBuffer[i] = c.cachedSimilarity(id, other)
 			}
 		}
 	}
 	c.Sensors.SightCreatureSims = c.SightCreatureSimBuffer
 
-	m := len(c.LocalCreatureBuffer)
-	if cap(c.LocalCreatureSimBuffer) < m {
-		c.LocalCreatureSimBuffer = make([]float32, m)
-	}
-	c.LocalCreatureSimBuffer = c.LocalCreatureSimBuffer[:m]
-	for i, id := range c.LocalCreatureBuffer {
-		if id != c.Id {
-			if other, ok := p.Creatures[id]; ok {
-				c.LocalCreatureSimBuffer[i] = GenomeSimilarity(c.Genome, other.Genome)
-			}
-		}
-	}
+	// Same IDs → same similarities; copy to avoid a second GenomeSimilarity loop.
+	c.LocalCreatureSimBuffer = append(c.LocalCreatureSimBuffer[:0], c.SightCreatureSimBuffer...)
 	c.Sensors.LocalCreatureSims = c.LocalCreatureSimBuffer
 }
 
@@ -240,15 +231,8 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 }
 
 func calculateVelocity(c Creature, p *Parameters) float32 {
-	dx := c.Loc.X - c.LastLoc.X
-	dy := c.Loc.Y - c.LastLoc.Y
-	fwdX := math.Cos(float64(c.Heading))
-	fwdY := math.Sin(float64(c.Heading))
-	velocityAlongHeading := (dx * fwdX) + (dy * fwdY)
 	if p.MaxSpeedPerStep > 0 {
-		output := velocityAlongHeading / p.MaxSpeedPerStep
-
-		// Clamp to ensure it stays in [-1, 1] even with floating point jitter
+		output := c.Velocity / p.MaxSpeedPerStep
 		if output > 1 {
 			return 1
 		}

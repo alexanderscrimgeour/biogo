@@ -309,15 +309,15 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 		c.Heading = world.NormalizeAngle(c.Heading + rotateAmount)
 
-		// Forward/backward movement: positive = forward, negative = backward.
-		moveAmount := float64(0)
-		if IsActionEnabled(MOVE) {
-			moveAmount = math.Tanh(float64(actionLevels[MOVE])) * float64(responseAdjust)
+		// ACCELERATE: positive = accelerate forward, negative = decelerate/reverse.
+		massFactor := 1.0 + math.Pow(float64(massNorm), 2)*5.0
+		maxAccel := s.Params.MaxSpeedPerStep / massFactor
+		accelAmount := float64(0)
+		if IsActionEnabled(ACCELERATE) {
+			accelAmount = math.Tanh(float64(actionLevels[ACCELERATE])) * float64(responseAdjust) * maxAccel
 		}
-		massFactor := 1.0 + math.Pow(float64(c.CurrentMass()/float32(s.Params.MaxMass)), 2)*5.0
-		moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
-		// Colder temperatures slow movement (ectotherm-like muscle penalty).
+		// Colder temperatures reduce acceleration capability (ectotherm-like muscle penalty).
 		tempNorm := float64((temp - 10.0) / 30.0)
 		if tempNorm < 0 {
 			tempNorm = 0
@@ -325,21 +325,32 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			tempNorm = 1
 		}
 		speedMult := float64(s.Params.ColdSpeedMultiplier) + (1.0-float64(s.Params.ColdSpeedMultiplier))*tempNorm
-		moveAmount *= speedMult
+		accelAmount *= speedMult
 
-		if math.Abs(moveAmount) < 0.001 {
-			return
+		// Integrate acceleration into velocity, apply drag, clamp to mass-adjusted max speed.
+		c.Velocity += accelAmount
+		c.Velocity *= s.Params.VelocityDamping
+		maxSpeed := s.Params.MaxSpeedPerStep / massFactor
+		if c.Velocity > maxSpeed {
+			c.Velocity = maxSpeed
+		} else if c.Velocity < -maxSpeed {
+			c.Velocity = -maxSpeed
 		}
 
-		dx := math.Cos(c.Heading) * moveAmount
-		dy := math.Sin(c.Heading) * moveAmount
-		newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
+		if math.Abs(c.Velocity) >= 0.001 {
+			dx := math.Cos(c.Heading) * c.Velocity
+			dy := math.Sin(c.Heading) * c.Velocity
+			newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
-		if !s.World.IsWall(newPos) {
-			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
-			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)) * massCostMult)
-			c.LastAction = appendActionString(c.LastAction, "Moving")
-			pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
+			if !s.World.IsWall(newPos) {
+				if math.Abs(accelAmount) > 0.001 {
+					// Energy cost scales linearly with mass: heavier creatures need more force to accelerate.
+					massCostMult := 0.5 + float64(massNorm)*2.0
+					c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(accelAmount)) * float32(massCostMult))
+				}
+				c.LastAction = appendActionString(c.LastAction, "Moving")
+				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Velocity})
+			}
 		}
 	}
 }
@@ -379,7 +390,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 			d2 := dx*dx + dy*dy
 
 			if d2 <= matingRadiusSq {
-				similarity := GenomeSimilarity(c.Genome, other.Genome)
+				similarity := c.cachedSimilarity(other.Id, other)
 				if similarity >= s.Params.MinMatingSimilarity {
 					if similarity > bestSimilarity {
 						bestSimilarity = similarity

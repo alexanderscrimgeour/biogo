@@ -1,7 +1,7 @@
 package simulation
 
 const (
-	MOVE byte = iota // positive = forward, negative = backward
+	ACCELERATE byte = iota // positive = accelerate forward, negative = decelerate/reverse
 	ROTATE           // positive = left (CCW), negative = right (CW)
 	SET_OSCILLATOR_PERIOD
 	SET_RESPONSIVENESS

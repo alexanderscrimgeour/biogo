@@ -60,6 +60,7 @@ type Parameters struct {
 	EnergyPerMassUnit      float32 // MaxEnergy = currentMass * EnergyPerMassUnit
 	MoveCost               float32
 	MaxSpeedPerStep        float64
+	VelocityDamping        float64 // fraction of velocity retained each tick (drag/friction coefficient)
 	MaxRotationPerStep     float64
 	MaxGrowthRatePerTick   float32 // peak mass units gained per tick (von Bertalanffy)
 	GrowthEnergyCostFactor float32
@@ -102,7 +103,7 @@ func DefaultParams() *Parameters {
 		WorldWidth:                  2500,
 		WorldHeight:                 2000,
 		MaxPopulation:               25000,
-		MinPopulation:               1,
+		MinPopulation:               500,
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
 		MaxMass:                     255,
@@ -128,7 +129,7 @@ func DefaultParams() *Parameters {
 		FoodInteractionRadius:       3.0,
 		FountainCount:               10,
 		FountainDriftSpeed:          0.02,
-		FountainRadius:              25.0,
+		FountainRadius:              100.0,
 		MinStomachSize:              1.0, // TODO: Calculate based on Radius? Or Max Mass
 		MaxStomachSize:              10.0,
 		DigestionRate:               0.5,
@@ -136,6 +137,7 @@ func DefaultParams() *Parameters {
 		EnergyPerMassUnit:           1.0,
 		MoveCost:                    0.01,
 		MaxSpeedPerStep:             10.0,
+		VelocityDamping:             0.85,
 		MaxRotationPerStep:          math.Pi / 4,
 		MaxGrowthRatePerTick:        1.0,
 		GrowthEnergyCostFactor:      0.2,

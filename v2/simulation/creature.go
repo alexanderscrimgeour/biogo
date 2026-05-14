@@ -9,6 +9,14 @@ import (
 	"math/rand"
 )
 
+// simCacheEntry records a cached genome similarity result paired with the
+// peer's genome uid at the time of computation. A uid mismatch means the
+// peer's genome has changed (or its ID was recycled), forcing a recompute.
+type simCacheEntry struct {
+	peerUID uint64
+	sim     float32
+}
+
 type Creature struct {
 	Id             int
 	Energy         float32
@@ -20,7 +28,8 @@ type Creature struct {
 	Nnet           NeuralNet
 	Loc            world.Position
 	BirthLoc       world.Position
-	Heading        float64 // radians; 0 = east, π/2 = south (screen-down)
+	Heading        float64  // radians; 0 = east, π/2 = south (screen-down)
+	Velocity       float64  // current speed along heading; updated each tick via ACCELERATE action
 	Genome         *Genome
 	SightDistance  float64
 	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
@@ -45,6 +54,11 @@ type Creature struct {
 	SightCreatureSimBuffer []float32 // parallel to SightCreatureBuffer; genome similarity to self
 	LocalCreatureBuffer    []int
 	LocalCreatureSimBuffer []float32 // parallel to LocalCreatureBuffer; genome similarity to self
+
+	// simCache memoises GenomeSimilarity results keyed by peer creature ID.
+	// Entries are validated against the peer's genome uid to handle ID recycling.
+	// Cleared when the cache exceeds 512 entries to bound memory use.
+	simCache map[int]simCacheEntry
 }
 
 func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature {
@@ -61,6 +75,7 @@ func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature
 		Heading:        rand.Float64()*2*math.Pi - math.Pi,
 		Genome:         g,
 		Mass:           float32(g.MinMass),
+		simCache:       make(map[int]simCacheEntry, 32),
 	}
 
 	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance, p.MaxSightDistance)
@@ -86,6 +101,7 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 		Heading:        rand.Float64()*2*math.Pi - math.Pi,
 		Genome:         g,
 		Mass:           float32(g.Mass),
+		simCache:       make(map[int]simCacheEntry, 32),
 	}
 
 	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance, p.MaxSightDistance)
@@ -104,6 +120,21 @@ func (c *Creature) initCachedFields(g *Genome, p *Parameters) {
 	c.halfFOVCos = math.Cos(halfAngleRad)
 	c.cachedMetabolicGene = 0.7 + 0.6*(float32(g.MetabolicRate)/255.0)
 	c.cachedJuvenilePeriod = p.MinJuvenilePeriod + int(float32(g.JuvenilePeriod)/255.0*float32(p.MaxJuvenilePeriod-p.MinJuvenilePeriod))
+}
+
+// cachedSimilarity returns GenomeSimilarity(c, other), using c.simCache to
+// avoid recomputation when other's genome has not changed since last lookup.
+// The cache is bounded to 512 entries to prevent unbounded memory growth.
+func (c *Creature) cachedSimilarity(otherID int, other *Creature) float32 {
+	if entry, ok := c.simCache[otherID]; ok && entry.peerUID == other.Genome.uid {
+		return entry.sim
+	}
+	sim := GenomeSimilarity(c.Genome, other.Genome)
+	if len(c.simCache) >= 512 {
+		clear(c.simCache)
+	}
+	c.simCache[otherID] = simCacheEntry{peerUID: other.Genome.uid, sim: sim}
+	return sim
 }
 
 func (c *Creature) CreateNeuralNet() {
