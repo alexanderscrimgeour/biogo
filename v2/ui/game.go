@@ -113,8 +113,6 @@ type creatureAnim struct {
 type Game struct {
 	sim                SimulationState
 	RenderWorld        *RenderWorld
-	foodBlobsByID      map[int]*Blob
-	corpseBlobsByID    map[int]*Blob
 	statFont           font.Face
 	whiteImage         *ebiten.Image
 	animByID           map[int]*creatureAnim
@@ -177,8 +175,6 @@ func NewGame(sim SimulationState) *Game {
 	g := &Game{
 		sim:                sim,
 		RenderWorld:        NewRenderWorld(0, 0, UnitSize),
-		foodBlobsByID:      make(map[int]*Blob),
-		corpseBlobsByID:    make(map[int]*Blob),
 		statFont:           statFont,
 		whiteImage:         wImg,
 		animByID:           make(map[int]*creatureAnim),
@@ -232,18 +228,11 @@ func NewGame(sim SimulationState) *Game {
 		OnClick: func() {
 			g.sim.Reset()
 			g.animByID = make(map[int]*creatureAnim)
-			for _, b := range g.foodBlobsByID {
-				g.RenderWorld.RemoveFoodBlob(b)
-			}
-			g.foodBlobsByID = make(map[int]*Blob)
-			for _, b := range g.corpseBlobsByID {
-				g.RenderWorld.RemoveBlob(b)
-			}
-			g.corpseBlobsByID = make(map[int]*Blob)
 			g.selectedCreatureID = -1
 			g.lastTickTime = time.Time{}
 			g.histHead = 0
 			g.histCount = 0
+			g.currentSnapshot = nil
 		},
 	}
 	g.themeBtn = &components.Button{
@@ -555,52 +544,6 @@ func (g *Game) Update() error {
 			}
 		}
 
-		currentFood := make(map[int]bool, len(snapshot.Food))
-		for _, fv := range snapshot.Food {
-			currentFood[fv.ID] = true
-			offset := bs * (1.0 - fv.Radius) / 2.0
-			x := fv.X*bs + offset
-			y := fv.Y*bs + offset
-			if blob, ok := g.foodBlobsByID[fv.ID]; ok {
-				blob.SetScaleTranslate(fv.Radius, x, y)
-			} else {
-				blob := g.RenderWorld.AddFoodBlob(fv.Radius)
-				blob.Translate(x, y)
-				g.foodBlobsByID[fv.ID] = blob
-			}
-		}
-		for id, blob := range g.foodBlobsByID {
-			if !currentFood[id] {
-				g.RenderWorld.RemoveFoodBlob(blob)
-				delete(g.foodBlobsByID, id)
-			}
-		}
-
-		currentCorpses := make(map[int]bool, len(snapshot.Corpses))
-		for _, cv := range snapshot.Corpses {
-			currentCorpses[cv.ID] = true
-			offset := bs * (1.0 - float64(cv.Radius)) / 2.0
-			x := cv.X*bs + offset
-			y := cv.Y*bs + offset
-			if blob, ok := g.corpseBlobsByID[cv.ID]; ok {
-				blob.SetScaleTranslate(cv.Radius, x, y)
-				blob.Move(cv.X*bs, cv.Y*bs)
-			} else {
-				blob := g.RenderWorld.AddBlob(cv.Radius)
-				blob.Translate(x, y)
-				if g.corpseBlobsByID == nil {
-					g.corpseBlobsByID = make(map[int]*Blob)
-				}
-				g.corpseBlobsByID[cv.ID] = blob
-			}
-		}
-		for id, blob := range g.corpseBlobsByID {
-			if !currentCorpses[id] {
-				g.RenderWorld.RemoveBlob(blob)
-				delete(g.corpseBlobsByID, id)
-			}
-		}
-
 		if !g.lastTickTime.IsZero() {
 			g.tickDuration = now.Sub(g.lastTickTime)
 		}
@@ -626,8 +569,82 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	for _, blob := range g.corpseBlobsByID {
-		blob.Draw(g.worldLayer)
+	bs := float64(UnitSize)
+	if g.currentSnapshot != nil {
+		circ := len(g.unitCircle) // 13 edge verts (12 segments + closing vert)
+		vertsPerCircle := 1 + circ
+
+		// --- Batch food circles ---
+		fr, fg, fb, fa := float32(65)/255, float32(140)/255, float32(55)/255, float32(250)/255
+		fVs := make([]ebiten.Vertex, 0, min(len(g.currentSnapshot.Food)*vertsPerCircle, 60_000))
+		fIs := make([]uint16, 0, min(len(g.currentSnapshot.Food)*circ*3, 60_000))
+		flushFood := func() {
+			if len(fVs) > 0 {
+				g.worldLayer.DrawTriangles(fVs, fIs, g.whiteImage, nil)
+				fVs = fVs[:0]
+				fIs = fIs[:0]
+			}
+		}
+		for _, fv := range g.currentSnapshot.Food {
+			if len(fVs)+vertsPerCircle > 60_000 {
+				flushFood()
+			}
+			cx, cy, r := float32(fv.X*bs), float32(fv.Y*bs), float32(fv.Radius)
+			base := uint16(len(fVs))
+			fVs = append(fVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: fr, ColorG: fg, ColorB: fb, ColorA: fa})
+			for _, u := range g.unitCircle {
+				fVs = append(fVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: fr, ColorG: fg, ColorB: fb, ColorA: fa})
+			}
+			for i := uint16(1); i <= uint16(circ-1); i++ {
+				fIs = append(fIs, base, base+i, base+i+1)
+			}
+		}
+		flushFood()
+
+		// --- Batch corpse circles / triangles ---
+		cVs := make([]ebiten.Vertex, 0, 1024)
+		cIs := make([]uint16, 0, 1024)
+		flushCorpse := func() {
+			if len(cVs) > 0 {
+				g.worldLayer.DrawTriangles(cVs, cIs, g.whiteImage, nil)
+				cVs = cVs[:0]
+				cIs = cIs[:0]
+			}
+		}
+		for _, cv := range g.currentSnapshot.Corpses {
+			cx := float32(cv.X * bs)
+			cy := float32(cv.Y * bs)
+			r := float32(cv.Radius)
+			cr := float32(181) / 255 * 0.5
+			cg := float32(0) / 255 * 0.5
+			cb := float32(78) / 255 * 0.5
+			ca := float32(200) / 255
+			if cv.ReproductionType == 1 {
+				if len(cVs)+3 > 60_000 {
+					flushCorpse()
+				}
+				base := uint16(len(cVs))
+				cVs = append(cVs,
+					ebiten.Vertex{DstX: cx + r*float32(math.Cos(cv.Heading)), DstY: cy + r*float32(math.Sin(cv.Heading)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
+					ebiten.Vertex{DstX: cx + r*float32(math.Cos(cv.Heading+2.4)), DstY: cy + r*float32(math.Sin(cv.Heading+2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
+					ebiten.Vertex{DstX: cx + r*float32(math.Cos(cv.Heading-2.4)), DstY: cy + r*float32(math.Sin(cv.Heading-2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
+				)
+				cIs = append(cIs, base, base+1, base+2)
+			} else {
+				if len(cVs)+vertsPerCircle > 60_000 {
+					flushCorpse()
+				}
+				base := uint16(len(cVs))
+				cVs = append(cVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca})
+				for _, u := range g.unitCircle {
+					cVs = append(cVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca})
+				}
+				for i := uint16(1); i <= uint16(circ-1); i++ {
+					cIs = append(cIs, base, base+i, base+i+1)
+				}
+			}
+		}
+		flushCorpse()
 	}
 
 	g.creatureVs = g.creatureVs[:0]

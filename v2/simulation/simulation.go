@@ -556,13 +556,18 @@ func (s *Simulation) updatePopulationCaches() {
 				ReproductionType: c.Genome.ReproductionType,
 			})
 		} else {
-
+			r, g, b, _ := c.Color.RGBA()
 			s.corpseCache = append(s.corpseCache, CorpseView{
-				ID:     id,
-				X:      c.Loc.X,
-				Y:      c.Loc.Y,
-				Mass:   c.Mass,
-				Radius: c.Radius,
+				ID:               id,
+				X:                c.Loc.X,
+				Y:                c.Loc.Y,
+				Mass:             c.Mass,
+				Radius:           c.Radius,
+				ReproductionType: c.Genome.ReproductionType,
+				Heading:          c.Heading,
+				R:                uint8(r >> 8),
+				G:                uint8(g >> 8),
+				B:                uint8(b >> 8),
 			})
 		}
 	}

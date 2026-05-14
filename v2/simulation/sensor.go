@@ -1,7 +1,6 @@
 package simulation
 
 import (
-	"biogo/v2/utils"
 	"biogo/v2/world"
 	"math"
 	"math/rand"
@@ -205,31 +204,33 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 	case JUVENILE:
 		if c.IsJuvenile(params) {
 			output = 1
+		} else {
+			output = -1
 		}
-
 	case ENERGY_DELTA:
 		maxE := c.MaxEnergy(params)
 		if maxE > 0 {
 			delta := float32(c.Energy) - float32(c.LastTickEnergy)
-
-			t := math.Tanh(float64(delta * c.Responsiveness * 5))
-
-			output = float32(t)*0.5 + 0.5
+			output = float32(math.Tanh(float64(delta * c.Responsiveness * 5)))
 		}
 
 	case TEMPERATURE:
 		temp := w.TemperatureAt(c.Loc.Y)
-		tempNorm := (temp - world.TempCold) / (world.TempWarm - world.TempCold)
-		curvedOutput := math.Pow(float64(tempNorm), 2)
-		return utils.RestrictFloat32(0, 1, float32(curvedOutput))
+		// (temp - average) / half_range creates a linear -1 to 1 scale.
+		midPoint := (world.TempWarm + world.TempCold) / 2
+		halfRange := (world.TempWarm - world.TempCold) / 2
+		tempCentered := (temp - midPoint) / halfRange
+		gain := float32(2.0)
+		curvedOutput := math.Tanh(float64(tempCentered * gain))
+
+		return float32(curvedOutput)
 
 	case TEMPERATURE_DELTA:
 		currentTemp := w.TemperatureAt(c.Loc.Y)
 		prevTemp := w.TemperatureAt(c.LastLoc.Y)
-
-		// 0.5 is "no change", > 0.5 is warming up, < 0.5 is cooling down
-		delta := (currentTemp - prevTemp) * c.Responsiveness * 5
-		return utils.RestrictFloat32(0, 1, 0.5+delta)
+		delta := float64((currentTemp - prevTemp) * c.Responsiveness * 5)
+		// -1 = Cooling down fast, 0 = No change, 1 = Warming up fast
+		output = float32(math.Tanh(delta))
 	case RANDOM:
 		fallthrough
 	default:
@@ -810,12 +811,12 @@ func calculateNearestKinship(c Creature, p *Population, ctx *SensorContext) floa
 	}
 
 	if !found {
-		return 1.0
+		return 0.0
 	}
-
+	centeredSim := bestSim - 0.5
 	// Maps 1.0 (Clone) -> -1.0
-	// Maps 0.0 (Stranger) -> 1.0
-	return (bestSim * -2.0) + 1.0
+	// Maps -1.0 (Stranger) -> -1.0
+	return float32(math.Tanh(float64(centeredSim * -4.0)))
 }
 
 // calculateBlockedFwd returns a proximity signal [0,1] for the nearest obstacle
@@ -874,7 +875,7 @@ func calculateNearestThreatAngle(c Creature, p *Population, ctx *SensorContext) 
 		return 0
 	}
 	relAngle := world.NormalizeAngle(math.Atan2(bestDy, bestDx) - c.Heading)
-	return float32((relAngle + math.Pi) / (2 * math.Pi))
+	return float32(math.Tanh(relAngle * 2.0))
 }
 
 // calculateNearestPreyAngle returns the angle to the nearest creature lighter
@@ -905,7 +906,7 @@ func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) fl
 		return 0
 	}
 	relAngle := world.NormalizeAngle(math.Atan2(bestDy, bestDx) - c.Heading)
-	return float32((relAngle + math.Pi) / (2 * math.Pi))
+	return float32(math.Tanh(relAngle * 2.0))
 }
 
 // calculateWallProximity returns a proximity signal [0,1] for the nearest wall
@@ -913,14 +914,11 @@ func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) fl
 func calculateWallProximity(c Creature, w *world.World, params *Parameters) float32 {
 	sightDist := c.GetSightDistance()
 	if sightDist == 0 {
-		return 0
+		return -1
 	}
-
-	// Distance to world boundaries.
 	minDist := math.Min(c.Loc.X, params.WorldWidth-c.Loc.X)
 	minDist = math.Min(minDist, math.Min(c.Loc.Y, params.WorldHeight-c.Loc.Y))
 
-	// Distance to obstacle walls (nearest point on each rectangle).
 	for _, wall := range w.Walls {
 		nearX := math.Max(wall.X, math.Min(c.Loc.X, wall.X+wall.W))
 		nearY := math.Max(wall.Y, math.Min(c.Loc.Y, wall.Y+wall.H))
@@ -932,18 +930,18 @@ func calculateWallProximity(c Creature, w *world.World, params *Parameters) floa
 		}
 	}
 
-	if minDist >= sightDist {
-		return 0
-	}
-	return float32(1.0 - minDist/sightDist)
+	normDist := 1.0 - (minDist / sightDist)
+	return float32(math.Tanh(normDist * 3.0))
 }
-
-// calculateLocalFoodPerCapita returns a signal [0,1] for local food availability
-// relative to local competition. Saturates at 4 food items per creature in the area.
 func calculateLocalFoodPerCapita(ctx *SensorContext, params *Parameters) float32 {
 	foodCount := float64(len(ctx.SightFoodIDs))
-	creatureCount := float64(len(ctx.LocalCreatureIDs))
-	return float32(math.Min(1.0, (foodCount/math.Max(1, creatureCount))/4.0))
+	creatureCount := float64(math.Max(1, float64(len(ctx.LocalCreatureIDs))))
+
+	ratio := foodCount / creatureCount
+	saturation := 4.0
+	input := (ratio - 1.0) / saturation
+
+	return float32(math.Tanh(input * 2.0))
 }
 
 func fastDist(dx, dy float64) float64 {
