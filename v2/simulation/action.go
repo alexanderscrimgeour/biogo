@@ -2,7 +2,7 @@ package simulation
 
 const (
 	ACCELERATE byte = iota // positive = accelerate forward, negative = decelerate/reverse
-	ROTATE           // positive = left (CCW), negative = right (CW)
+	ROTATE                 // positive = left (CCW), negative = right (CW)
 	SET_OSCILLATOR_PERIOD
 	SET_RESPONSIVENESS
 	SET_LEARNING_RATE // modulates per-tick learning rate relative to genome baseline
@@ -13,6 +13,7 @@ const (
 	REPRODUCE // signal to reproduce this tick (asexual: splits daughter cell; sexual: seeks mate)
 
 	ACTION_COUNT
+	FEED // if touching the creature in front, donate stomach contents proportional to actionLevel
 )
 
 func IsActionEnabled(a byte) bool {

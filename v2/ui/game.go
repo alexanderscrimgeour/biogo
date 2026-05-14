@@ -820,11 +820,12 @@ func foodKey(x, y float64) string { return fmt.Sprintf("%f,%f", x, y) }
 func (g *Game) trySelectCreature(mx, my int) {
 	sw, sh := ebiten.WindowSize()
 	clickX, clickY := g.camera.ScreenToWorld(float64(mx), float64(my), float64(sw), float64(sh))
-	half, hitRadius := float64(UnitSize)/2, float64(UnitSize)*12
+	half := float64(UnitSize) / 2
 	bestID, bestDist := -1, math.Inf(1)
 	for id, anim := range g.animByID {
 		dx, dy := clickX-(anim.curX+half), clickY-(anim.curY+half)
 		dist := math.Sqrt(dx*dx + dy*dy)
+		hitRadius := float64(anim.radius) + float64(UnitSize)*3
 		if dist < hitRadius && dist < bestDist {
 			bestDist, bestID = dist, id
 		}
@@ -838,7 +839,7 @@ func (g *Game) trySelectCreature(mx, my int) {
 
 func (g *Game) drawSelectionHighlight(img *ebiten.Image) {
 	if anim, ok := g.animByID[g.selectedCreatureID]; ok {
-		vector.StrokeCircle(img, float32(anim.curX), float32(anim.curY), float32(UnitSize)*5, 1.5, color.RGBA{255, 240, 80, 210}, false)
+		vector.StrokeCircle(img, float32(anim.curX), float32(anim.curY), float32(UnitSize)*(5+anim.radius), 1.5, color.RGBA{255, 240, 80, 210}, false)
 	}
 }
 func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDetailView) {
@@ -870,7 +871,7 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	action := &components.Label{Text: fmt.Sprintf("Actions: %s", d.LastAction), Font: g.statFont, Color: components.ColorButtonGreen}
 	action.Draw(screen, currX, currY)
 	currY += h + 15
-	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %d", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
+	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %.0f", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
 	mass.Draw(screen, currX, currY)
 	currY += h + 15
 	stomach := &components.Label{Text: fmt.Sprintf("Stomach: %.0f/%.0f", d.Stomach, d.StomachCapacity), Font: g.statFont, Color: color.White}
@@ -1382,8 +1383,8 @@ func (g *Game) drawTemperatureBackground() {
 	}
 
 	// Radiation zone: semi-transparent green-yellow tint + border
-	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 60}, false)
-	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 180}, false)
+	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 250}, false)
+	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 250}, false)
 }
 
 func (g *Game) drawSpawnMutSlider(screen *ebiten.Image) {

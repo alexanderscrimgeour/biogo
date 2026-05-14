@@ -33,6 +33,7 @@ type Creature struct {
 	Genome         *Genome
 	SightDistance  float64
 	Mass           float64 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
+	MaxMass        float64
 	Dopamine       float32
 	Stomach        float64 // current food mass in stomach; digested into energy each tick
 	LastAction     string
@@ -79,12 +80,13 @@ func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature
 	}
 
 	c.Mass = MapGeneToRange(c.Genome.MinMass, float64(3), p.MaxMass)
-	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance, p.MaxSightDistance)
+	c.MaxMass = MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass)
+	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+c.Radius, p.MaxSightDistance)
 	c.initCachedFields(g, p)
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
 	c.Color = c.CalculateColor(p)
-	c.UpdateSize()
+	c.UpdateSize(p)
 	return &c
 }
 
@@ -105,13 +107,14 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 	}
 
 	c.Mass = MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass)
-	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance, p.MaxSightDistance)
+	c.MaxMass = MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass)
+	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+c.Radius, p.MaxSightDistance)
 	c.initCachedFields(g, p)
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
 	c.Age = c.cachedJuvenilePeriod
 	c.Color = c.CalculateColor(p)
-	c.UpdateSize()
+	c.UpdateSize(p)
 	return &c
 }
 
@@ -206,22 +209,23 @@ func (c *Creature) Digest(params *Parameters) {
 	c.GainEnergy(float32(actualGain), params)
 }
 
-func (c *Creature) UpdateSize() {
+func (c *Creature) UpdateSize(p *Parameters) {
 	if c.Mass <= 0 {
 		c.Radius = 0
 		return
 	}
 	c.Radius = math.Sqrt(float64(c.Mass) * math.Pi)
+	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+c.Radius, p.MaxSightDistance)
 }
 
 // JuvenilePeriod returns the number of ticks before this creature is considered an adult.
-func (c Creature) JuvenilePeriod(_ *Parameters) int {
+func (c Creature) JuvenilePeriod() int {
 	return c.cachedJuvenilePeriod
 }
 
 // IsJuvenile reports whether the creature has not yet completed its juvenile phase.
-func (c Creature) IsJuvenile(params *Parameters) bool {
-	jp := c.JuvenilePeriod(params)
+func (c Creature) IsJuvenile() bool {
+	jp := c.JuvenilePeriod()
 	return jp > 0 && c.Age < jp
 }
 
@@ -233,16 +237,16 @@ func (c Creature) CurrentMass() float64 {
 // GrowMass advances the creature's mass toward Genome.Mass using a von Bertalanffy
 // growth curve: slowest at birth, fastest at ~1/3 of adult mass, tapering to zero at adult.
 func (c *Creature) GrowMass(params *Parameters) {
-	maxMass := MapGeneToRange(c.Genome.Mass, 3.0, params.MaxMass)
+	maxMass := c.MaxMass
 	if c.Mass >= maxMass {
 		c.Mass = maxMass
-		c.UpdateSize()
+		c.UpdateSize(params)
 		return
 	}
 	// Snap to full mass when within 1% to avoid asymptotic convergence blocking reproduction.
 	if c.Mass >= maxMass*0.99 {
 		c.Mass = maxMass
-		c.UpdateSize()
+		c.UpdateSize(params)
 		return
 	}
 
@@ -264,7 +268,7 @@ func (c *Creature) GrowMass(params *Parameters) {
 	}
 
 	c.Mass = utils.MinFloat64(maxMass, c.Mass+actualGrowth)
-	c.UpdateSize()
+	c.UpdateSize(params)
 	c.DrainEnergy(float32(energyCost))
 }
 

@@ -37,6 +37,11 @@ type AttackInstruction struct {
 	Creature *Creature
 }
 
+type FeedInstruction struct {
+	Creature *Creature
+	Level    float32
+}
+
 // pendingInstructions accumulates instructions produced by a single goroutine's
 // creature batch before they are merged into the shared Population queues.
 type pendingInstructions struct {
@@ -213,7 +218,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			massRatio = 1.0
 		}
 
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius, c.SightCreatureBuffer)
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius+5.0, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		closestPreyDistSq := math.MaxFloat64
@@ -264,8 +269,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 
 		c.Stomach += eaten
 		target.Mass -= eaten
-		target.UpdateSize()
-
+		target.UpdateSize(params)
 		target.DrainEnergy(float32(eaten) * params.EnergyPerMassUnit)
 		struggleCost := params.AttackEnergyCost
 		if sizeRatio < 1.0 {
@@ -399,11 +403,11 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 
 			parent.Mass -= float64(massFromParent)
 			parent.DrainEnergy(energyFromParent)
-			parent.UpdateSize()
+			parent.UpdateSize(params)
 
 			partner.Mass -= float64(massFromPartner)
 			partner.DrainEnergy(energyFromPartner)
-			parent.UpdateSize()
+			parent.UpdateSize(params)
 
 			id := w.AddCreature(offspringLoc)
 			child := NewCreature(id, offspringLoc, childGenome, params)
@@ -425,7 +429,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		energyTransferred := energyToSplit * params.ReproductionEfficiency
 
 		parent.Mass -= childMass
-		parent.UpdateSize()
+		parent.UpdateSize(params)
 		parent.DrainEnergy(energyToSplit)
 
 		radMult := radiationMult(parent.Loc.X, params)
@@ -433,7 +437,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
 		child.Mass = childMass
-		child.UpdateSize()
+		child.UpdateSize(params)
 		child.Energy = energyTransferred
 		p.Creatures[id] = child
 		p.AddAlive(id)

@@ -47,7 +47,7 @@ const (
 )
 
 // Expected creature density
-const kDensity = 0.001
+const kDensity = 0.00008
 
 type SensorContext struct {
 	SightFoodIDs      []int
@@ -176,7 +176,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		}
 
 	case BLOCKED_FORWARD:
-		output = calculateBlockedFwd(c, w, params)
+		output = calculateBlockedFwd(c, w, p, ctx, params)
 
 	case NEAREST_THREAT_ANGLE:
 		output = calculateNearestThreatAngle(c, p, ctx)
@@ -196,7 +196,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		output = calculateLocalFoodPerCapita(ctx, params)
 
 	case JUVENILE:
-		if c.IsJuvenile(params) {
+		if c.IsJuvenile() {
 			output = 1
 		} else {
 			output = -1
@@ -790,9 +790,9 @@ func calculateNearestKinship(c Creature, p *Population, ctx *SensorContext) floa
 }
 
 // calculateBlockedFwd returns a proximity signal [0,1] for the nearest obstacle
-// (wall or boundary) along the heading within sight distance.
+// (wall, boundary, or creature) along the heading within sight distance.
 // 0 = clear path, approaching 1 as the obstacle nears.
-func calculateBlockedFwd(c Creature, w *world.World, params *Parameters) float32 {
+func calculateBlockedFwd(c Creature, w *world.World, p *Population, ctx *SensorContext, params *Parameters) float32 {
 	sightDist := c.GetSightDistance()
 	if sightDist == 0 {
 		return 0
@@ -808,6 +808,32 @@ func calculateBlockedFwd(c Creature, w *world.World, params *Parameters) float32
 		if !w.IsInBounds(probe) || w.IsWall(probe) {
 			blockDist = d
 			break
+		}
+	}
+
+	// Check if any visible creature lies along the forward ray.
+	if p != nil && ctx != nil {
+		for _, id := range ctx.SightCreatureIDs {
+			if id == c.Id {
+				continue
+			}
+			other, ok := p.Creatures[id]
+			if !ok || !other.Alive {
+				continue
+			}
+			dx := other.Loc.X - c.Loc.X
+			dy := other.Loc.Y - c.Loc.Y
+			// Projection of the vector onto the forward direction.
+			proj := dx*fwdX + dy*fwdY
+			if proj <= 0 || proj >= blockDist {
+				continue
+			}
+			// Perpendicular distance from the ray to the other creature's centre.
+			perpSq := (dx-fwdX*proj)*(dx-fwdX*proj) + (dy-fwdY*proj)*(dy-fwdY*proj)
+			threshold := c.Radius + other.Radius
+			if perpSq <= threshold*threshold {
+				blockDist = proj
+			}
 		}
 	}
 

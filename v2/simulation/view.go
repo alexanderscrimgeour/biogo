@@ -47,7 +47,7 @@ type CreatureDetailView struct {
 	IsJuvenile       bool
 	JuvenilePeriod   int
 	CurrentMass      float32
-	AdultMass        byte
+	AdultMass        float64
 	LastAction       string
 	SightDistance    float64
 	FieldOfView      float64
@@ -104,10 +104,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		Energy:           c.Energy,
 		MaxEnergy:        c.MaxEnergy(s.Params),
 		Age:              c.Age,
-		IsJuvenile:       c.IsJuvenile(s.Params),
-		JuvenilePeriod:   c.JuvenilePeriod(s.Params),
+		IsJuvenile:       c.IsJuvenile(),
+		JuvenilePeriod:   c.JuvenilePeriod(),
 		CurrentMass:      float32(c.CurrentMass()),
-		AdultMass:        c.Genome.Mass,
+		AdultMass:        c.MaxMass,
 		LastAction:       c.LastAction,
 		SightDistance:    c.GetSightDistance(),
 		FieldOfView:      c.FieldOfView(),
@@ -156,5 +156,5 @@ func (s *Simulation) CreatureViews() []CreatureView {
 	return views
 }
 
-func (s *Simulation) CreatureMinMass() byte { return 1 }
+func (s *Simulation) CreatureMinMass() byte    { return 1 }
 func (s *Simulation) CreatureMaxMass() float64 { return s.Params.MaxMass }
