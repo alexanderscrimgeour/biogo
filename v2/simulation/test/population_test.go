@@ -1,7 +1,7 @@
 package test
 
 import (
-	"biogo/v2/world"
+	grid "biogo/v2/world"
 	"biogo/v2/simulation"
 	"testing"
 )
@@ -97,67 +97,38 @@ func TestProcessDeathQueue(t *testing.T) {
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[id] = creature
+	pop.AddAlive(id)
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(w, params)
 
-	if creature.Alive {
-		t.Error("creature should not be alive after ProcessDeathQueue")
+	if len(pop.Creatures) != 0 {
+		t.Errorf("dead creature should be removed from population map, got %d creatures", len(pop.Creatures))
 	}
-	if len(pop.Creatures) != 1 {
-		t.Errorf("corpse should remain in population map, got %d creatures", len(pop.Creatures))
-	}
-}
-
-func TestProcessCorpseDecay(t *testing.T) {
-	params := defaultParams()
-	params.CorpseDecayRate = 50
-	w := grid.NewWorld(20, 20, 0)
-
-	genome := simulation.MakeRandomGenome(params)
-	loc := grid.Position{X: 3, Y: 3}
-	id := w.AddCreature(loc)
-	corpse := simulation.NewCreature(id, loc, genome, params)
-	corpse.Alive = false
-	corpse.Mass = 60
-
-	pop := simulation.NewPopulation(params)
-	pop.Creatures[id] = corpse
-
-	pop.ProcessCorpseDecay(w, params)
-
-	if corpse.Mass >= 60 {
-		t.Error("corpse mass should decrease after decay")
-	}
-	if _, ok := pop.Creatures[id]; !ok {
-		t.Error("corpse with remaining mass should still be in map")
-	}
-
-	pop.ProcessCorpseDecay(w, params)
-	if _, ok := pop.Creatures[id]; ok {
-		t.Error("fully decayed corpse should be removed from population map")
+	if w.MeatCount() == 0 {
+		t.Error("meat should be spawned at death location")
 	}
 }
 
-// TestCorpseEnergySetOnDeath verifies that ProcessDeathQueue initializes corpse mass
-// from the creature's actual body mass at time of death.
-func TestCorpseEnergySetOnDeath(t *testing.T) {
+// TestDeathSpawnsMeatMatchingMass verifies that total meat mass spawned matches the creature's body mass.
+func TestDeathSpawnsMeatMatchingMass(t *testing.T) {
 	params := defaultParams()
 	w := grid.NewWorld(20, 20, 0)
 
 	genome := simulation.MakeRandomGenome(params)
 	genome.Mass = 120
-	loc := grid.Position{X: 3, Y: 3}
+	loc := grid.Position{X: 10, Y: 10}
 	id := w.AddCreature(loc)
 	creature := simulation.NewAdultCreature(id, loc, genome, params)
-	creature.Energy = 5
+	deathMass := creature.Mass
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[id] = creature
+	pop.AddAlive(id)
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(w, params)
 
-	if creature.Mass != float32(genome.Mass) {
-		t.Errorf("corpse mass should equal genome.Mass (%d), got %f", genome.Mass, creature.Mass)
+	if w.TotalMeatMass() < float64(deathMass)-0.01 || w.TotalMeatMass() > float64(deathMass)+0.01 {
+		t.Errorf("total meat mass %.2f should match creature mass %.2f", w.TotalMeatMass(), deathMass)
 	}
 }
 

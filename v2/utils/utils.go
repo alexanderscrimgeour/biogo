@@ -52,6 +52,13 @@ func MinFloat32(a, b float32) float32 {
 	return a
 }
 
+func MinFloat64(a, b float64) float64 {
+	if b < a {
+		return b
+	}
+	return a
+}
+
 func MaxFloat32(a, b float32) float32 {
 	if b > a {
 		return b

@@ -27,7 +27,7 @@ type SimulationState interface {
 	FoodCount() int
 	AverageAge() float64
 	CreatureMinMass() byte
-	CreatureMaxMass() byte
+	CreatureMaxMass() float64
 	SaveCreature(id int) error
 	Reset()
 	TotalEnergy() float64
@@ -113,15 +113,13 @@ type creatureAnim struct {
 type Game struct {
 	sim                SimulationState
 	RenderWorld        *RenderWorld
-	foodBlobsByID      map[int]*Blob
-	corpseBlobsByID    map[int]*Blob
 	statFont           font.Face
 	whiteImage         *ebiten.Image
 	animByID           map[int]*creatureAnim
 	lastTickTime       time.Time
 	tickDuration       time.Duration
 	minCreatureMass    byte
-	maxCreatureMass    byte
+	maxCreatureMass    float64
 	MaxTotalEnergy     float64
 	saveFeedback       string
 	saveFeedbackAt     time.Time
@@ -177,8 +175,6 @@ func NewGame(sim SimulationState) *Game {
 	g := &Game{
 		sim:                sim,
 		RenderWorld:        NewRenderWorld(0, 0, UnitSize),
-		foodBlobsByID:      make(map[int]*Blob),
-		corpseBlobsByID:    make(map[int]*Blob),
 		statFont:           statFont,
 		whiteImage:         wImg,
 		animByID:           make(map[int]*creatureAnim),
@@ -232,18 +228,11 @@ func NewGame(sim SimulationState) *Game {
 		OnClick: func() {
 			g.sim.Reset()
 			g.animByID = make(map[int]*creatureAnim)
-			for _, b := range g.foodBlobsByID {
-				g.RenderWorld.RemoveFoodBlob(b)
-			}
-			g.foodBlobsByID = make(map[int]*Blob)
-			for _, b := range g.corpseBlobsByID {
-				g.RenderWorld.RemoveBlob(b)
-			}
-			g.corpseBlobsByID = make(map[int]*Blob)
 			g.selectedCreatureID = -1
 			g.lastTickTime = time.Time{}
 			g.histHead = 0
 			g.histCount = 0
+			g.currentSnapshot = nil
 		},
 	}
 	g.themeBtn = &components.Button{
@@ -534,7 +523,7 @@ func (g *Game) Update() error {
 				anim.r, anim.g, anim.b, anim.a = cv.R, cv.G, cv.B, cv.A
 				anim.heading = cv.Heading
 				anim.mass = cv.CurrentMass
-				anim.radius = float32(cv.Radius)
+				anim.radius = float32(cv.Radius * bs)
 				anim.sexual = cv.ReproductionType == 1
 			} else {
 				g.animByID[cv.ID] = &creatureAnim{
@@ -543,7 +532,7 @@ func (g *Game) Update() error {
 					r: cv.R, g: cv.G, b: cv.B, a: cv.A,
 					heading: cv.Heading,
 					mass:    cv.CurrentMass,
-					radius:  float32(cv.Radius),
+					radius:  float32(cv.Radius * bs),
 					sexual:  cv.ReproductionType == 1,
 				}
 			}
@@ -552,52 +541,6 @@ func (g *Game) Update() error {
 		for id := range g.animByID {
 			if !currentIDs[id] {
 				delete(g.animByID, id)
-			}
-		}
-
-		currentFood := make(map[int]bool, len(snapshot.Food))
-		for _, fv := range snapshot.Food {
-			currentFood[fv.ID] = true
-			offset := bs * (1.0 - fv.Radius) / 2.0
-			x := fv.X*bs + offset
-			y := fv.Y*bs + offset
-			if blob, ok := g.foodBlobsByID[fv.ID]; ok {
-				blob.SetScaleTranslate(fv.Radius, x, y)
-			} else {
-				blob := g.RenderWorld.AddFoodBlob(fv.Radius)
-				blob.Translate(x, y)
-				g.foodBlobsByID[fv.ID] = blob
-			}
-		}
-		for id, blob := range g.foodBlobsByID {
-			if !currentFood[id] {
-				g.RenderWorld.RemoveFoodBlob(blob)
-				delete(g.foodBlobsByID, id)
-			}
-		}
-
-		currentCorpses := make(map[int]bool, len(snapshot.Corpses))
-		for _, cv := range snapshot.Corpses {
-			currentCorpses[cv.ID] = true
-			offset := bs * (1.0 - float64(cv.Radius)) / 2.0
-			x := cv.X*bs + offset
-			y := cv.Y*bs + offset
-			if blob, ok := g.corpseBlobsByID[cv.ID]; ok {
-				blob.SetScaleTranslate(cv.Radius, x, y)
-				blob.Move(cv.X*bs, cv.Y*bs)
-			} else {
-				blob := g.RenderWorld.AddBlob(cv.Radius)
-				blob.Translate(x, y)
-				if g.corpseBlobsByID == nil {
-					g.corpseBlobsByID = make(map[int]*Blob)
-				}
-				g.corpseBlobsByID[cv.ID] = blob
-			}
-		}
-		for id, blob := range g.corpseBlobsByID {
-			if !currentCorpses[id] {
-				g.RenderWorld.RemoveBlob(blob)
-				delete(g.corpseBlobsByID, id)
 			}
 		}
 
@@ -626,8 +569,64 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	for _, blob := range g.corpseBlobsByID {
-		blob.Draw(g.worldLayer)
+	bs := float64(UnitSize)
+	if g.currentSnapshot != nil {
+		circ := len(g.unitCircle) // 13 edge verts (12 segments + closing vert)
+		vertsPerCircle := 1 + circ
+
+		// --- Batch food circles ---
+		fr, fg, fb, fa := float32(65)/255, float32(140)/255, float32(55)/255, float32(125)/255
+		fVs := make([]ebiten.Vertex, 0, min(len(g.currentSnapshot.Food)*vertsPerCircle, 60_000))
+		fIs := make([]uint16, 0, min(len(g.currentSnapshot.Food)*circ*3, 60_000))
+		flushFood := func() {
+			if len(fVs) > 0 {
+				g.worldLayer.DrawTriangles(fVs, fIs, g.whiteImage, nil)
+				fVs = fVs[:0]
+				fIs = fIs[:0]
+			}
+		}
+		for _, fv := range g.currentSnapshot.Food {
+			if len(fVs)+vertsPerCircle > 60_000 {
+				flushFood()
+			}
+			cx, cy, r := float32(fv.X*bs), float32(fv.Y*bs), float32(fv.Radius*bs)
+			base := uint16(len(fVs))
+			fVs = append(fVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: fr, ColorG: fg, ColorB: fb, ColorA: fa})
+			for _, u := range g.unitCircle {
+				fVs = append(fVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: fr, ColorG: fg, ColorB: fb, ColorA: fa})
+			}
+			for i := uint16(1); i <= uint16(circ-1); i++ {
+				fIs = append(fIs, base, base+i, base+i+1)
+			}
+		}
+		flushFood()
+
+		// --- Batch meat circles ---
+		mr, mg, mb, ma := float32(180)/255, float32(30)/255, float32(30)/255, float32(180)/255
+		mVs := make([]ebiten.Vertex, 0, min(len(g.currentSnapshot.Meat)*vertsPerCircle, 60_000))
+		mIs := make([]uint16, 0, min(len(g.currentSnapshot.Meat)*circ*3, 60_000))
+		flushMeat := func() {
+			if len(mVs) > 0 {
+				g.worldLayer.DrawTriangles(mVs, mIs, g.whiteImage, nil)
+				mVs = mVs[:0]
+				mIs = mIs[:0]
+			}
+		}
+		for _, mv := range g.currentSnapshot.Meat {
+			if len(mVs)+vertsPerCircle > 60_000 {
+				flushMeat()
+			}
+			cx, cy, r := float32(mv.X*bs), float32(mv.Y*bs), float32(mv.Radius*bs)
+			base := uint16(len(mVs))
+			mVs = append(mVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: mr, ColorG: mg, ColorB: mb, ColorA: ma})
+			for _, u := range g.unitCircle {
+				mVs = append(mVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: mr, ColorG: mg, ColorB: mb, ColorA: ma})
+			}
+			for i := uint16(1); i <= uint16(circ-1); i++ {
+				mIs = append(mIs, base, base+i, base+i+1)
+			}
+		}
+		flushMeat()
 	}
 
 	g.creatureVs = g.creatureVs[:0]
@@ -821,11 +820,12 @@ func foodKey(x, y float64) string { return fmt.Sprintf("%f,%f", x, y) }
 func (g *Game) trySelectCreature(mx, my int) {
 	sw, sh := ebiten.WindowSize()
 	clickX, clickY := g.camera.ScreenToWorld(float64(mx), float64(my), float64(sw), float64(sh))
-	half, hitRadius := float64(UnitSize)/2, float64(UnitSize)*6
+	half := float64(UnitSize) / 2
 	bestID, bestDist := -1, math.Inf(1)
 	for id, anim := range g.animByID {
 		dx, dy := clickX-(anim.curX+half), clickY-(anim.curY+half)
 		dist := math.Sqrt(dx*dx + dy*dy)
+		hitRadius := float64(anim.radius) + float64(UnitSize)*3
 		if dist < hitRadius && dist < bestDist {
 			bestDist, bestID = dist, id
 		}
@@ -839,7 +839,7 @@ func (g *Game) trySelectCreature(mx, my int) {
 
 func (g *Game) drawSelectionHighlight(img *ebiten.Image) {
 	if anim, ok := g.animByID[g.selectedCreatureID]; ok {
-		vector.StrokeCircle(img, float32(anim.curX), float32(anim.curY), float32(UnitSize)*5, 1.5, color.RGBA{255, 240, 80, 210}, false)
+		vector.StrokeCircle(img, float32(anim.curX), float32(anim.curY), float32(UnitSize)*(5+anim.radius), 1.5, color.RGBA{255, 240, 80, 210}, false)
 	}
 }
 func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDetailView) {
@@ -871,7 +871,7 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	action := &components.Label{Text: fmt.Sprintf("Actions: %s", d.LastAction), Font: g.statFont, Color: components.ColorButtonGreen}
 	action.Draw(screen, currX, currY)
 	currY += h + 15
-	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %d", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
+	mass := &components.Label{Text: fmt.Sprintf("Mass:  %.0f / %.0f", d.CurrentMass, d.AdultMass), Font: g.statFont, Color: color.White}
 	mass.Draw(screen, currX, currY)
 	currY += h + 15
 	stomach := &components.Label{Text: fmt.Sprintf("Stomach: %.0f/%.0f", d.Stomach, d.StomachCapacity), Font: g.statFont, Color: color.White}
@@ -1298,7 +1298,7 @@ func nnSensorName(id byte) string {
 	names := [...]string{
 		"Bias", "Age", "Energy", "Loc X", "Loc Y", "Osc",
 		"LocalDensity", "LocalHeading", "LocalCOM",
-		"PopFwd", "PopCentroid", "FoodFws", "CorpsesFwd",
+		"PopFwd", "PopCentroid", "FoodFwd", "MeatFwd",
 		"Random", "Satiety", "Heading", "Velocity", "Food Ang",
 		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd", "KinshipNearest",
 		"Mass %", "Blocked", "Prey", "Threat Ang",
@@ -1313,7 +1313,7 @@ func nnSensorName(id byte) string {
 
 func nnActionName(id byte) string {
 	names := [...]string{
-		"Move", "Rotate", "SetOsc", "SetResp",
+		"Accelerate", "Rotate", "SetOsc", "SetResp",
 		"SetLearn", "Rest", "Attack", "Reward", "Punish", "Mate",
 	}
 	if int(id) < len(names) {
@@ -1383,8 +1383,8 @@ func (g *Game) drawTemperatureBackground() {
 	}
 
 	// Radiation zone: semi-transparent green-yellow tint + border
-	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 60}, false)
-	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 180}, false)
+	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 250}, false)
+	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 250}, false)
 }
 
 func (g *Game) drawSpawnMutSlider(screen *ebiten.Image) {

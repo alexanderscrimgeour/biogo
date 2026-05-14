@@ -6,7 +6,13 @@ import (
 	"math"
 	"math/bits"
 	"math/rand"
+	"sync/atomic"
 )
+
+// genomeUIDSeq is a monotonically increasing counter; each call to
+// recomputeBytes() claims one value, giving every genome a unique identity
+// that changes when the genome mutates. Used by the per-creature sim cache.
+var genomeUIDSeq uint64
 
 const (
 	OSC_PERIOD = iota
@@ -61,9 +67,13 @@ type Genome struct {
 	// flat byte cache for GenomeSimilarity; recomputed after any mutation or brain change.
 	// Layout: 15 header bytes + 5 bytes per gene (SourceID, SourceType, SinkID, SinkType, Weight).
 	bytes []byte
+	// uid is assigned by recomputeBytes() from a global counter; it lets the
+	// per-creature sim cache detect stale entries when an ID is recycled.
+	uid uint64
 }
 
-// recomputeBytes refreshes the flat byte cache used by GenomeSimilarity.
+// recomputeBytes refreshes the flat byte cache used by GenomeSimilarity and
+// stamps a new uid so per-creature similarity caches can detect stale entries.
 // Call this after any field change or Brain modification.
 func (g *Genome) recomputeBytes() {
 	need := 16 + len(g.Brain)*5
@@ -97,6 +107,7 @@ func (g *Genome) recomputeBytes() {
 		b[off+3] = gn.SinkType
 		b[off+4] = gn.Weight
 	}
+	g.uid = atomic.AddUint64(&genomeUIDSeq, 1)
 }
 
 func (g Gene) String() string {
@@ -188,17 +199,14 @@ func MakeRandomGene() Gene {
 
 func MakeRandomGenome(p *Parameters) *Genome {
 	// Mass must be >= 3 to guarantee a valid MinMass (MinMass < Mass/2 requires Mass > 2).
-	mass := utils.LerpByte(3, p.MaxMass, utils.MakeRandomByte())
-	maxMinMass := (mass - 1) / 2
 	g := Genome{
-		OscPeriod:         utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		SightDistance:     utils.MakeRandomByte(),
-		FieldOfView:       utils.MakeRandomByte(),
-		Responsiveness:    utils.MakeRandomByte(),
-		MutationRate:      utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		Mass:              mass,
-		MinMass:           utils.LerpByte(1, maxMinMass, utils.MakeRandomByte()),
-		ReproductionType:  makeRandomBool(),
+		OscPeriod:        utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		SightDistance:    utils.MakeRandomByte(),
+		FieldOfView:      utils.MakeRandomByte(),
+		Responsiveness:   utils.MakeRandomByte(),
+		MutationRate:     utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		Mass:             utils.MakeRandomByte(),
+		ReproductionType: makeRandomBool(),
 		CognitiveBreadth:  utils.LerpByte(p.MinCognitiveBreadth, p.MaxCognitiveBreadth, utils.MakeRandomByte()),
 		SynapticDensity:   utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, utils.MakeRandomByte()),
 		JuvenilePeriod:    utils.MakeRandomByte(),
@@ -208,6 +216,11 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		LearningThreshold: utils.MakeRandomByte(),
 		MassSplitRatio:    utils.MakeRandomByte(),
 	}
+	maxMinMass := (g.Mass - 1) / 2
+	if maxMinMass < 1 {
+		maxMinMass = 1
+	}
+	g.MinMass = utils.LerpByte(1, maxMinMass, utils.MakeRandomByte())
 	for i := byte(0); i < g.SynapticDensity; i++ {
 		gene := MakeRandomGene()
 		g.Brain = append(g.Brain, gene)
@@ -264,7 +277,7 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) 
 	mutateTarget(&g.FieldOfView, 0, 255, 10)
 	mutateTarget(&g.Responsiveness, 0, 255, 20)
 	mutateTarget(&g.MutationRate, 1, 255, 5)
-	mutateTarget(&g.Mass, 3, p.MaxMass, 12)
+	mutateTarget(&g.Mass, 3, math.MaxUint8, 12)
 
 	maxMinMass := (g.Mass - 1) / 2
 	if maxMinMass < 1 {

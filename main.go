@@ -29,6 +29,6 @@ func main() {
 	ebiten.SetWindowTitle("Genetic Simulation")
 
 	if err := ebiten.RunGame(game); err != nil {
-		log.Fatal()
+		log.Fatal(err)
 	}
 }

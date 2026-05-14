@@ -17,7 +17,7 @@ type Simulation struct {
 	TargetEnergy float64 // total liquid energy to maintain (set at initialisation)
 	displayCache []CreatureView
 	foodCache    []FoodView
-	corpseCache  []CorpseView
+	meatCache    []FoodView
 	cacheMu      sync.RWMutex
 }
 
@@ -93,8 +93,9 @@ func (s *Simulation) Reset() {
 func (s *Simulation) Update() {
 	s.step()
 	s.cacheMu.Lock()
-	s.updatePopulationCaches() // Rename your existing updateDisplayCache to this
+	s.updatePopulationCaches()
 	s.updateFoodCache()
+	s.updateMeatCache()
 	s.cacheMu.Unlock()
 }
 
@@ -158,9 +159,9 @@ func (s *Simulation) step() {
 	s.pairMates(wantMate)
 
 	s.Population.ProcessMoveQueue(s.World, s.Params)
+	s.processCollisions()
 	s.Population.ProcessAttackQueue(s.World, s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
-	s.Population.ProcessCorpseDecay(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params)
 
 	// Reward decay — iterate only alive creatures via the maintained index.
@@ -193,8 +194,8 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	temp := s.World.TemperatureAt(c.Loc.Y)
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
 	if c.Loc.X < s.Params.RadiationZoneWidth*s.Params.WorldWidth {
-		massNorm := c.Mass / float32(s.Params.MaxMass)
-		c.DrainEnergy(s.Params.RadiationDamagePerTick * float32(math.Pow(float64(massNorm), 0.75)))
+		massNorm := c.Mass / s.Params.MaxMass
+		c.DrainEnergy(s.Params.RadiationDamagePerTick * float32(math.Pow(massNorm, 0.75)))
 	}
 	c.Digest(s.Params)
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
@@ -281,7 +282,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		level := actionLevels[REPRODUCE]
 		if math.Abs(float64(level)) > 0.5 {
 			reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
-			if c.Energy >= reproThreshold && c.Age >= c.cachedJuvenilePeriod && c.Mass >= float32(c.Genome.Mass)*0.9 {
+			if c.Energy >= reproThreshold && c.Age >= c.cachedJuvenilePeriod && c.Mass >= float64(c.Genome.Mass)*0.9 {
 				if c.Genome.ReproductionType == 0 {
 					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
 					c.LastAction = appendActionString(c.LastAction, "Reproducing")
@@ -295,7 +296,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	if !c.IsResting {
 		// Rotation: positive level turns CCW (left), negative turns CW (right).
 		rotateAmount := float64(0)
-		massNorm := c.CurrentMass() / float32(s.Params.MaxMass)
+		massNorm := c.CurrentMass() / s.Params.MaxMass
 		if IsActionEnabled(ROTATE) {
 			turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
 			rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) *
@@ -304,20 +305,20 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 		if rotateAmount != 0 {
 			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
-			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
+			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * float32(massCostMult))
 			c.LastAction = appendActionString(c.LastAction, "Rotating")
 		}
 		c.Heading = world.NormalizeAngle(c.Heading + rotateAmount)
 
-		// Forward/backward movement: positive = forward, negative = backward.
-		moveAmount := float64(0)
-		if IsActionEnabled(MOVE) {
-			moveAmount = math.Tanh(float64(actionLevels[MOVE])) * float64(responseAdjust)
+		// ACCELERATE: positive = accelerate forward, negative = decelerate/reverse.
+		massFactor := 1.0 + math.Pow(float64(massNorm), 2)*5.0
+		maxAccel := s.Params.MaxSpeedPerStep / massFactor
+		accelAmount := float64(0)
+		if IsActionEnabled(ACCELERATE) {
+			accelAmount = math.Tanh(float64(actionLevels[ACCELERATE])) * float64(responseAdjust) * maxAccel
 		}
-		massFactor := 1.0 + math.Pow(float64(c.CurrentMass()/float32(s.Params.MaxMass)), 2)*5.0
-		moveAmount *= s.Params.MaxSpeedPerStep / massFactor
 
-		// Colder temperatures slow movement (ectotherm-like muscle penalty).
+		// Colder temperatures reduce acceleration capability (ectotherm-like muscle penalty).
 		tempNorm := float64((temp - 10.0) / 30.0)
 		if tempNorm < 0 {
 			tempNorm = 0
@@ -325,21 +326,32 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			tempNorm = 1
 		}
 		speedMult := float64(s.Params.ColdSpeedMultiplier) + (1.0-float64(s.Params.ColdSpeedMultiplier))*tempNorm
-		moveAmount *= speedMult
+		accelAmount *= speedMult
 
-		if math.Abs(moveAmount) < 0.001 {
-			return
+		// Integrate acceleration into velocity, apply drag, clamp to mass-adjusted max speed.
+		c.Velocity += accelAmount
+		c.Velocity *= s.Params.VelocityDamping
+		maxSpeed := s.Params.MaxSpeedPerStep / massFactor
+		if c.Velocity > maxSpeed {
+			c.Velocity = maxSpeed
+		} else if c.Velocity < -maxSpeed {
+			c.Velocity = -maxSpeed
 		}
 
-		dx := math.Cos(c.Heading) * moveAmount
-		dy := math.Sin(c.Heading) * moveAmount
-		newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
+		if math.Abs(c.Velocity) >= 0.001 {
+			dx := math.Cos(c.Heading) * c.Velocity
+			dy := math.Sin(c.Heading) * c.Velocity
+			newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
-		if !s.World.IsWall(newPos) {
-			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
-			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(moveAmount)) * massCostMult)
-			c.LastAction = appendActionString(c.LastAction, "Moving")
-			pending.move = append(pending.move, MoveInstruction{c, newPos, moveAmount})
+			if !s.World.IsWall(newPos) {
+				if math.Abs(accelAmount) > 0.001 {
+					// Energy cost scales linearly with mass: heavier creatures need more force to accelerate.
+					massCostMult := 0.5 + float64(massNorm)*2.0
+					c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(accelAmount)) * float32(massCostMult))
+				}
+				c.LastAction = appendActionString(c.LastAction, "Moving")
+				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Velocity})
+			}
 		}
 	}
 }
@@ -379,7 +391,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 			d2 := dx*dx + dy*dy
 
 			if d2 <= matingRadiusSq {
-				similarity := GenomeSimilarity(c.Genome, other.Genome)
+				similarity := c.cachedSimilarity(other.Id, other)
 				if similarity >= s.Params.MinMatingSimilarity {
 					if similarity > bestSimilarity {
 						bestSimilarity = similarity
@@ -481,17 +493,15 @@ func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
 func (s *Simulation) FoodCount() int { return s.World.FoodCount() }
 
-// TotalEnergy returns the total liquid energy in the system: food energy plus the
+// TotalEnergy returns the total liquid energy in the system: food, meat, and the
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
 func (s *Simulation) TotalEnergy() float64 {
-	// Energy In food
-	energy := s.World.TotalFoodMass() * float64(s.Params.EnergyPerMassUnit)
-
-	// Total mass and energy in creatures
+	epu := float64(s.Params.EnergyPerMassUnit)
+	energy := s.World.TotalFoodMass() * epu
+	energy += s.World.TotalMeatMass() * epu
 	for _, c := range s.Population.Creatures {
-		energy += float64(c.Energy) + (float64(c.Mass)+c.Stomach)*float64(s.Params.EnergyPerMassUnit)
+		energy += float64(c.Energy) + (float64(c.Mass)+c.Stomach)*epu
 	}
-
 	return energy
 }
 
@@ -540,63 +550,48 @@ func appendActionString(base, new string) string {
 
 func (s *Simulation) updatePopulationCaches() {
 	s.displayCache = s.displayCache[:0]
-	s.corpseCache = s.corpseCache[:0]
 
 	for id, c := range s.Population.Creatures {
-		if c.Alive {
-			// Living Creature Logic
-			r, g, b, a := c.Color.RGBA()
-			s.displayCache = append(s.displayCache, CreatureView{
-				ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
-				R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
-				CurrentMass:      float64(c.Mass),
-				SightDistance:    c.GetSightDistance(),
-				FieldOfView:      c.FieldOfView(),
-				Radius:           c.Radius,
-				ReproductionType: c.Genome.ReproductionType,
-			})
-		} else {
-
-			s.corpseCache = append(s.corpseCache, CorpseView{
-				ID:     id,
-				X:      c.Loc.X,
-				Y:      c.Loc.Y,
-				Mass:   c.Mass,
-				Radius: c.Radius,
-			})
-		}
+		r, g, b, a := c.Color.RGBA()
+		s.displayCache = append(s.displayCache, CreatureView{
+			ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
+			R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
+			CurrentMass:      float64(c.Mass),
+			SightDistance:    c.GetSightDistance(),
+			FieldOfView:      c.FieldOfView(),
+			Radius:           c.Radius,
+			ReproductionType: c.Genome.ReproductionType,
+		})
 	}
 }
 
 func (s *Simulation) updateFoodCache() {
-	// Reuse the existing slice capacity
 	s.foodCache = s.foodCache[:0]
-
-	// Use our new iterator to pull only active food
 	s.World.ForEachActiveFood(func(id int, x, y float64, r float64) {
-		s.foodCache = append(s.foodCache, FoodView{
-			ID:     id,
-			X:      x,
-			Y:      y,
-			Radius: r,
-		})
+		s.foodCache = append(s.foodCache, FoodView{ID: id, X: x, Y: y, Radius: r})
+	})
+}
+
+func (s *Simulation) updateMeatCache() {
+	s.meatCache = s.meatCache[:0]
+	s.World.ForEachActiveMeat(func(id int, x, y float64, r float64) {
+		s.meatCache = append(s.meatCache, FoodView{ID: id, X: x, Y: y, Radius: r})
 	})
 }
 
 type StateSnapshot struct {
 	Creatures []CreatureView
 	Food      []FoodView
-	Corpses   []CorpseView
+	Meat      []FoodView
 }
 
 func (s *Simulation) GetSnapshot() StateSnapshot {
 	s.cacheMu.RLock()
 	defer s.cacheMu.RUnlock()
 
-	// We return a copy of the slices so the UI can iterate safely
 	return StateSnapshot{
 		Creatures: append([]CreatureView(nil), s.displayCache...),
 		Food:      append([]FoodView(nil), s.foodCache...),
-		Corpses:   append([]CorpseView(nil), s.corpseCache...),
+		Meat:      append([]FoodView(nil), s.meatCache...),
 	}
 }

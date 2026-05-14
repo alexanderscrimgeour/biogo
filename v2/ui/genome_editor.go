@@ -102,7 +102,7 @@ func makeTraitDefs() []traitDef {
 				}
 			},
 			minB: func(_ *simulation.Genome, _ *simulation.Parameters) byte { return 3 },
-			maxB: func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxMass },
+			maxB: func(_ *simulation.Genome, _ *simulation.Parameters) byte { return math.MaxUint8 },
 		},
 		{
 			label: "Min Mass",

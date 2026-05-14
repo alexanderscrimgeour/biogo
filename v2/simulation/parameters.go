@@ -17,7 +17,7 @@ type Parameters struct {
 
 	// Genome constraints — byte ranges the genome is clamped to at birth and mutation
 	MinEnergy                byte // energy floor used in SATIATION sensor
-	MaxMass                  byte
+	MaxMass                  float64
 	MinSpawnCognitiveBreadth byte // brain gene count at birth
 	MaxSpawnCognitiveBreadth byte
 	MinCognitiveBreadth      byte // brain gene count bounds during mutation
@@ -60,6 +60,7 @@ type Parameters struct {
 	EnergyPerMassUnit      float32 // MaxEnergy = currentMass * EnergyPerMassUnit
 	MoveCost               float32
 	MaxSpeedPerStep        float64
+	VelocityDamping        float64 // fraction of velocity retained each tick (drag/friction coefficient)
 	MaxRotationPerStep     float64
 	MaxGrowthRatePerTick   float32 // peak mass units gained per tick (von Bertalanffy)
 	GrowthEnergyCostFactor float32
@@ -92,6 +93,9 @@ type Parameters struct {
 	RadiationMutationMultiplier float32 // multiplier applied to offspring mutation rate when parent is in zone
 	RadiationDamagePerTick      float32 // base energy drained per tick (Kleiber-scaled) while in zone
 
+	// Collisions
+	CollisionRepulsion float64 // fraction of overlap resolved per tick [0, 1]; 0 = disabled
+
 	// Misc
 	SavedGenomeProportion  float64
 	PopulationSensorRadius float64
@@ -99,13 +103,13 @@ type Parameters struct {
 
 func DefaultParams() *Parameters {
 	p := &Parameters{
-		WorldWidth:                  2500,
-		WorldHeight:                 2000,
+		WorldWidth:                  8000,
+		WorldHeight:                 8000,
 		MaxPopulation:               25000,
-		MinPopulation:               1,
+		MinPopulation:               500,
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
-		MaxMass:                     255,
+		MaxMass:                     1000,
 		MinSpawnCognitiveBreadth:    10,
 		MaxSpawnCognitiveBreadth:    40,
 		MinCognitiveBreadth:         5,
@@ -113,7 +117,7 @@ func DefaultParams() *Parameters {
 		MinSynapticDensity:          5,
 		MaxSynapticDensity:          100,
 		MinSightDistance:            50,
-		MaxSightDistance:            150,
+		MaxSightDistance:            250,
 		MinFieldOfView:              10,
 		MaxFieldOfView:              180,
 		ResponseCurveKFactor:        2,
@@ -124,18 +128,16 @@ func DefaultParams() *Parameters {
 		MaxJuvenilePeriod:           1000,
 		MaxFood:                     50000,
 		FoodSpawnInterval:           100,
-		FoodMass:                    1.0,
-		FoodInteractionRadius:       3.0,
-		FountainCount:               10,
+		FoodMass:                    5.0,
+		FountainCount:               20,
 		FountainDriftSpeed:          0.02,
-		FountainRadius:              25.0,
-		MinStomachSize:              1.0, // TODO: Calculate based on Radius? Or Max Mass
-		MaxStomachSize:              10.0,
+		FountainRadius:              200.0,
 		DigestionRate:               0.5,
-		BaseBMR:                     0.1,
+		BaseBMR:                     0.2,
 		EnergyPerMassUnit:           1.0,
 		MoveCost:                    0.01,
 		MaxSpeedPerStep:             10.0,
+		VelocityDamping:             0.85,
 		MaxRotationPerStep:          math.Pi / 4,
 		MaxGrowthRatePerTick:        1.0,
 		GrowthEnergyCostFactor:      0.2,
@@ -143,10 +145,10 @@ func DefaultParams() *Parameters {
 		ReproductionEfficiency:      0.9,
 		MatingRadius:                16.0,
 		MinMatingSimilarity:         0.75,
-		BaseBiteSize:                5.0,
+		BaseBiteSize:                20.0,
 		CorpseDecayRate:             0.05,
 		MinPredationMassRatio:       0.25,
-		AttackEnergyCost:            0.1,
+		AttackEnergyCost:            1.0,
 		MinNeuroplasticity:          0.0005,
 		MaxNeuroplasticity:          0.001,
 		MinLearningThreshold:        0.05,
@@ -155,10 +157,10 @@ func DefaultParams() *Parameters {
 		WarmMetabolicMultiplier:     0.8,
 		ColdSpeedMultiplier:         0.4,
 		RadiationZoneWidth:          0.2,
-		RadiationMutationMultiplier: 10.0,
+		RadiationMutationMultiplier: 25.0,
 		RadiationDamagePerTick:      0.1,
+		CollisionRepulsion:          0.5,
 		SavedGenomeProportion:       0.5,
-		PopulationSensorRadius:      25,
 	}
 	if err := p.Validate(); err != nil {
 		panic(err)
