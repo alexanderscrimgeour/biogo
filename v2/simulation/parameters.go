@@ -100,8 +100,8 @@ type Parameters struct {
 
 func DefaultParams() *Parameters {
 	p := &Parameters{
-		WorldWidth:                  2500,
-		WorldHeight:                 2000,
+		WorldWidth:                  4000,
+		WorldHeight:                 4000,
 		MaxPopulation:               25000,
 		MinPopulation:               500,
 		StartingPopulation:          1000,
@@ -123,13 +123,12 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     50000,
+		MaxFood:                     75000,
 		FoodSpawnInterval:           100,
-		FoodMass:                    1.0,
-		FoodInteractionRadius:       3.0,
-		FountainCount:               10,
+		FoodMass:                    10.0,
+		FountainCount:               20,
 		FountainDriftSpeed:          0.02,
-		FountainRadius:              100.0,
+		FountainRadius:              200.0,
 		MinStomachSize:              1.0, // TODO: Calculate based on Radius? Or Max Mass
 		MaxStomachSize:              10.0,
 		DigestionRate:               0.5,
@@ -148,7 +147,7 @@ func DefaultParams() *Parameters {
 		BaseBiteSize:                5.0,
 		CorpseDecayRate:             0.05,
 		MinPredationMassRatio:       0.25,
-		AttackEnergyCost:            0.1,
+		AttackEnergyCost:            1.0,
 		MinNeuroplasticity:          0.0005,
 		MaxNeuroplasticity:          0.001,
 		MinLearningThreshold:        0.05,
@@ -160,7 +159,6 @@ func DefaultParams() *Parameters {
 		RadiationMutationMultiplier: 10.0,
 		RadiationDamagePerTick:      0.1,
 		SavedGenomeProportion:       0.5,
-		PopulationSensorRadius:      25,
 	}
 	if err := p.Validate(); err != nil {
 		panic(err)

@@ -575,7 +575,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		vertsPerCircle := 1 + circ
 
 		// --- Batch food circles ---
-		fr, fg, fb, fa := float32(65)/255, float32(140)/255, float32(55)/255, float32(250)/255
+		fr, fg, fb, fa := float32(65)/255, float32(140)/255, float32(55)/255, float32(125)/255
 		fVs := make([]ebiten.Vertex, 0, min(len(g.currentSnapshot.Food)*vertsPerCircle, 60_000))
 		fIs := make([]uint16, 0, min(len(g.currentSnapshot.Food)*circ*3, 60_000))
 		flushFood := func() {

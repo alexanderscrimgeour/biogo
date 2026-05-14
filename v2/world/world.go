@@ -329,7 +329,7 @@ func (w *World) SpawnFood(n int, sigma float64, mass float32) {
 		return
 	}
 
-	randomScatterFactor := 0.05 // 5% of food spawns anywhere
+	randomScatterFactor := 0.15 // 15% of food spawns anywhere
 	randomCount := int(float64(n) * randomScatterFactor)
 	clusterCount := n - randomCount
 
