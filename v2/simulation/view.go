@@ -106,7 +106,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		Age:              c.Age,
 		IsJuvenile:       c.IsJuvenile(s.Params),
 		JuvenilePeriod:   c.JuvenilePeriod(s.Params),
-		CurrentMass:      c.CurrentMass(),
+		CurrentMass:      float32(c.CurrentMass()),
 		AdultMass:        c.Genome.Mass,
 		LastAction:       c.LastAction,
 		SightDistance:    c.GetSightDistance(),
@@ -157,4 +157,4 @@ func (s *Simulation) CreatureViews() []CreatureView {
 }
 
 func (s *Simulation) CreatureMinMass() byte { return 1 }
-func (s *Simulation) CreatureMaxMass() byte { return s.Params.MaxMass }
+func (s *Simulation) CreatureMaxMass() float64 { return s.Params.MaxMass }

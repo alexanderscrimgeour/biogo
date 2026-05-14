@@ -172,7 +172,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		output = calculateNearestKinship(c, p, ctx)
 	case MASS_FRACTION:
 		if c.Genome.Mass > 0 {
-			output = c.Mass / float32(c.Genome.Mass)
+			output = float32(c.Mass) / float32(c.Genome.Mass)
 		}
 
 	case BLOCKED_FORWARD:

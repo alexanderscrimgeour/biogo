@@ -27,7 +27,7 @@ type SimulationState interface {
 	FoodCount() int
 	AverageAge() float64
 	CreatureMinMass() byte
-	CreatureMaxMass() byte
+	CreatureMaxMass() float64
 	SaveCreature(id int) error
 	Reset()
 	TotalEnergy() float64
@@ -119,7 +119,7 @@ type Game struct {
 	lastTickTime       time.Time
 	tickDuration       time.Duration
 	minCreatureMass    byte
-	maxCreatureMass    byte
+	maxCreatureMass    float64
 	MaxTotalEnergy     float64
 	saveFeedback       string
 	saveFeedbackAt     time.Time
@@ -523,7 +523,7 @@ func (g *Game) Update() error {
 				anim.r, anim.g, anim.b, anim.a = cv.R, cv.G, cv.B, cv.A
 				anim.heading = cv.Heading
 				anim.mass = cv.CurrentMass
-				anim.radius = float32(cv.Radius)
+				anim.radius = float32(cv.Radius * bs)
 				anim.sexual = cv.ReproductionType == 1
 			} else {
 				g.animByID[cv.ID] = &creatureAnim{
@@ -532,7 +532,7 @@ func (g *Game) Update() error {
 					r: cv.R, g: cv.G, b: cv.B, a: cv.A,
 					heading: cv.Heading,
 					mass:    cv.CurrentMass,
-					radius:  float32(cv.Radius),
+					radius:  float32(cv.Radius * bs),
 					sexual:  cv.ReproductionType == 1,
 				}
 			}
@@ -589,7 +589,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if len(fVs)+vertsPerCircle > 60_000 {
 				flushFood()
 			}
-			cx, cy, r := float32(fv.X*bs), float32(fv.Y*bs), float32(fv.Radius)
+			cx, cy, r := float32(fv.X*bs), float32(fv.Y*bs), float32(fv.Radius*bs)
 			base := uint16(len(fVs))
 			fVs = append(fVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: fr, ColorG: fg, ColorB: fb, ColorA: fa})
 			for _, u := range g.unitCircle {
@@ -616,7 +616,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if len(mVs)+vertsPerCircle > 60_000 {
 				flushMeat()
 			}
-			cx, cy, r := float32(mv.X*bs), float32(mv.Y*bs), float32(mv.Radius)
+			cx, cy, r := float32(mv.X*bs), float32(mv.Y*bs), float32(mv.Radius*bs)
 			base := uint16(len(mVs))
 			mVs = append(mVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: mr, ColorG: mg, ColorB: mb, ColorA: ma})
 			for _, u := range g.unitCircle {

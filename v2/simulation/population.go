@@ -114,7 +114,7 @@ func (p *Population) ProcessMoveQueue(w *world.World, params *Parameters) {
 			halfFOVCos := c.halfFOVCos
 
 			bite := c.BiteSize(params)
-			massRatio := float64(c.Mass / float32(params.MaxMass))
+			massRatio := c.Mass / params.MaxMass
 			if massRatio > 1.0 {
 				massRatio = 1.0
 			}
@@ -208,7 +208,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params)
-		massRatio := float64(c.Mass / float32(params.MaxMass))
+		massRatio := c.Mass / params.MaxMass
 		if massRatio > 1.0 {
 			massRatio = 1.0
 		}
@@ -249,12 +249,12 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 
 		sizeRatio := c.Mass / target.Mass
 
-		defenseFactor := 0.5 + (0.5 * utils.MinFloat32(1.0, sizeRatio))
-		effectiveBite := bite * float64(defenseFactor)
+		defenseFactor := 0.5 + 0.5*math.Min(1.0, sizeRatio)
+		effectiveBite := bite * defenseFactor
 
 		eaten := effectiveBite
-		if eaten > float64(target.Mass) {
-			eaten = float64(target.Mass)
+		if eaten > target.Mass {
+			eaten = target.Mass
 		}
 
 		stomachSpace = c.StomachCapacity(params) - c.Stomach
@@ -263,14 +263,14 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		c.Stomach += eaten
-		target.Mass -= float32(eaten)
+		target.Mass -= eaten
 		target.UpdateSize()
 
 		target.DrainEnergy(float32(eaten) * params.EnergyPerMassUnit)
 		struggleCost := params.AttackEnergyCost
 		if sizeRatio < 1.0 {
 			// Gradually increases cost as target gets larger, maxing at 1.5x
-			struggleCost *= (1.0 + (1.0-sizeRatio)*0.5)
+			struggleCost *= float32(1.0 + (1.0-sizeRatio)*0.5)
 		}
 		c.DrainEnergy(struggleCost)
 
@@ -324,14 +324,14 @@ func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 // totalling the creature's body mass, split into FoodMass-sized chunks.
 func spawnMeatFromCreature(w *world.World, c *Creature, params *Parameters) {
 	remaining := c.Mass
-	chunkMass := params.FoodMass
+	chunkMass := float64(params.FoodMass)
 	for remaining > 0 {
 		m := chunkMass
 		if m > remaining {
 			m = remaining
 		}
 		pos := w.FindEmptyLocationNear(c.Loc, 5.0)
-		w.AddMeat(pos, m)
+		w.AddMeat(pos, float32(m))
 		remaining -= m
 	}
 }
@@ -354,7 +354,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		if parent.Energy < params.ReproductionEnergyThreshold*parent.MaxEnergy(params) {
 			continue
 		}
-		if parent.Mass < float32(parent.Genome.Mass)*0.9 {
+		if parent.Mass < float64(parent.Genome.Mass)*0.9 {
 			continue
 		}
 		if float32(parent.Genome.MinMass)*2 >= float32(parent.Genome.Mass) {
@@ -370,7 +370,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 			if partner.Energy < params.ReproductionEnergyThreshold*partner.MaxEnergy(params) {
 				continue
 			}
-			if partner.Mass < float32(partner.Genome.Mass)*0.9 {
+			if partner.Mass < float64(partner.Genome.Mass)*0.9 {
 				continue
 			}
 
@@ -397,11 +397,11 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 			energyToSplit := energyFromParent + energyFromPartner
 			energyTransferred := energyToSplit * params.ReproductionEfficiency
 
-			parent.Mass -= massFromParent
+			parent.Mass -= float64(massFromParent)
 			parent.DrainEnergy(energyFromParent)
 			parent.UpdateSize()
 
-			partner.Mass -= massFromPartner
+			partner.Mass -= float64(massFromPartner)
 			partner.DrainEnergy(energyFromPartner)
 			parent.UpdateSize()
 
@@ -420,7 +420,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 			continue
 		}
 		splitRatio := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
-		childMass := parent.Mass * splitRatio
+		childMass := parent.Mass * float64(splitRatio)
 		energyToSplit := parent.Energy * splitRatio
 		energyTransferred := energyToSplit * params.ReproductionEfficiency
 

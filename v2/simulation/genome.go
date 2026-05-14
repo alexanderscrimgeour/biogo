@@ -62,7 +62,7 @@ type Genome struct {
 	Neuroplasticity   byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
 	LearningThreshold byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
 	MassSplitRatio    byte // fraction of mass (and energy) transferred to daughter on asexual reproduction; maps to [0, 0.5]
-	Brain []Gene
+	Brain             []Gene
 
 	// flat byte cache for GenomeSimilarity; recomputed after any mutation or brain change.
 	// Layout: 15 header bytes + 5 bytes per gene (SourceID, SourceType, SinkID, SinkType, Weight).
@@ -199,17 +199,14 @@ func MakeRandomGene() Gene {
 
 func MakeRandomGenome(p *Parameters) *Genome {
 	// Mass must be >= 3 to guarantee a valid MinMass (MinMass < Mass/2 requires Mass > 2).
-	mass := utils.LerpByte(3, p.MaxMass, utils.MakeRandomByte())
-	maxMinMass := (mass - 1) / 2
 	g := Genome{
-		OscPeriod:         utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		SightDistance:     utils.MakeRandomByte(),
-		FieldOfView:       utils.MakeRandomByte(),
-		Responsiveness:    utils.MakeRandomByte(),
-		MutationRate:      utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		Mass:              mass,
-		MinMass:           utils.LerpByte(1, maxMinMass, utils.MakeRandomByte()),
-		ReproductionType:  makeRandomBool(),
+		OscPeriod:        utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		SightDistance:    utils.MakeRandomByte(),
+		FieldOfView:      utils.MakeRandomByte(),
+		Responsiveness:   utils.MakeRandomByte(),
+		MutationRate:     utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		Mass:             utils.MakeRandomByte(),
+		ReproductionType: makeRandomBool(),
 		CognitiveBreadth:  utils.LerpByte(p.MinCognitiveBreadth, p.MaxCognitiveBreadth, utils.MakeRandomByte()),
 		SynapticDensity:   utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, utils.MakeRandomByte()),
 		JuvenilePeriod:    utils.MakeRandomByte(),
@@ -219,6 +216,11 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		LearningThreshold: utils.MakeRandomByte(),
 		MassSplitRatio:    utils.MakeRandomByte(),
 	}
+	maxMinMass := (g.Mass - 1) / 2
+	if maxMinMass < 1 {
+		maxMinMass = 1
+	}
+	g.MinMass = utils.LerpByte(1, maxMinMass, utils.MakeRandomByte())
 	for i := byte(0); i < g.SynapticDensity; i++ {
 		gene := MakeRandomGene()
 		g.Brain = append(g.Brain, gene)
@@ -275,7 +277,7 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) 
 	mutateTarget(&g.FieldOfView, 0, 255, 10)
 	mutateTarget(&g.Responsiveness, 0, 255, 20)
 	mutateTarget(&g.MutationRate, 1, 255, 5)
-	mutateTarget(&g.Mass, 3, p.MaxMass, 12)
+	mutateTarget(&g.Mass, 3, math.MaxUint8, 12)
 
 	maxMinMass := (g.Mass - 1) / 2
 	if maxMinMass < 1 {

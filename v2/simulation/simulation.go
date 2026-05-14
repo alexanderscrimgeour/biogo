@@ -159,6 +159,7 @@ func (s *Simulation) step() {
 	s.pairMates(wantMate)
 
 	s.Population.ProcessMoveQueue(s.World, s.Params)
+	s.processCollisions()
 	s.Population.ProcessAttackQueue(s.World, s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params)
@@ -193,8 +194,8 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	temp := s.World.TemperatureAt(c.Loc.Y)
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
 	if c.Loc.X < s.Params.RadiationZoneWidth*s.Params.WorldWidth {
-		massNorm := c.Mass / float32(s.Params.MaxMass)
-		c.DrainEnergy(s.Params.RadiationDamagePerTick * float32(math.Pow(float64(massNorm), 0.75)))
+		massNorm := c.Mass / s.Params.MaxMass
+		c.DrainEnergy(s.Params.RadiationDamagePerTick * float32(math.Pow(massNorm, 0.75)))
 	}
 	c.Digest(s.Params)
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
@@ -281,7 +282,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		level := actionLevels[REPRODUCE]
 		if math.Abs(float64(level)) > 0.5 {
 			reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
-			if c.Energy >= reproThreshold && c.Age >= c.cachedJuvenilePeriod && c.Mass >= float32(c.Genome.Mass)*0.9 {
+			if c.Energy >= reproThreshold && c.Age >= c.cachedJuvenilePeriod && c.Mass >= float64(c.Genome.Mass)*0.9 {
 				if c.Genome.ReproductionType == 0 {
 					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
 					c.LastAction = appendActionString(c.LastAction, "Reproducing")
@@ -295,7 +296,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	if !c.IsResting {
 		// Rotation: positive level turns CCW (left), negative turns CW (right).
 		rotateAmount := float64(0)
-		massNorm := c.CurrentMass() / float32(s.Params.MaxMass)
+		massNorm := c.CurrentMass() / s.Params.MaxMass
 		if IsActionEnabled(ROTATE) {
 			turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
 			rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) *
@@ -304,7 +305,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 		if rotateAmount != 0 {
 			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
-			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * massCostMult)
+			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * float32(massCostMult))
 			c.LastAction = appendActionString(c.LastAction, "Rotating")
 		}
 		c.Heading = world.NormalizeAngle(c.Heading + rotateAmount)

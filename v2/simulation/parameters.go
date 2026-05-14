@@ -17,7 +17,7 @@ type Parameters struct {
 
 	// Genome constraints — byte ranges the genome is clamped to at birth and mutation
 	MinEnergy                byte // energy floor used in SATIATION sensor
-	MaxMass                  byte
+	MaxMass                  float64
 	MinSpawnCognitiveBreadth byte // brain gene count at birth
 	MaxSpawnCognitiveBreadth byte
 	MinCognitiveBreadth      byte // brain gene count bounds during mutation
@@ -93,6 +93,9 @@ type Parameters struct {
 	RadiationMutationMultiplier float32 // multiplier applied to offspring mutation rate when parent is in zone
 	RadiationDamagePerTick      float32 // base energy drained per tick (Kleiber-scaled) while in zone
 
+	// Collisions
+	CollisionRepulsion float64 // fraction of overlap resolved per tick [0, 1]; 0 = disabled
+
 	// Misc
 	SavedGenomeProportion  float64
 	PopulationSensorRadius float64
@@ -106,7 +109,7 @@ func DefaultParams() *Parameters {
 		MinPopulation:               500,
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
-		MaxMass:                     255,
+		MaxMass:                     500,
 		MinSpawnCognitiveBreadth:    10,
 		MaxSpawnCognitiveBreadth:    40,
 		MinCognitiveBreadth:         5,
@@ -156,6 +159,7 @@ func DefaultParams() *Parameters {
 		RadiationZoneWidth:          0.2,
 		RadiationMutationMultiplier: 10.0,
 		RadiationDamagePerTick:      0.1,
+		CollisionRepulsion:          0.5,
 		SavedGenomeProportion:       0.5,
 	}
 	if err := p.Validate(); err != nil {
