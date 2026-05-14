@@ -33,6 +33,13 @@ type World struct {
 	freeFoodIDs []int
 	fHash       *SpatialHash
 
+	meatPos     []Position
+	meatMass    []float32
+	meatActive  []bool
+	meatCount   int
+	freeMeatIDs []int
+	mHash       *SpatialHash
+
 	// Gaussian fountain system: 3-5 drifting points that food spawns around.
 	Fountains      []Position
 	fountainAngles []float64
@@ -55,6 +62,11 @@ func NewWorld(width, height float64, _ int) *World {
 		foodActive:      make([]bool, 0, initialCapacity),
 		freeFoodIDs:     make([]int, 0, 100),
 		fHash:           newSpatialHash(width, height, cellSize),
+		meatPos:         make([]Position, 0, 1024),
+		meatMass:        make([]float32, 0, 1024),
+		meatActive:      make([]bool, 0, 1024),
+		freeMeatIDs:     make([]int, 0, 100),
+		mHash:           newSpatialHash(width, height, cellSize),
 	}
 	// w.createWalls(wallType)
 	return w
@@ -412,6 +424,82 @@ func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64)) {
 		if active {
 			pos := w.foodPos[id]
 			r := math.Sqrt(float64(w.foodMass[id]) * math.Pi)
+			fn(id, pos.X, pos.Y, r)
+		}
+	}
+}
+
+// --- Meat spatial operations ---
+
+func (w *World) AddMeat(pos Position, mass float32) int {
+	var id int
+	if len(w.freeMeatIDs) > 0 {
+		lastIdx := len(w.freeMeatIDs) - 1
+		id = w.freeMeatIDs[lastIdx]
+		w.freeMeatIDs = w.freeMeatIDs[:lastIdx]
+		w.meatPos[id] = pos
+		w.meatMass[id] = mass
+		w.meatActive[id] = true
+	} else {
+		id = len(w.meatPos)
+		w.meatPos = append(w.meatPos, pos)
+		w.meatMass = append(w.meatMass, mass)
+		w.meatActive = append(w.meatActive, true)
+	}
+	w.meatCount++
+	w.mHash.Add(id, pos)
+	return id
+}
+
+func (w *World) RemoveMeat(id int) {
+	if id < 0 || id >= len(w.meatActive) || !w.meatActive[id] {
+		return
+	}
+	w.mHash.Remove(id, w.meatPos[id])
+	w.meatActive[id] = false
+	w.meatCount--
+	w.freeMeatIDs = append(w.freeMeatIDs, id)
+}
+
+func (w *World) GetMeatPos(id int) Position { return w.meatPos[id] }
+
+func (w *World) GetMeatMass(id int) float32 { return w.meatMass[id] }
+
+func (w *World) ReduceMeatMass(id int, amount float32) float32 {
+	remaining := w.meatMass[id] - amount
+	if remaining <= 0 {
+		w.RemoveMeat(id)
+		return 0
+	}
+	w.meatMass[id] = remaining
+	return remaining
+}
+
+func (w *World) MeatCount() int { return w.meatCount }
+
+func (w *World) TotalMeatMass() float64 {
+	total := float64(0)
+	for id, active := range w.meatActive {
+		if active {
+			total += float64(w.meatMass[id])
+		}
+	}
+	return total
+}
+
+func (w *World) GetMeatInRadius(center Position, radius float64, buffer []int) []int {
+	return w.mHash.InRadius(center, radius, w.meatPos, w.meatActive, buffer)
+}
+
+func (w *World) GetMeatInCone(center Position, heading float64, halfFOVCos float64, maxDist float64, buffer []int) []int {
+	return w.mHash.InCone(center, heading, halfFOVCos, maxDist, w.meatPos, w.meatActive, buffer)
+}
+
+func (w *World) ForEachActiveMeat(fn func(id int, x, y float64, r float64)) {
+	for id, active := range w.meatActive {
+		if active {
+			pos := w.meatPos[id]
+			r := math.Sqrt(float64(w.meatMass[id]) * math.Pi)
 			fn(id, pos.X, pos.Y, r)
 		}
 	}

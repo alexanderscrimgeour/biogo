@@ -21,18 +21,6 @@ type FoodView struct {
 	Radius float64
 }
 
-// CorpseView is a read-only snapshot of a dead creature for rendering.
-type CorpseView struct {
-	ID               int
-	X, Y             float64
-	IsCorpse         bool
-	Mass             float32
-	Radius           float64
-	ReproductionType byte
-	Heading          float64
-	R, G, B          uint8
-}
-
 // NNEdgeView is a single weighted connection in the neural network snapshot.
 type NNEdgeView struct {
 	SourceType byte

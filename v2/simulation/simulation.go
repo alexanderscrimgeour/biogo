@@ -17,7 +17,7 @@ type Simulation struct {
 	TargetEnergy float64 // total liquid energy to maintain (set at initialisation)
 	displayCache []CreatureView
 	foodCache    []FoodView
-	corpseCache  []CorpseView
+	meatCache    []FoodView
 	cacheMu      sync.RWMutex
 }
 
@@ -93,8 +93,9 @@ func (s *Simulation) Reset() {
 func (s *Simulation) Update() {
 	s.step()
 	s.cacheMu.Lock()
-	s.updatePopulationCaches() // Rename your existing updateDisplayCache to this
+	s.updatePopulationCaches()
 	s.updateFoodCache()
+	s.updateMeatCache()
 	s.cacheMu.Unlock()
 }
 
@@ -160,7 +161,6 @@ func (s *Simulation) step() {
 	s.Population.ProcessMoveQueue(s.World, s.Params)
 	s.Population.ProcessAttackQueue(s.World, s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
-	s.Population.ProcessCorpseDecay(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params)
 
 	// Reward decay — iterate only alive creatures via the maintained index.
@@ -492,17 +492,15 @@ func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
 func (s *Simulation) FoodCount() int { return s.World.FoodCount() }
 
-// TotalEnergy returns the total liquid energy in the system: food energy plus the
+// TotalEnergy returns the total liquid energy in the system: food, meat, and the
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
 func (s *Simulation) TotalEnergy() float64 {
-	// Energy In food
-	energy := s.World.TotalFoodMass() * float64(s.Params.EnergyPerMassUnit)
-
-	// Total mass and energy in creatures
+	epu := float64(s.Params.EnergyPerMassUnit)
+	energy := s.World.TotalFoodMass() * epu
+	energy += s.World.TotalMeatMass() * epu
 	for _, c := range s.Population.Creatures {
-		energy += float64(c.Energy) + (float64(c.Mass)+c.Stomach)*float64(s.Params.EnergyPerMassUnit)
+		energy += float64(c.Energy) + (float64(c.Mass)+c.Stomach)*epu
 	}
-
 	return energy
 }
 
@@ -551,68 +549,48 @@ func appendActionString(base, new string) string {
 
 func (s *Simulation) updatePopulationCaches() {
 	s.displayCache = s.displayCache[:0]
-	s.corpseCache = s.corpseCache[:0]
 
 	for id, c := range s.Population.Creatures {
-		if c.Alive {
-			// Living Creature Logic
-			r, g, b, a := c.Color.RGBA()
-			s.displayCache = append(s.displayCache, CreatureView{
-				ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
-				R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
-				CurrentMass:      float64(c.Mass),
-				SightDistance:    c.GetSightDistance(),
-				FieldOfView:      c.FieldOfView(),
-				Radius:           c.Radius,
-				ReproductionType: c.Genome.ReproductionType,
-			})
-		} else {
-			r, g, b, _ := c.Color.RGBA()
-			s.corpseCache = append(s.corpseCache, CorpseView{
-				ID:               id,
-				X:                c.Loc.X,
-				Y:                c.Loc.Y,
-				Mass:             c.Mass,
-				Radius:           c.Radius,
-				ReproductionType: c.Genome.ReproductionType,
-				Heading:          c.Heading,
-				R:                uint8(r >> 8),
-				G:                uint8(g >> 8),
-				B:                uint8(b >> 8),
-			})
-		}
+		r, g, b, a := c.Color.RGBA()
+		s.displayCache = append(s.displayCache, CreatureView{
+			ID: id, X: c.Loc.X, Y: c.Loc.Y, Heading: c.Heading,
+			R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
+			CurrentMass:      float64(c.Mass),
+			SightDistance:    c.GetSightDistance(),
+			FieldOfView:      c.FieldOfView(),
+			Radius:           c.Radius,
+			ReproductionType: c.Genome.ReproductionType,
+		})
 	}
 }
 
 func (s *Simulation) updateFoodCache() {
-	// Reuse the existing slice capacity
 	s.foodCache = s.foodCache[:0]
-
-	// Use our new iterator to pull only active food
 	s.World.ForEachActiveFood(func(id int, x, y float64, r float64) {
-		s.foodCache = append(s.foodCache, FoodView{
-			ID:     id,
-			X:      x,
-			Y:      y,
-			Radius: r,
-		})
+		s.foodCache = append(s.foodCache, FoodView{ID: id, X: x, Y: y, Radius: r})
+	})
+}
+
+func (s *Simulation) updateMeatCache() {
+	s.meatCache = s.meatCache[:0]
+	s.World.ForEachActiveMeat(func(id int, x, y float64, r float64) {
+		s.meatCache = append(s.meatCache, FoodView{ID: id, X: x, Y: y, Radius: r})
 	})
 }
 
 type StateSnapshot struct {
 	Creatures []CreatureView
 	Food      []FoodView
-	Corpses   []CorpseView
+	Meat      []FoodView
 }
 
 func (s *Simulation) GetSnapshot() StateSnapshot {
 	s.cacheMu.RLock()
 	defer s.cacheMu.RUnlock()
 
-	// We return a copy of the slices so the UI can iterate safely
 	return StateSnapshot{
 		Creatures: append([]CreatureView(nil), s.displayCache...),
 		Food:      append([]FoodView(nil), s.foodCache...),
-		Corpses:   append([]CorpseView(nil), s.corpseCache...),
+		Meat:      append([]FoodView(nil), s.meatCache...),
 	}
 }

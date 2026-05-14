@@ -154,50 +154,33 @@ func (p *Population) ProcessMoveQueue(w *world.World, params *Parameters) {
 				}
 			}
 
-			// Eat the nearest corpse within interaction radius.
-			creatureIDs := w.GetCreaturesInCone(newPos, c.Heading, halfFOVCos, c.Radius, c.SightCreatureBuffer)
-			if len(creatureIDs) > 0 {
-				closestCorpseID := -1
-				closestCorpseDistSq := math.MaxFloat64
-				for _, cid := range creatureIDs {
-					if cid == c.Id {
-						continue
-					}
-					cr, ok := p.Creatures[cid]
-					if !ok || cr.Alive {
-						continue
-					}
-					cpos, ok := w.GetCreaturePos(cid)
-					if !ok {
-						continue
-					}
-					dx := cpos.X - newPos.X
-					dy := cpos.Y - newPos.Y
-					d2 := dx*dx + dy*dy
-					if d2 < closestCorpseDistSq {
-						closestCorpseDistSq = d2
-						closestCorpseID = cid
-					}
-				}
-
-				stomachSpace := c.StomachCapacity(params) - c.Stomach
-				if closestCorpseID != -1 && stomachSpace > 0 {
-					if target, ok := p.Creatures[closestCorpseID]; ok {
-						eaten := bite
-						if eaten > float64(target.Mass) {
-							eaten = float64(target.Mass)
-						}
-						if eaten > stomachSpace {
-							eaten = stomachSpace
-						}
-						c.Stomach += eaten * 0.1
-						target.Mass -= float32(eaten)
-						target.UpdateSize()
-						if target.Mass <= 0 {
-							w.RemoveCreature(closestCorpseID)
-							delete(p.Creatures, closestCorpseID)
+			// Eat the nearest meat item within interaction radius.
+			stomachSpace = c.StomachCapacity(params) - c.Stomach
+			if stomachSpace > 0 {
+				meatIDs := w.GetMeatInCone(newPos, c.Heading, halfFOVCos, c.Radius, c.SightMeatBuffer)
+				if len(meatIDs) > 0 {
+					closestMeatID := meatIDs[0]
+					closestMeatDistSq := math.MaxFloat64
+					for _, mid := range meatIDs {
+						mpos := w.GetMeatPos(mid)
+						dx := mpos.X - newPos.X
+						dy := mpos.Y - newPos.Y
+						d2 := dx*dx + dy*dy
+						if d2 < closestMeatDistSq {
+							closestMeatDistSq = d2
+							closestMeatID = mid
 						}
 					}
+					meatMass := w.GetMeatMass(closestMeatID)
+					eaten := bite
+					if eaten > float64(meatMass) {
+						eaten = float64(meatMass)
+					}
+					if eaten > stomachSpace {
+						eaten = stomachSpace
+					}
+					c.Stomach += eaten
+					w.ReduceMeatMass(closestMeatID, float32(eaten))
 				}
 			}
 		}
@@ -295,13 +278,15 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			target.Alive = false
 			target.Energy = 0
 			p.removeAlive(closestPreyID)
+			w.RemoveCreature(closestPreyID)
+			delete(p.Creatures, closestPreyID)
 		}
 	}
 	p.AttackQueue = p.AttackQueue[:0]
 }
 
-// ProcessDeathQueue marks queued creatures as dead. Corpses remain in the world
-// and decay over time, preserving their mass as a food source.
+// ProcessDeathQueue marks queued creatures as dead, spawns meat matching their
+// mass at the death location, then removes them from the world and population map.
 func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 	if len(p.DeathQueue) == 0 {
 		return
@@ -324,50 +309,30 @@ func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 		}(p.DeathQueue[i:end])
 	}
 	wg.Wait()
-	// Serial: remove newly dead creatures from the alive-ID index.
+	// Serial: spawn meat, remove from world and population map.
 	for _, di := range p.DeathQueue {
-		p.removeAlive(di.Creature.Id)
+		c := di.Creature
+		p.removeAlive(c.Id)
+		spawnMeatFromCreature(w, c, params)
+		w.RemoveCreature(c.Id)
+		delete(p.Creatures, c.Id)
 	}
 	p.DeathQueue = p.DeathQueue[:0]
 }
 
-// ProcessCorpseDecay drains mass from every dead creature. Fully decayed
-// corpses are removed from both the world and the population map.
-func (p *Population) ProcessCorpseDecay(w *world.World, params *Parameters) {
-	corpseIDs := make([]int, 0, len(p.Creatures))
-	for id, c := range p.Creatures {
-		if !c.Alive {
-			corpseIDs = append(corpseIDs, id)
+// spawnMeatFromCreature places meat items at the creature's death location
+// totalling the creature's body mass, split into FoodMass-sized chunks.
+func spawnMeatFromCreature(w *world.World, c *Creature, params *Parameters) {
+	remaining := c.Mass
+	chunkMass := params.FoodMass
+	for remaining > 0 {
+		m := chunkMass
+		if m > remaining {
+			m = remaining
 		}
-	}
-	if len(corpseIDs) == 0 {
-		return
-	}
-
-	n := runtime.GOMAXPROCS(0)
-	batches := partitionIDs(corpseIDs, n)
-	var wg sync.WaitGroup
-	for _, batch := range batches {
-		if len(batch) == 0 {
-			continue
-		}
-		wg.Add(1)
-		go func(b []int) {
-			defer wg.Done()
-			for _, id := range b {
-				p.Creatures[id].Mass -= params.CorpseDecayRate
-				p.Creatures[id].UpdateSize()
-			}
-		}(batch)
-	}
-	wg.Wait()
-
-	// Map writes must be serial — remove fully decayed corpses after all goroutines finish.
-	for _, id := range corpseIDs {
-		if p.Creatures[id].Mass <= 0 {
-			w.RemoveCreature(id)
-			delete(p.Creatures, id)
-		}
+		pos := w.FindEmptyLocationNear(c.Loc, 5.0)
+		w.AddMeat(pos, m)
+		remaining -= m
 	}
 }
 

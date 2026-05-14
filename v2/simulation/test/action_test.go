@@ -1,7 +1,7 @@
 package test
 
 import (
-	"biogo/v2/world"
+	grid "biogo/v2/world"
 	"biogo/v2/simulation"
 	"math"
 	"testing"
@@ -58,7 +58,7 @@ func TestDoNothingIsEnabled(t *testing.T) {
 	}
 }
 
-func TestPassivePredation_TakesBiteFromNearbyCorpse(t *testing.T) {
+func TestPassivePredation_TakesBiteFromNearbyMeat(t *testing.T) {
 	params := defaultParams()
 	params.FoodInteractionRadius = 3.0
 	params.MaxFood = 0
@@ -76,29 +76,24 @@ func TestPassivePredation_TakesBiteFromNearbyCorpse(t *testing.T) {
 	pred := simulation.NewAdultCreature(predID, predPos, predGenome, params)
 	pred.Heading = 0 // east
 
-	corpseGenome := simulation.MakeRandomGenome(params)
-	corpseGenome.Mass = 50
-	corpseGenome.MinMass = 5
-
-	corpsePos := grid.Position{X: 7, Y: 5}
-	corpseID := w.AddCreature(corpsePos)
-	corpse := simulation.NewAdultCreature(corpseID, corpsePos, corpseGenome, params)
-	corpse.Alive = false // dead — available as food
+	// Place a meat item east of the predator within interaction radius.
+	meatPos := grid.Position{X: 7, Y: 5}
+	meatMassBefore := float32(50)
+	w.AddMeat(meatPos, meatMassBefore)
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[predID] = pred
-	pop.Creatures[corpseID] = corpse
 
-	corpseMassBefore := corpse.Mass
 	newPos := grid.Position{X: 6, Y: 5}
 	pop.QueueForMove(pred, newPos, 1.0)
 	pop.ProcessMoveQueue(w, params)
 
-	if corpse.Mass >= corpseMassBefore {
-		t.Errorf("corpse should lose mass after being eaten: before=%f after=%f", corpseMassBefore, corpse.Mass)
+	meatMassAfter := w.TotalMeatMass()
+	if float32(meatMassAfter) >= meatMassBefore {
+		t.Errorf("meat should lose mass after being eaten: before=%f after=%f", meatMassBefore, meatMassAfter)
 	}
 	if pred.Stomach <= 0 {
-		t.Errorf("predator stomach should be filled after eating corpse: got %f", pred.Stomach)
+		t.Errorf("predator stomach should be filled after eating meat: got %f", pred.Stomach)
 	}
 }
 

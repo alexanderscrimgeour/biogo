@@ -101,34 +101,33 @@ func TestSimulationFoodViews(t *testing.T) {
 	sim := simulation.New(p)
 	sim.Update()
 
-	views := sim.FoodViews()
-	if len(views) != sim.FoodCount() {
-		t.Errorf("FoodViews len %d != FoodCount %d", len(views), sim.FoodCount())
+	snap := sim.GetSnapshot()
+	if len(snap.Food) != sim.World.FoodCount() {
+		t.Errorf("snapshot food len %d != world FoodCount %d", len(snap.Food), sim.World.FoodCount())
 	}
-	for _, v := range views {
+	for _, v := range snap.Food {
 		if v.X < 0 || v.X >= p.WorldWidth || v.Y < 0 || v.Y >= p.WorldHeight {
 			t.Errorf("food at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 	}
 }
 
-func TestSimulationCorpseViews(t *testing.T) {
+func TestSimulationMeatSpawnedOnDeath(t *testing.T) {
 	p := smallParams()
-	// High metabolic rate to kill a creature immediately, no food
+	// High metabolic rate kills creatures quickly; disable food spawning.
 	p.BaseBMR = 10000
 	p.FoodSpawnInterval = 999999
-	p.CorpseDecayRate = 0.001
 	sim := simulation.New(p)
 
 	sim.Update()
 
-	views := sim.CorpseViews()
-	for _, v := range views {
-		if v.X < 0 || v.X >= p.WorldWidth || v.Y < 0 || v.Y >= p.WorldHeight {
-			t.Errorf("corpse at (%f,%f) is out of world bounds", v.X, v.Y)
+	snap := sim.GetSnapshot()
+	for _, mv := range snap.Meat {
+		if mv.X < 0 || mv.X >= p.WorldWidth || mv.Y < 0 || mv.Y >= p.WorldHeight {
+			t.Errorf("meat at (%f,%f) is out of world bounds", mv.X, mv.Y)
 		}
-		if v.EnergyFraction < 0 || v.EnergyFraction > 1 {
-			t.Errorf("corpse EnergyFraction %f out of [0,1]", v.EnergyFraction)
+		if mv.Radius <= 0 {
+			t.Errorf("meat radius should be positive, got %f", mv.Radius)
 		}
 	}
 }

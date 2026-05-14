@@ -50,6 +50,7 @@ type Creature struct {
 	Sensors              SensorContext
 	// Buffers to avoid heap allocation
 	SightFoodBuffer        []int
+	SightMeatBuffer        []int
 	SightCreatureBuffer    []int
 	SightCreatureSimBuffer []float32 // parallel to SightCreatureBuffer; genome similarity to self
 	LocalCreatureBuffer    []int

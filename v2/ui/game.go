@@ -601,50 +601,32 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 		flushFood()
 
-		// --- Batch corpse circles / triangles ---
-		cVs := make([]ebiten.Vertex, 0, 1024)
-		cIs := make([]uint16, 0, 1024)
-		flushCorpse := func() {
-			if len(cVs) > 0 {
-				g.worldLayer.DrawTriangles(cVs, cIs, g.whiteImage, nil)
-				cVs = cVs[:0]
-				cIs = cIs[:0]
+		// --- Batch meat circles ---
+		mr, mg, mb, ma := float32(180)/255, float32(30)/255, float32(30)/255, float32(180)/255
+		mVs := make([]ebiten.Vertex, 0, min(len(g.currentSnapshot.Meat)*vertsPerCircle, 60_000))
+		mIs := make([]uint16, 0, min(len(g.currentSnapshot.Meat)*circ*3, 60_000))
+		flushMeat := func() {
+			if len(mVs) > 0 {
+				g.worldLayer.DrawTriangles(mVs, mIs, g.whiteImage, nil)
+				mVs = mVs[:0]
+				mIs = mIs[:0]
 			}
 		}
-		for _, cv := range g.currentSnapshot.Corpses {
-			cx := float32(cv.X * bs)
-			cy := float32(cv.Y * bs)
-			r := float32(cv.Radius)
-			cr := float32(181) / 255 * 0.5
-			cg := float32(0) / 255 * 0.5
-			cb := float32(78) / 255 * 0.5
-			ca := float32(200) / 255
-			if cv.ReproductionType == 1 {
-				if len(cVs)+3 > 60_000 {
-					flushCorpse()
-				}
-				base := uint16(len(cVs))
-				cVs = append(cVs,
-					ebiten.Vertex{DstX: cx + r*float32(math.Cos(cv.Heading)), DstY: cy + r*float32(math.Sin(cv.Heading)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
-					ebiten.Vertex{DstX: cx + r*float32(math.Cos(cv.Heading+2.4)), DstY: cy + r*float32(math.Sin(cv.Heading+2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
-					ebiten.Vertex{DstX: cx + r*float32(math.Cos(cv.Heading-2.4)), DstY: cy + r*float32(math.Sin(cv.Heading-2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
-				)
-				cIs = append(cIs, base, base+1, base+2)
-			} else {
-				if len(cVs)+vertsPerCircle > 60_000 {
-					flushCorpse()
-				}
-				base := uint16(len(cVs))
-				cVs = append(cVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca})
-				for _, u := range g.unitCircle {
-					cVs = append(cVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca})
-				}
-				for i := uint16(1); i <= uint16(circ-1); i++ {
-					cIs = append(cIs, base, base+i, base+i+1)
-				}
+		for _, mv := range g.currentSnapshot.Meat {
+			if len(mVs)+vertsPerCircle > 60_000 {
+				flushMeat()
+			}
+			cx, cy, r := float32(mv.X*bs), float32(mv.Y*bs), float32(mv.Radius)
+			base := uint16(len(mVs))
+			mVs = append(mVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: mr, ColorG: mg, ColorB: mb, ColorA: ma})
+			for _, u := range g.unitCircle {
+				mVs = append(mVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: mr, ColorG: mg, ColorB: mb, ColorA: ma})
+			}
+			for i := uint16(1); i <= uint16(circ-1); i++ {
+				mIs = append(mIs, base, base+i, base+i+1)
 			}
 		}
-		flushCorpse()
+		flushMeat()
 	}
 
 	g.creatureVs = g.creatureVs[:0]
@@ -838,7 +820,7 @@ func foodKey(x, y float64) string { return fmt.Sprintf("%f,%f", x, y) }
 func (g *Game) trySelectCreature(mx, my int) {
 	sw, sh := ebiten.WindowSize()
 	clickX, clickY := g.camera.ScreenToWorld(float64(mx), float64(my), float64(sw), float64(sh))
-	half, hitRadius := float64(UnitSize)/2, float64(UnitSize)*6
+	half, hitRadius := float64(UnitSize)/2, float64(UnitSize)*12
 	bestID, bestDist := -1, math.Inf(1)
 	for id, anim := range g.animByID {
 		dx, dy := clickX-(anim.curX+half), clickY-(anim.curY+half)
@@ -1315,7 +1297,7 @@ func nnSensorName(id byte) string {
 	names := [...]string{
 		"Bias", "Age", "Energy", "Loc X", "Loc Y", "Osc",
 		"LocalDensity", "LocalHeading", "LocalCOM",
-		"PopFwd", "PopCentroid", "FoodFws", "CorpsesFwd",
+		"PopFwd", "PopCentroid", "FoodFwd", "MeatFwd",
 		"Random", "Satiety", "Heading", "Velocity", "Food Ang",
 		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd", "KinshipNearest",
 		"Mass %", "Blocked", "Prey", "Threat Ang",
@@ -1330,7 +1312,7 @@ func nnSensorName(id byte) string {
 
 func nnActionName(id byte) string {
 	names := [...]string{
-		"Move", "Rotate", "SetOsc", "SetResp",
+		"Accelerate", "Rotate", "SetOsc", "SetResp",
 		"SetLearn", "Rest", "Attack", "Reward", "Punish", "Mate",
 	}
 	if int(id) < len(names) {

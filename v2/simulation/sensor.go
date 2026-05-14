@@ -19,7 +19,7 @@ const (
 	SIGHT_POPULATION_FORWARD
 	SIGHT_POPULATION_DENSITY_FORWARD
 	SIGHT_FOOD_FORWARD
-	SIGHT_CORPSE_FORWARD
+	SIGHT_MEAT_FORWARD
 	RANDOM
 	SATIATION
 	HEADING
@@ -51,6 +51,7 @@ const kDensity = 0.001
 
 type SensorContext struct {
 	SightFoodIDs      []int
+	SightMeatIDs      []int
 	SightCreatureIDs  []int
 	SightCreatureSims []float32 // genome similarity to self; parallel to SightCreatureIDs
 	LocalCreatureIDs  []int
@@ -59,11 +60,13 @@ type SensorContext struct {
 
 func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params *Parameters) {
 	c.SightFoodBuffer = world.GetFoodInRadius(c.Loc, c.GetSightDistance(), c.SightFoodBuffer)
+	c.SightMeatBuffer = world.GetMeatInRadius(c.Loc, c.GetSightDistance(), c.SightMeatBuffer)
 	c.SightCreatureBuffer = world.GetCreaturesInRadius(c.Loc, c.GetSightDistance(), c.SightCreatureBuffer)
 	// LocalCreatureBuffer contains the same set — copy instead of a second query.
 	c.LocalCreatureBuffer = append(c.LocalCreatureBuffer[:0], c.SightCreatureBuffer...)
 
 	c.Sensors.SightFoodIDs = c.SightFoodBuffer
+	c.Sensors.SightMeatIDs = c.SightMeatBuffer
 	c.Sensors.SightCreatureIDs = c.SightCreatureBuffer
 	c.Sensors.LocalCreatureIDs = c.LocalCreatureBuffer
 
@@ -134,8 +137,8 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 	case SIGHT_FOOD_FORWARD:
 		output = calculateFoodDensityFwd(c, w, ctx)
 
-	case SIGHT_CORPSE_FORWARD:
-		output = calculateCorpseDensityFov(c, w, p, ctx)
+	case SIGHT_MEAT_FORWARD:
+		output = calculateMeatDensityFwd(c, w, ctx)
 
 	case SATIATION:
 		cap := c.StomachCapacity(params)
@@ -326,42 +329,25 @@ func calculateSightPopCentroid(c Creature, w *world.World, p *Population, ctx *S
 	return float32(avgSteer)
 }
 
-func calculateCorpseDensityFov(c Creature, w *world.World, p *Population, ctx *SensorContext) float32 {
-	visionDist := c.GetSightDistance()
-	halfFOVCos := float64(c.halfFOVCos)
+// calculateMeatDensityFwd returns a proximity-weighted density of meat in the
+// creature's forward FOV cone, normalised to [0, 1].
+func calculateMeatDensityFwd(c Creature, w *world.World, ctx *SensorContext) float32 {
+	dist := c.GetSightDistance()
+	halfFOVCos := c.halfFOVCos
 	fwdX, fwdY := world.HeadingToVec(c.Heading)
 
+	const maxMeatDensity = 8.0
 	var sum float64
-	for _, id := range ctx.SightCreatureIDs {
-		other, ok := p.Creatures[id]
-		if !ok || other.Alive {
+	for _, id := range ctx.SightMeatIDs {
+		pos := w.GetMeatPos(id)
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		if world.CosSimilarity(fwdX, fwdY, dx, dy) < halfFOVCos {
 			continue
 		}
-
-		dx := other.Loc.X - c.Loc.X
-		dy := other.Loc.Y - c.Loc.Y
-
-		dist := fastDist(dx, dy)
-		if dist == 0 || dist > visionDist {
-			continue
-		}
-
-		dot := (float64(fwdX)*float64(dx) + float64(fwdY)*float64(dy)) / float64(dist)
-		if dot < halfFOVCos {
-			continue
-		}
-
-		sum += (1.0 - (dist / visionDist))
+		d := math.Sqrt(dx*dx + dy*dy)
+		sum += 1.0 - d/dist
 	}
-
-	if sum == 0 {
-		return 1.0
-	}
-
-	const k = 2.0
-	normalizedDensity := sum / (k + sum)
-
-	return float32((normalizedDensity * -2.0) + 1.0)
+	return float32(math.Min(maxMeatDensity, sum) / maxMeatDensity)
 }
 
 // calcaulatePopulationDensityFov returns a density signal [-1,1] for living creatures in
