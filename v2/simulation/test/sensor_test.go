@@ -29,12 +29,12 @@ func TestSightFoodForward_DetectsFood(t *testing.T) {
 	c := makeCreatureAt(w, loc, 5, 90)
 
 	// Place food directly ahead (east)
-	w.AddFood(grid.Position{X: 103, Y: 100}, 10)
+	w.AddPlant(grid.Position{X: 103, Y: 100}, 10)
 
 	params := defaultParams()
 	c.UpdateSensorContext(w, nil, params)
 	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
-	if val <= 0 {
+	if val <= -1 {
 		t.Errorf("expected food to be detected ahead, got %f", val)
 	}
 }
@@ -45,13 +45,13 @@ func TestSightFoodForward_NoFoodBehind(t *testing.T) {
 	c := makeCreatureAt(w, loc, 5, 90)
 
 	// Place food directly behind (west)
-	w.AddFood(grid.Position{X: 97, Y: 100}, 10)
+	w.AddPlant(grid.Position{X: 97, Y: 100}, 10)
 
 	params := defaultParams()
 	c.UpdateSensorContext(w, nil, params)
 	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
-	if val != 0 {
-		t.Errorf("expected 0 for food behind creature, got %f", val)
+	if val != -1 {
+		t.Errorf("expected -1 for food behind creature (none in FOV), got %f", val)
 	}
 }
 
@@ -61,11 +61,11 @@ func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
 	foodPos := grid.Position{X: 103, Y: 103}
 
 	wNarrow := makeWorld(200, 200)
-	wNarrow.AddFood(foodPos, 10)
+	wNarrow.AddPlant(foodPos, 10)
 	cNarrow := makeCreatureAt(wNarrow, loc, 6, 10)
 
 	wWide := makeWorld(200, 200)
-	wWide.AddFood(foodPos, 10)
+	wWide.AddPlant(foodPos, 10)
 	cWide := makeCreatureAt(wWide, loc, 6, 180)
 
 	params := defaultParams()
@@ -74,11 +74,11 @@ func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
 	narrow := cNarrow.GetSensor(simulation.SIGHT_FOOD_FORWARD, wNarrow, nil, &cNarrow.Sensors, 0, params)
 	wide := cWide.GetSensor(simulation.SIGHT_FOOD_FORWARD, wWide, nil, &cWide.Sensors, 0, params)
 
-	if narrow != 0 {
-		t.Errorf("narrow FOV should not see NE food, got %f", narrow)
+	if narrow != -1 {
+		t.Errorf("narrow FOV should not see NE food (expect -1), got %f", narrow)
 	}
-	if wide <= 0 {
-		t.Errorf("wide FOV should see NE food, got %f", wide)
+	if wide <= -1 {
+		t.Errorf("wide FOV should see NE food (expect > -1), got %f", wide)
 	}
 }
 
@@ -99,11 +99,11 @@ func TestSightFoodForward_ScalesWithDistance(t *testing.T) {
 	loc := grid.Position{X: 100, Y: 100}
 
 	wClose := makeWorld(200, 200)
-	wClose.AddFood(grid.Position{X: 102, Y: 100}, 10)
+	wClose.AddPlant(grid.Position{X: 102, Y: 100}, 10)
 	cClose := makeCreatureAt(wClose, loc, 8, 90)
 
 	wFar := makeWorld(200, 200)
-	wFar.AddFood(grid.Position{X: 107, Y: 100}, 10)
+	wFar.AddPlant(grid.Position{X: 107, Y: 100}, 10)
 	cFar := makeCreatureAt(wFar, loc, 8, 90)
 
 	params := defaultParams()
@@ -167,7 +167,7 @@ func TestStomachRate_MaxDigestion(t *testing.T) {
 	c := makeCreatureAt(w, grid.Position{X: 50, Y: 50}, 1, 90)
 
 	// Stomach drained by exactly DigestionRate → output should be ~1.0.
-	c.LastStomach = params.DigestionRate
+	c.LastStomach = float32(params.DigestionRate)
 	c.Stomach = 0
 	c.UpdateSensorContext(w, nil, params)
 	val := c.GetSensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)

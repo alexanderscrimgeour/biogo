@@ -24,7 +24,7 @@ func TestDoNothingReducesMetabolicCost(t *testing.T) {
 		break
 	}
 	c.Genome.MetabolicRate = 127
-	c.Energy = c.Mass * p.EnergyPerMassUnit // start at full MaxEnergy
+	c.Energy = float32(c.Mass) * p.EnergyPerMassUnit // start at full MaxEnergy
 	energyBefore := c.Energy
 
 	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into REST so it always fires.
@@ -86,7 +86,7 @@ func TestPassivePredation_TakesBiteFromNearbyMeat(t *testing.T) {
 
 	newPos := grid.Position{X: 6, Y: 5}
 	pop.QueueForMove(pred, newPos, 1.0)
-	pop.ProcessMoveQueue(w, params)
+	pop.ProcessMoveQueue(w)
 
 	meatMassAfter := w.TotalMeatMass()
 	if float32(meatMassAfter) >= meatMassBefore {

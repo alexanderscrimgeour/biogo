@@ -7,12 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-type blob struct {
-	length     int8
-	width      int8
-	focalPoint point
-}
-
 type Blob struct {
 	img    *ebiten.Image
 	geoM   *ebiten.GeoM
@@ -33,17 +27,15 @@ func (b *Blob) GetImageOptions() *ebiten.DrawImageOptions {
 }
 
 func (b *Blob) GetSize() (width, height int) {
-	return b.img.Size()
+	return b.img.Bounds().Dx(), b.img.Bounds().Dy()
 }
 
 func (b *Blob) GetHeight() (height int) {
-	_, height = b.img.Size()
-	return
+	return b.img.Bounds().Dy()
 }
 
 func (b *Blob) GetWidth() (width int) {
-	width, _ = b.img.Size()
-	return
+	return b.img.Bounds().Dx()
 }
 
 func (b *Blob) GetCenter() *point {

@@ -36,7 +36,7 @@ func TestProcessMoveQueue(t *testing.T) {
 
 	newPos := grid.Position{X: 6, Y: 5}
 	pop.QueueForMove(creature, newPos, 1.0)
-	pop.ProcessMoveQueue(w, params)
+	pop.ProcessMoveQueue(w)
 
 	if creature.Loc != newPos {
 		t.Errorf("creature did not move: got %v, want %v", creature.Loc, newPos)
@@ -64,14 +64,14 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	creature := simulation.NewCreature(id, startPos, genome, params)
 	creature.Heading = 0 // east, so food at (7,5) is in the forward cone
 	// Start at 50% of MaxEnergy so the creature is hungry enough to eat.
-	creature.Energy = creature.Mass * params.EnergyPerMassUnit * 0.5
+	creature.Energy = float32(creature.Mass) * params.EnergyPerMassUnit * 0.5
 
-	w.AddFood(foodPos, 10)
+	w.AddPlant(foodPos, 10)
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[id] = creature
 	pop.QueueForMove(creature, destPos, 1.0)
-	pop.ProcessMoveQueue(w, params)
+	pop.ProcessMoveQueue(w)
 
 	if creature.Loc != destPos {
 		t.Errorf("creature should move to destination, got %v", creature.Loc)
@@ -79,10 +79,10 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	if creature.Stomach <= 0 {
 		t.Error("creature should have eaten something (stomach > 0)")
 	}
-	// Food may be fully consumed (FoodCount == 0) or only partially eaten
+	// Plants may be fully consumed (PlantCount == 0) or only partially eaten
 	// (a small creature's bite is less than FoodMass so the item persists with reduced mass).
-	if w.FoodCount() > 0 && w.TotalFoodMass() >= 10 {
-		t.Error("food mass should decrease after creature eats from it")
+	if w.PlantCount() > 0 && w.TotalPlantMass() >= 10 {
+		t.Error("plant mass should decrease after creature eats from it")
 	}
 }
 
@@ -183,7 +183,7 @@ func TestGeneticDiversity(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id := i + 1
 		genome := simulation.MakeRandomGenome(params)
-		pop.Creatures[id] = simulation.NewCreature(id, grid.Position{X: float64(i), Y: 0}, genome, params)
+		pop.Creatures[id] = simulation.NewCreature(id, grid.Position{X: float32(i), Y: 0}, genome, params)
 	}
 
 	diversity := pop.GeneticDiversity()
@@ -205,7 +205,7 @@ func TestReproductionCreatesOffspring(t *testing.T) {
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	// Start at full energy so reproduction threshold is met.
-	parent.Energy = parent.Mass * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[parentID] = parent
@@ -231,7 +231,7 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
-	parent.Energy = parent.Mass * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[parentID] = parent
@@ -259,7 +259,7 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
-	parent.Energy = parent.Mass * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[parentID] = parent
@@ -321,7 +321,7 @@ func TestReproductionSkipsWhenMinMassConstraintViolated(t *testing.T) {
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
-	parent.Energy = parent.Mass * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[parentID] = parent

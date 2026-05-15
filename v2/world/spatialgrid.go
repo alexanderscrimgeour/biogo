@@ -7,7 +7,7 @@ type SpatialHash struct {
 	cells   [][]int
 	numX    int
 	numY    int
-	invCell float64
+	invCell float32
 }
 
 // newSpatialHash builds a grid covering [0, width] × [0, height] with square
@@ -20,7 +20,7 @@ func newSpatialHash(width, height, cellSize float64) *SpatialHash {
 		cells:   make([][]int, numX*numY),
 		numX:    numX,
 		numY:    numY,
-		invCell: 1.0 / cellSize,
+		invCell: float32(1.0 / cellSize),
 	}
 }
 
@@ -90,7 +90,7 @@ func (h *SpatialHash) Move(id int, oldPos, newPos Position) {
 
 // cellBounds returns the clamped grid-cell bounding box for a circle query of
 // halfExtent (radius or maxDist) centred at center.
-func (h *SpatialHash) cellBounds(center Position, halfExtent float64) (minBx, maxBx, minBy, maxBy int) {
+func (h *SpatialHash) cellBounds(center Position, halfExtent float32) (minBx, maxBx, minBy, maxBy int) {
 	minBx = int((center.X - halfExtent) * h.invCell)
 	maxBx = int((center.X + halfExtent) * h.invCell)
 	minBy = int((center.Y - halfExtent) * h.invCell)
@@ -112,7 +112,7 @@ func (h *SpatialHash) cellBounds(center Position, halfExtent float64) (minBx, ma
 
 // InRadius fills buffer with the IDs of all active entries within radius of
 // center. positions[id] gives the entity's location; active[id] gates inclusion.
-func (h *SpatialHash) InRadius(center Position, radius float64, positions []Position, active []bool, buffer []int) []int {
+func (h *SpatialHash) InRadius(center Position, radius float32, positions []Position, active []bool, buffer []int) []int {
 	buffer = buffer[:0]
 	rSq := radius * radius
 	minBx, maxBx, minBy, maxBy := h.cellBounds(center, radius)
@@ -137,7 +137,7 @@ func (h *SpatialHash) InRadius(center Position, radius float64, positions []Posi
 
 // InCone fills buffer with IDs within maxDist and inside the forward cone
 // defined by heading ± arccos(halfFOVCos). Entries at the exact center are excluded.
-func (h *SpatialHash) InCone(center Position, heading, halfFOVCos, maxDist float64, positions []Position, active []bool, buffer []int) []int {
+func (h *SpatialHash) InCone(center Position, heading, halfFOVCos, maxDist float32, positions []Position, active []bool, buffer []int) []int {
 	buffer = buffer[:0]
 	fwdX, fwdY := HeadingToVec(heading)
 	rSq := maxDist * maxDist

@@ -8,6 +8,20 @@ import (
 // StartingCreatureID is the first valid creature ID; 0 is reserved for "empty".
 const StartingCreatureID = 1
 
+// FoodTypePlant and FoodTypeMeat distinguish the two food sources stored in the
+// unified food spatial hash.
+const (
+	FoodTypePlant uint8 = 0
+	FoodTypeMeat  uint8 = 1
+)
+
+// FoodMask* constants are bitmasks for type-filtered food queries.
+const (
+	FoodMaskPlant uint8 = 1 << FoodTypePlant // = 1
+	FoodMaskMeat  uint8 = 1 << FoodTypeMeat  // = 2
+	FoodMaskAll   uint8 = FoodMaskPlant | FoodMaskMeat
+)
+
 // Wall is an axis-aligned rectangular obstacle in world-space.
 type Wall struct {
 	X, Y, W, H float64
@@ -26,19 +40,16 @@ type World struct {
 	freeCreatureIDs []int
 	cHash           *SpatialHash
 
+	// Unified food hash: plants (FoodTypePlant=0) and meat (FoodTypeMeat=1)
+	// share one ID space and one SpatialHash. foodType[id] distinguishes them.
 	foodPos     []Position
 	foodMass    []float32
 	foodActive  []bool
-	foodCount   int
-	freeFoodIDs []int
-	fHash       *SpatialHash
-
-	meatPos     []Position
-	meatMass    []float32
-	meatActive  []bool
+	foodType    []uint8
+	plantCount  int
 	meatCount   int
-	freeMeatIDs []int
-	mHash       *SpatialHash
+	freeFoodIDs []int
+	foodHash    *SpatialHash
 
 	// Gaussian fountain system: 3-5 drifting points that food spawns around.
 	Fountains      []Position
@@ -49,7 +60,6 @@ func NewWorld(width, height float64, _ int) *World {
 	const initialCapacity = 25000
 	const creatureCapacity = 20000
 	const cellSize = 100.0
-	// Pre-allocate slot 0 so that IDs start at StartingCreatureID (1).
 	w := &World{
 		Width:           width,
 		Height:          height,
@@ -60,15 +70,10 @@ func NewWorld(width, height float64, _ int) *World {
 		foodPos:         make([]Position, 0, initialCapacity),
 		foodMass:        make([]float32, 0, initialCapacity),
 		foodActive:      make([]bool, 0, initialCapacity),
+		foodType:        make([]uint8, 0, initialCapacity),
 		freeFoodIDs:     make([]int, 0, 100),
-		fHash:           newSpatialHash(width, height, cellSize),
-		meatPos:         make([]Position, 0, 1024),
-		meatMass:        make([]float32, 0, 1024),
-		meatActive:      make([]bool, 0, 1024),
-		freeMeatIDs:     make([]int, 0, 100),
-		mHash:           newSpatialHash(width, height, cellSize),
+		foodHash:        newSpatialHash(width, height, cellSize),
 	}
-	// w.createWalls(wallType)
 	return w
 }
 
@@ -120,20 +125,20 @@ func (w *World) GetCreaturePos(id int) (Position, bool) {
 
 func (w *World) CreatureCount() int { return w.creatureCount }
 
-func (w *World) GetCreaturesInRadius(center Position, radius float64, buffer []int) []int {
+func (w *World) GetCreaturesInRadius(center Position, radius float32, buffer []int) []int {
 	return w.cHash.InRadius(center, radius, w.creaturePos, w.creatureActive, buffer)
 }
 
 // GetCreaturesInCone returns IDs of creatures within maxDist that lie inside
 // the cone defined by heading ± halfFOVCos (cosine of the half-angle).
-func (w *World) GetCreaturesInCone(center Position, heading float64, halfFOVCos float64, maxDist float64, buffer []int) []int {
+func (w *World) GetCreaturesInCone(center Position, heading float32, halfFOVCos float32, maxDist float32, buffer []int) []int {
 	return w.cHash.InCone(center, heading, halfFOVCos, maxDist, w.creaturePos, w.creatureActive, buffer)
 }
 
-// --- Food spatial operations ---
+// --- Unified food/plant/meat spatial operations ---
 
-// AddFood places a food item with the given mass at pos and returns its ID.
-func (w *World) AddFood(pos Position, mass float32) int {
+// addFoodItem is the internal helper that inserts any food type into the unified hash.
+func (w *World) addFoodItem(pos Position, mass float32, typ uint8) int {
 	var id int
 	if len(w.freeFoodIDs) > 0 {
 		lastIdx := len(w.freeFoodIDs) - 1
@@ -142,77 +147,141 @@ func (w *World) AddFood(pos Position, mass float32) int {
 		w.foodPos[id] = pos
 		w.foodMass[id] = mass
 		w.foodActive[id] = true
+		w.foodType[id] = typ
 	} else {
 		id = len(w.foodPos)
 		w.foodPos = append(w.foodPos, pos)
 		w.foodMass = append(w.foodMass, mass)
 		w.foodActive = append(w.foodActive, true)
+		w.foodType = append(w.foodType, typ)
 	}
-
-	w.foodCount++
-	w.fHash.Add(id, pos)
+	w.foodHash.Add(id, pos)
 	return id
 }
 
-func (w *World) RemoveFood(id int) {
-	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
-		return
+// removeFoodItem removes any food item from the unified hash and decrements the
+// appropriate type counter.
+func (w *World) removeFoodItem(id int) {
+	w.foodHash.Remove(id, w.foodPos[id])
+	if w.foodType[id] == FoodTypePlant {
+		w.plantCount--
+	} else {
+		w.meatCount--
 	}
-	w.fHash.Remove(id, w.foodPos[id])
 	w.foodActive[id] = false
-	w.foodCount--
 	w.freeFoodIDs = append(w.freeFoodIDs, id)
 }
 
+// AddPlant places a plant item with the given mass at pos and returns its ID.
+func (w *World) AddPlant(pos Position, mass float32) int {
+	id := w.addFoodItem(pos, mass, FoodTypePlant)
+	w.plantCount++
+	return id
+}
+
+// RemovePlant removes the plant item with the given ID.
+func (w *World) RemovePlant(id int) {
+	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
+		return
+	}
+	w.removeFoodItem(id)
+}
+
+// AddMeat places a meat item with the given mass at pos and returns its ID.
+func (w *World) AddMeat(pos Position, mass float32) int {
+	id := w.addFoodItem(pos, mass, FoodTypeMeat)
+	w.meatCount++
+	return id
+}
+
+// RemoveMeat removes the meat item with the given ID.
+func (w *World) RemoveMeat(id int) {
+	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
+		return
+	}
+	w.removeFoodItem(id)
+}
+
+// GetFoodPos returns the position of any food item (plant or meat) by ID.
 func (w *World) GetFoodPos(id int) Position {
 	return w.foodPos[id]
 }
 
-// GetFoodMass returns the remaining mass of food item id.
+// GetFoodMass returns the mass of any food item (plant or meat) by ID.
 func (w *World) GetFoodMass(id int) float32 {
 	return w.foodMass[id]
 }
 
-// ReduceFoodMass subtracts amount from food item id's mass.
-// If the remaining mass drops to zero or below the item is automatically removed.
-// Returns the remaining mass (0 if removed).
+// ReduceFoodMass subtracts amount from any food item's mass.
+// Automatically removes the item when mass drops to zero or below.
+// Returns remaining mass (0 if removed).
 func (w *World) ReduceFoodMass(id int, amount float32) float32 {
 	remaining := w.foodMass[id] - amount
 	if remaining <= 0 {
-		w.RemoveFood(id)
+		w.removeFoodItem(id)
 		return 0
 	}
 	w.foodMass[id] = remaining
 	return remaining
 }
 
-// TotalFoodMass returns the sum of all active food item masses in the world.
-func (w *World) TotalFoodMass() float64 {
+// TotalPlantMass returns the sum of all active plant item masses.
+func (w *World) TotalPlantMass() float64 {
 	total := float64(0)
 	for id, active := range w.foodActive {
-		if active {
+		if active && w.foodType[id] == FoodTypePlant {
 			total += float64(w.foodMass[id])
 		}
 	}
 	return total
 }
 
-func (w *World) FoodCount() int {
-	return w.foodCount
+// TotalMeatMass returns the sum of all active meat item masses.
+func (w *World) TotalMeatMass() float64 {
+	total := float64(0)
+	for id, active := range w.foodActive {
+		if active && w.foodType[id] == FoodTypeMeat {
+			total += float64(w.foodMass[id])
+		}
+	}
+	return total
 }
 
-// FoodPositions returns the live food map (read-only use; do not mutate).
-func (w *World) FoodPositions() []Position {
-	return w.foodPos
+// PlantCount returns the number of active plant items.
+func (w *World) PlantCount() int { return w.plantCount }
+
+// MeatCount returns the number of active meat items.
+func (w *World) MeatCount() int { return w.meatCount }
+
+// GetFoodInRadius returns IDs of plant items within radius of center.
+func (w *World) GetFoodInRadius(center Position, radius float32, buffer []int) []int {
+	return w.GetFoodInRadiusByMask(center, radius, FoodMaskPlant, buffer)
 }
 
-// GetFoodInRadius returns IDs of food items within radius of center.
-func (w *World) GetFoodInRadius(center Position, radius float64, buffer []int) []int {
-	return w.fHash.InRadius(center, radius, w.foodPos, w.foodActive, buffer)
-}
-
-func (w *World) GetFoodInCone(center Position, heading float64, halfFOVCos float64, maxDist float64, buffer []int) []int {
-	return w.fHash.InCone(center, heading, halfFOVCos, maxDist, w.foodPos, w.foodActive, buffer)
+// GetFoodInRadiusByMask returns IDs of food items within radius matching the type bitmask.
+func (w *World) GetFoodInRadiusByMask(center Position, radius float32, mask uint8, buffer []int) []int {
+	buffer = buffer[:0]
+	rSq := radius * radius
+	minBx, maxBx, minBy, maxBy := w.foodHash.cellBounds(center, radius)
+	for bx := minBx; bx <= maxBx; bx++ {
+		base := bx * w.foodHash.numY
+		for by := minBy; by <= maxBy; by++ {
+			for _, id := range w.foodHash.cells[base+by] {
+				if id >= len(w.foodActive) || !w.foodActive[id] {
+					continue
+				}
+				if (1<<w.foodType[id])&mask == 0 {
+					continue
+				}
+				pos := w.foodPos[id]
+				dx, dy := pos.X-center.X, pos.Y-center.Y
+				if dx*dx+dy*dy <= rSq {
+					buffer = append(buffer, id)
+				}
+			}
+		}
+	}
+	return buffer
 }
 
 // --- World geometry ---
@@ -220,8 +289,9 @@ func (w *World) GetFoodInCone(center Position, heading float64, halfFOVCos float
 func (w *World) IsWall(pos Position) bool {
 	for i := range w.Walls {
 		wall := &w.Walls[i]
-		if pos.X >= wall.X && pos.X < wall.X+wall.W &&
-			pos.Y >= wall.Y && pos.Y < wall.Y+wall.H {
+		x, y := float64(pos.X), float64(pos.Y)
+		if x >= wall.X && x < wall.X+wall.W &&
+			y >= wall.Y && y < wall.Y+wall.H {
 			return true
 		}
 	}
@@ -229,19 +299,19 @@ func (w *World) IsWall(pos Position) bool {
 }
 
 func (w *World) IsInBounds(pos Position) bool {
-	return pos.X >= 0 && pos.X < w.Width && pos.Y >= 0 && pos.Y < w.Height
+	return pos.X >= 0 && float64(pos.X) < w.Width && pos.Y >= 0 && float64(pos.Y) < w.Height
 }
 
 func (w *World) ClampToBounds(pos Position) Position {
 	if pos.X < 0 {
 		pos.X = 0
-	} else if pos.X >= w.Width {
-		pos.X = w.Width - 0.001
+	} else if float64(pos.X) >= w.Width {
+		pos.X = float32(w.Width) - 0.001
 	}
 	if pos.Y < 0 {
 		pos.Y = 0
-	} else if pos.Y >= w.Height {
-		pos.Y = w.Height - 0.001
+	} else if float64(pos.Y) >= w.Height {
+		pos.Y = float32(w.Height) - 0.001
 	}
 	return pos
 }
@@ -249,26 +319,12 @@ func (w *World) ClampToBounds(pos Position) Position {
 func (w *World) SizeX() int { return int(w.Width) }
 func (w *World) SizeY() int { return int(w.Height) }
 
-func (w *World) createWalls(wallType int) {
-	const wallThickness = 10.0
-	switch wallType {
-	case 1: // CROSS_WALL
-		cx := w.Width / 2
-		cy := w.Height / 2
-		w.Walls = append(w.Walls, Wall{
-			X: cx - wallThickness/2, Y: w.Height / 4,
-			W: wallThickness, H: w.Height / 2,
-		})
-		w.Walls = append(w.Walls, Wall{
-			X: w.Width / 4, Y: cy - wallThickness/2,
-			W: w.Width / 2, H: wallThickness,
-		})
-	}
-}
-
 func (w *World) FindEmptyLocation() (Position, bool) {
 	for i := 0; i < 200; i++ {
-		pos := Position{X: rand.Float64() * w.Width, Y: rand.Float64() * w.Height}
+		pos := Position{
+			X: float32(rand.Float64() * w.Width),
+			Y: float32(rand.Float64() * w.Height),
+		}
 		if !w.IsWall(pos) {
 			return pos, true
 		}
@@ -282,7 +338,10 @@ func (w *World) FindEmptyLocationNear(center Position, radius float64) Position 
 	for i := 0; i < 30; i++ {
 		angle := rand.Float64() * 2 * math.Pi
 		dist := rand.Float64() * radius
-		pos := Position{X: center.X + math.Cos(angle)*dist, Y: center.Y + math.Sin(angle)*dist}
+		pos := Position{
+			X: center.X + float32(math.Cos(angle)*dist),
+			Y: center.Y + float32(math.Sin(angle)*dist),
+		}
 		pos = w.ClampToBounds(pos)
 		if !w.IsWall(pos) {
 			return pos
@@ -301,7 +360,7 @@ func (w *World) InitFountains(count int) {
 	for i := range w.Fountains {
 		pos, ok := w.FindEmptyLocation()
 		if !ok {
-			pos = Position{X: w.Width / 2, Y: w.Height / 2}
+			pos = Position{X: float32(w.Width / 2), Y: float32(w.Height / 2)}
 		}
 		w.Fountains[i] = pos
 		w.fountainAngles[i] = rand.Float64() * 2 * math.Pi
@@ -316,46 +375,33 @@ func (w *World) StepFountains(driftSpeed float64) {
 		w.fountainAngles[i] += (rand.Float64() - 0.5) * 0.1
 
 		newPos := Position{
-			X: w.Fountains[i].X + math.Cos(w.fountainAngles[i])*driftSpeed,
-			Y: w.Fountains[i].Y + math.Sin(w.fountainAngles[i])*driftSpeed,
+			X: w.Fountains[i].X + float32(math.Cos(w.fountainAngles[i])*driftSpeed),
+			Y: w.Fountains[i].Y + float32(math.Sin(w.fountainAngles[i])*driftSpeed),
 		}
 
 		if w.IsInBounds(newPos) && !w.IsWall(newPos) {
 			w.Fountains[i] = newPos
 		} else {
-			// Bounce: reverse direction with a small random jitter so fountains
-			// don't get trapped oscillating against a boundary.
 			w.fountainAngles[i] += math.Pi + (rand.Float64()-0.5)*math.Pi*0.25
 		}
 	}
 }
 
-// SpawnFood places n food items (each with the given mass) sampled from Gaussian
+// SpawnPlant places n plant items (each with the given mass) sampled from Gaussian
 // distributions centred on each fountain. Each item is assigned to a fountain
 // uniformly at random, then offset by a 2-D normal with standard deviation sigma.
 // Items that fall outside the world bounds or inside a wall are retried; if the retry
 // budget is exhausted the remainder are placed uniformly at random so the requested
 // count is always satisfied.
-func (w *World) SpawnFood(n int, sigma float64, mass float32) {
+func (w *World) SpawnPlant(n int, sigma float64, mass float32) {
 	if n <= 0 {
 		return
 	}
 
-	randomScatterFactor := 0.15 // 15% of food spawns anywhere
+	randomScatterFactor := 0.15
 	randomCount := int(float64(n) * randomScatterFactor)
 	clusterCount := n - randomCount
 
-	// multiplier := rand.NormFloat64()*0.083 + 0.75
-
-	// // Clamp to strictly enforce the 50%-100% boundary
-	// if multiplier < 0.5 {
-	// 	multiplier = 0.5
-	// }
-	// if multiplier > 1.0 {
-	// 	multiplier = 1.0
-	// }
-
-	// mass = mass * float32(multiplier)
 	if randomCount > 0 {
 		w.SpawnRandom(randomCount, mass)
 	}
@@ -371,27 +417,26 @@ func (w *World) SpawnFood(n int, sigma float64, mass float32) {
 		fi := rand.Intn(len(w.Fountains))
 		center := w.Fountains[fi]
 		pos := Position{
-			X: center.X + rand.NormFloat64()*sigma,
-			Y: center.Y + rand.NormFloat64()*sigma,
+			X: center.X + float32(rand.NormFloat64()*sigma),
+			Y: center.Y + float32(rand.NormFloat64()*sigma),
 		}
 		if w.IsInBounds(pos) && !w.IsWall(pos) {
-			w.AddFood(pos, mass)
+			w.AddPlant(pos, mass)
 			spawned++
 		}
 	}
 
-	// 4. Fallback for any fountain items that failed geometry checks
 	if spawned < clusterCount {
 		w.SpawnRandom(clusterCount-spawned, mass)
 	}
 }
 
-// SpawnRandom places n food items (each with the given mass) at uniformly random valid positions.
+// SpawnRandom places n plant items (each with the given mass) at uniformly random valid positions.
 func (w *World) SpawnRandom(n int, mass float32) {
 	for i := 0; i < n; i++ {
 		pos, ok := w.FindEmptyLocation()
 		if ok {
-			w.AddFood(pos, mass)
+			w.AddPlant(pos, mass)
 		}
 	}
 }
@@ -405,10 +450,10 @@ const (
 )
 
 // TemperatureAt returns the ambient temperature in Celsius at world y-coordinate y.
-func (w *World) TemperatureAt(y float64) float32 {
+func (w *World) TemperatureAt(y float32) float32 {
 	const coldBandEnd = 0.2
 	const warmBandStart = 0.8
-	norm := y / w.Height
+	norm := float64(y) / w.Height
 	if norm <= coldBandEnd {
 		return TempCold
 	}
@@ -419,208 +464,88 @@ func (w *World) TemperatureAt(y float64) float32 {
 	return TempCold + t*(TempWarm-TempCold)
 }
 
-func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64)) {
+// ForEachActiveFood iterates all active food items (plants and meat) and calls fn
+// with each item's ID, position, radius, and type.
+func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64, typ uint8)) {
 	for id, active := range w.foodActive {
 		if active {
 			pos := w.foodPos[id]
 			r := math.Sqrt(float64(w.foodMass[id]) * math.Pi)
-			fn(id, pos.X, pos.Y, r)
+			fn(id, float64(pos.X), float64(pos.Y), r, w.foodType[id])
 		}
 	}
 }
 
-// --- Meat spatial operations ---
-
-func (w *World) AddMeat(pos Position, mass float32) int {
-	var id int
-	if len(w.freeMeatIDs) > 0 {
-		lastIdx := len(w.freeMeatIDs) - 1
-		id = w.freeMeatIDs[lastIdx]
-		w.freeMeatIDs = w.freeMeatIDs[:lastIdx]
-		w.meatPos[id] = pos
-		w.meatMass[id] = mass
-		w.meatActive[id] = true
-	} else {
-		id = len(w.meatPos)
-		w.meatPos = append(w.meatPos, pos)
-		w.meatMass = append(w.meatMass, mass)
-		w.meatActive = append(w.meatActive, true)
-	}
-	w.meatCount++
-	w.mHash.Add(id, pos)
-	return id
-}
-
-func (w *World) RemoveMeat(id int) {
-	if id < 0 || id >= len(w.meatActive) || !w.meatActive[id] {
-		return
-	}
-	w.mHash.Remove(id, w.meatPos[id])
-	w.meatActive[id] = false
-	w.meatCount--
-	w.freeMeatIDs = append(w.freeMeatIDs, id)
-}
-
-func (w *World) GetMeatPos(id int) Position { return w.meatPos[id] }
-
-func (w *World) GetMeatMass(id int) float32 { return w.meatMass[id] }
-
-func (w *World) ReduceMeatMass(id int, amount float32) float32 {
-	remaining := w.meatMass[id] - amount
-	if remaining <= 0 {
-		w.RemoveMeat(id)
-		return 0
-	}
-	w.meatMass[id] = remaining
-	return remaining
-}
-
-func (w *World) MeatCount() int { return w.meatCount }
-
-func (w *World) TotalMeatMass() float64 {
-	total := float64(0)
-	for id, active := range w.meatActive {
-		if active {
-			total += float64(w.meatMass[id])
+// GetFoodAndMeatInRadius fills plantBuf and meatBuf for a radius query in a single
+// cell traversal of the unified food hash.
+func (w *World) GetFoodAndMeatInRadius(center Position, radius float32, plantBuf, meatBuf []int) ([]int, []int) {
+	plantBuf = plantBuf[:0]
+	meatBuf = meatBuf[:0]
+	rSq := radius * radius
+	minBx, maxBx, minBy, maxBy := w.foodHash.cellBounds(center, radius)
+	for bx := minBx; bx <= maxBx; bx++ {
+		base := bx * w.foodHash.numY
+		for by := minBy; by <= maxBy; by++ {
+			for _, id := range w.foodHash.cells[base+by] {
+				if id >= len(w.foodActive) || !w.foodActive[id] {
+					continue
+				}
+				pos := w.foodPos[id]
+				dx, dy := pos.X-center.X, pos.Y-center.Y
+				if dx*dx+dy*dy > rSq {
+					continue
+				}
+				if w.foodType[id] == FoodTypePlant {
+					plantBuf = append(plantBuf, id)
+				} else {
+					meatBuf = append(meatBuf, id)
+				}
+			}
 		}
 	}
-	return total
+	return plantBuf, meatBuf
 }
 
-func (w *World) GetMeatInRadius(center Position, radius float64, buffer []int) []int {
-	return w.mHash.InRadius(center, radius, w.meatPos, w.meatActive, buffer)
-}
-
-func (w *World) GetMeatInCone(center Position, heading float64, halfFOVCos float64, maxDist float64, buffer []int) []int {
-	return w.mHash.InCone(center, heading, halfFOVCos, maxDist, w.meatPos, w.meatActive, buffer)
-}
-
-// GetAllInRadius fills all three buffers (food, meat, creature) in a single cell
-// traversal. All three hashes share the same grid dimensions, so bounds are
-// computed once and each cell is visited exactly once.
-func (w *World) GetAllInRadius(center Position, radius float64, foodBuf, meatBuf, creatureBuf []int) ([]int, []int, []int) {
-	foodBuf = foodBuf[:0]
+// GetAllInRadius fills all three buffers (plant, meat, creature) in a single pass
+// over the cell bounds. The food hash and creature hash share the same grid dimensions,
+// so both are visited in one loop.
+func (w *World) GetAllInRadius(center Position, radius float32, plantBuf, meatBuf, creatureBuf []int) ([]int, []int, []int) {
+	plantBuf = plantBuf[:0]
 	meatBuf = meatBuf[:0]
 	creatureBuf = creatureBuf[:0]
 	rSq := radius * radius
+	// cHash and foodHash share the same grid layout (same width/height/cellSize).
 	minBx, maxBx, minBy, maxBy := w.cHash.cellBounds(center, radius)
 	for bx := minBx; bx <= maxBx; bx++ {
 		base := bx * w.cHash.numY
 		for by := minBy; by <= maxBy; by++ {
 			idx := base + by
-			for _, id := range w.fHash.cells[idx] {
-				if id < len(w.foodActive) && w.foodActive[id] {
-					pos := w.foodPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy <= rSq {
-						foodBuf = append(foodBuf, id)
-					}
+			for _, id := range w.foodHash.cells[idx] {
+				if id >= len(w.foodActive) || !w.foodActive[id] {
+					continue
 				}
-			}
-			for _, id := range w.mHash.cells[idx] {
-				if id < len(w.meatActive) && w.meatActive[id] {
-					pos := w.meatPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy <= rSq {
-						meatBuf = append(meatBuf, id)
-					}
+				pos := w.foodPos[id]
+				dx, dy := pos.X-center.X, pos.Y-center.Y
+				if dx*dx+dy*dy > rSq {
+					continue
+				}
+				if w.foodType[id] == FoodTypePlant {
+					plantBuf = append(plantBuf, id)
+				} else {
+					meatBuf = append(meatBuf, id)
 				}
 			}
 			for _, id := range w.cHash.cells[idx] {
-				if id < len(w.creatureActive) && w.creatureActive[id] {
-					pos := w.creaturePos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy <= rSq {
-						creatureBuf = append(creatureBuf, id)
-					}
+				if id >= len(w.creatureActive) || !w.creatureActive[id] {
+					continue
+				}
+				pos := w.creaturePos[id]
+				dx, dy := pos.X-center.X, pos.Y-center.Y
+				if dx*dx+dy*dy <= rSq {
+					creatureBuf = append(creatureBuf, id)
 				}
 			}
 		}
 	}
-	return foodBuf, meatBuf, creatureBuf
-}
-
-// GetFoodAndMeatInRadius fills foodBuf and meatBuf for a radius query in one cell
-// traversal, with no directional filter.
-func (w *World) GetFoodAndMeatInRadius(center Position, radius float64, foodBuf, meatBuf []int) ([]int, []int) {
-	foodBuf = foodBuf[:0]
-	meatBuf = meatBuf[:0]
-	rSq := radius * radius
-	minBx, maxBx, minBy, maxBy := w.fHash.cellBounds(center, radius)
-	for bx := minBx; bx <= maxBx; bx++ {
-		base := bx * w.fHash.numY
-		for by := minBy; by <= maxBy; by++ {
-			idx := base + by
-			for _, id := range w.fHash.cells[idx] {
-				if id < len(w.foodActive) && w.foodActive[id] {
-					pos := w.foodPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy <= rSq {
-						foodBuf = append(foodBuf, id)
-					}
-				}
-			}
-			for _, id := range w.mHash.cells[idx] {
-				if id < len(w.meatActive) && w.meatActive[id] {
-					pos := w.meatPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy <= rSq {
-						meatBuf = append(meatBuf, id)
-					}
-				}
-			}
-		}
-	}
-	return foodBuf, meatBuf
-}
-
-// GetFoodAndMeatInCone fills foodBuf and meatBuf for a cone query in one cell
-// traversal. food and meat queries in the eating path share identical parameters.
-func (w *World) GetFoodAndMeatInCone(center Position, heading, halfFOVCos, maxDist float64, foodBuf, meatBuf []int) ([]int, []int) {
-	foodBuf = foodBuf[:0]
-	meatBuf = meatBuf[:0]
-	fwdX, fwdY := HeadingToVec(heading)
-	rSq := maxDist * maxDist
-	minBx, maxBx, minBy, maxBy := w.fHash.cellBounds(center, maxDist)
-	for bx := minBx; bx <= maxBx; bx++ {
-		base := bx * w.fHash.numY
-		for by := minBy; by <= maxBy; by++ {
-			idx := base + by
-			for _, id := range w.fHash.cells[idx] {
-				if id < len(w.foodActive) && w.foodActive[id] {
-					pos := w.foodPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy > rSq || (dx == 0 && dy == 0) {
-						continue
-					}
-					if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
-						foodBuf = append(foodBuf, id)
-					}
-				}
-			}
-			for _, id := range w.mHash.cells[idx] {
-				if id < len(w.meatActive) && w.meatActive[id] {
-					pos := w.meatPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy > rSq || (dx == 0 && dy == 0) {
-						continue
-					}
-					if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
-						meatBuf = append(meatBuf, id)
-					}
-				}
-			}
-		}
-	}
-	return foodBuf, meatBuf
-}
-
-func (w *World) ForEachActiveMeat(fn func(id int, x, y float64, r float64)) {
-	for id, active := range w.meatActive {
-		if active {
-			pos := w.meatPos[id]
-			r := math.Sqrt(float64(w.meatMass[id]) * math.Pi)
-			fn(id, pos.X, pos.Y, r)
-		}
-	}
+	return plantBuf, meatBuf, creatureBuf
 }

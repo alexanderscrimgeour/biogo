@@ -21,12 +21,12 @@ type Neuron struct {
 
 type NeuralNet struct {
 	Edges            []Gene
-	HiddenNeurons    [256]*Neuron       // indexed by neuron ID; sparse, use HiddenNeuronIDs to iterate
-	HiddenNeuronIDs  []byte             // sorted list of occupied indices
+	HiddenNeurons    []Neuron           // packed slice, indexed 0..N-1 by NewID; iterate directly
 	ActiveSensors    [SENSOR_COUNT]bool // true for each sensor ID wired into at least one edge; set once at construction
 	Weights          []float32
 	LastSensorValues [SENSOR_COUNT]float32
-	LastActionValues []float32
+	LastActionValues [ACTION_COUNT]float32
+	NeuronEdgeCount  int // number of leading Edges with SinkType==NEURON (all come before ACTION edges)
 }
 
 type Node struct {
@@ -50,10 +50,8 @@ func (n NeuralNet) String() string {
 		str += fmt.Sprintf("%s ", val.String())
 	}
 	str += "]\n    | Neurons: "
-	for _, id := range n.HiddenNeuronIDs {
-		if n.HiddenNeurons[id] != nil {
-			str += fmt.Sprintf("%s ", n.HiddenNeurons[id].String())
-		}
+	for _, neuron := range n.HiddenNeurons {
+		str += fmt.Sprintf("%s ", neuron.String())
 	}
 	str += "\n"
 	return str
@@ -101,6 +99,7 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 			edgeIndex++
 		}
 	}
+	nnet.NeuronEdgeCount = edgeIndex
 	for _, gene := range g {
 		if gene.SinkType == ACTION {
 			if gene.SourceType == NEURON {
@@ -111,20 +110,16 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 			edgeIndex++
 		}
 	}
-	// Create the neurons; HiddenNeuronIDs is sorted for deterministic iteration.
-	nnet.HiddenNeuronIDs = make([]byte, 0, len(n))
+	// Create the neurons. NewIDs are assigned 0..N-1 by setNodeNewIDValues, so the
+	// slice is fully packed and edge SourceID/SinkID values remain valid indices.
+	nnet.HiddenNeurons = make([]Neuron, len(n))
 	for _, node := range n {
-		neuron := &Neuron{
+		nnet.HiddenNeurons[node.NewID] = Neuron{
 			Output:      CreateInitialNeuronOutput(),
 			Driven:      node.InputCount != 0,
 			Sensitivity: 1.0,
 		}
-		nnet.HiddenNeurons[node.NewID] = neuron
-		nnet.HiddenNeuronIDs = append(nnet.HiddenNeuronIDs, node.NewID)
 	}
-	sort.Slice(nnet.HiddenNeuronIDs, func(i, j int) bool {
-		return nnet.HiddenNeuronIDs[i] < nnet.HiddenNeuronIDs[j]
-	})
 
 	// Record which sensors are actually wired in so FeedForward can pre-compute
 	// them once rather than calling GetSensor once per edge.
@@ -185,6 +180,11 @@ func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 				done = false
 				final = removeConnectionsToGene(final, n, key)
 				delete(n, key)
+			} else if node.InputCount == 0 && node.SelfLoopCount == 0 {
+				// No incoming connections: outputs a constant, carries no sensor signal
+				done = false
+				final = removeOutgoingConnections(final, n, key)
+				delete(n, key)
 			}
 		}
 	}
@@ -214,6 +214,22 @@ func removeConnectionsToGene(genes []Gene, n NodeMap, key byte) []Gene {
 		}
 
 		// Keep genes that don't point to the deleted neuron.
+		newGenes = append(newGenes, gene)
+	}
+	return newGenes
+}
+
+func removeOutgoingConnections(genes []Gene, n NodeMap, key byte) []Gene {
+	newGenes := genes[:0]
+	for _, gene := range genes {
+		if gene.SourceType == NEURON && gene.SourceID == key {
+			if gene.SinkType == NEURON {
+				if sinkNode, exists := n[gene.SinkID]; exists && sinkNode.InputCount > 0 {
+					sinkNode.InputCount--
+				}
+			}
+			continue
+		}
 		newGenes = append(newGenes, gene)
 	}
 	return newGenes

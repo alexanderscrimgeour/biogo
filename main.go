@@ -4,10 +4,8 @@ import (
 	"biogo/v2/simulation"
 	"biogo/v2/ui"
 	"log"
-	"math/rand"
 	"net/http"
 	_ "net/http/pprof"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -18,7 +16,6 @@ func main() {
 		// IPv6 vs IPv4 issues (the [::1] in your error)
 		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 	}()
-	rand.Seed(time.Now().UnixNano())
 	params := simulation.DefaultParams()
 	sim := simulation.New(params)
 

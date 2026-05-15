@@ -4,9 +4,8 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font"
 )
 
 var (
@@ -16,27 +15,56 @@ var (
 	ColorButtonRed     = color.RGBA{244, 67, 54, 100}
 )
 
+// Button is a clickable UI element. It stores its last drawn position
+// so IsClicked works without requiring absolute coordinates at construction time.
 type Button struct {
-	X, Y, W, H int
+	W, H       float32
 	Label      string
-	LabelColor color.Gray16
 	Color      color.RGBA
+	LabelColor color.Color
+	Font       *textv2.GoXFace
 	OnClick    func()
+	lastX      float32
+	lastY      float32
 }
 
-func (b *Button) Draw(screen *ebiten.Image, font font.Face) {
+// Draw renders the button at (x, y) and returns (W, H).
+func (b *Button) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
+	b.lastX, b.lastY = x, y
 	displayColor := b.Color
 	mx, my := ebiten.CursorPosition()
-	isHovered := mx >= b.X && mx <= b.X+b.W && my >= b.Y && my <= b.Y+b.H
-
+	isHovered := float32(mx) >= x && float32(mx) <= x+b.W && float32(my) >= y && float32(my) <= y+b.H
 	if isHovered && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		displayColor = lighten(b.Color, 0.1)
 	}
-	vector.DrawFilledRect(screen, float32(b.X), float32(b.Y), float32(b.W), float32(b.H), displayColor, false)
-	text.Draw(screen, b.Label, font, b.X+5, b.Y+17, b.LabelColor)
+
+	vector.FillRect(screen, x, y, b.W, b.H, displayColor, false)
+
+	if b.Font != nil && b.Label != "" {
+		metrics := b.Font.Metrics()
+		textHeight := metrics.HLineGap + metrics.HAscent + metrics.HDescent
+
+		op := &textv2.DrawOptions{}
+		op.GeoM.Translate(float64(x)+5, float64(y)+(float64(b.H)-textHeight)/2)
+
+		lc := b.LabelColor
+		if lc == nil {
+			lc = color.White
+		}
+		op.ColorScale.ScaleWithColor(lc)
+		textv2.Draw(screen, b.Label, b.Font, op)
+	}
+
+	return b.W, b.H
 }
 
+// Size returns the button's preferred dimensions for layout.
+func (b *Button) Size() (float32, float32) {
+	return b.W, b.H
+}
+
+// IsClicked returns true if (mx, my) falls within the last drawn bounds.
 func (b *Button) IsClicked(mx, my int) bool {
-	return mx >= b.X && mx < b.X+b.W &&
-		my >= b.Y && my < b.Y+b.H
+	return float32(mx) >= b.lastX && float32(mx) < b.lastX+b.W &&
+		float32(my) >= b.lastY && float32(my) < b.lastY+b.H
 }

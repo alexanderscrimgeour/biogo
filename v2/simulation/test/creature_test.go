@@ -14,7 +14,7 @@ func TestCurrentMassAtBirth(t *testing.T) {
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 	got := c.CurrentMass()
-	want := float32(genome.MinMass)
+	want := float64(genome.MinMass)
 	if got != want {
 		t.Errorf("CurrentMass at age 0: got %f, want %f", got, want)
 	}
@@ -28,7 +28,7 @@ func TestCurrentMassAtAdulthood(t *testing.T) {
 	c := simulation.NewAdultCreature(1, grid.Position{}, genome, params)
 
 	got := c.CurrentMass()
-	want := float32(genome.Mass)
+	want := float64(genome.Mass)
 	if got != want {
 		t.Errorf("CurrentMass at adulthood: got %f, want %f", got, want)
 	}
@@ -55,7 +55,7 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 	if midMass <= startMass {
 		t.Errorf("mass should grow after 50 ticks: start=%f mid=%f", startMass, midMass)
 	}
-	if midMass >= float32(genome.Mass) {
+	if midMass >= float64(genome.Mass) {
 		t.Errorf("should not reach adult mass in 50 ticks: mass=%f adult=%d", midMass, genome.Mass)
 	}
 
@@ -63,7 +63,7 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 		c.GrowMass(params)
 	}
 	finalMass := c.CurrentMass()
-	if finalMass > float32(genome.Mass) {
+	if finalMass > float64(genome.Mass) {
 		t.Errorf("mass should never exceed genome.Mass: got %f, max %d", finalMass, genome.Mass)
 	}
 }
@@ -79,11 +79,11 @@ func TestIsJuvenileBlocksBeforeAdulthood(t *testing.T) {
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 
 	c.Age = 99
-	if !c.IsJuvenile(params) {
+	if !c.IsJuvenile() {
 		t.Errorf("creature at age 99 should still be juvenile (period=100)")
 	}
 	c.Age = 100
-	if c.IsJuvenile(params) {
+	if c.IsJuvenile() {
 		t.Errorf("creature at age 100 should no longer be juvenile (period=100)")
 	}
 }
@@ -97,7 +97,7 @@ func TestIsJuvenileZeroPeriod(t *testing.T) {
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 
 	c.Age = 0
-	if c.IsJuvenile(params) {
+	if c.IsJuvenile() {
 		t.Errorf("creature should never be juvenile when period=0")
 	}
 }
@@ -131,10 +131,10 @@ func TestCurrentMassNeverExceedsGenomeMass(t *testing.T) {
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 	for tick := 0; tick <= params.MaxJuvenilePeriod+10; tick++ {
 		s := c.CurrentMass()
-		if s > float32(genome.Mass) {
+		if s > float64(genome.Mass) {
 			t.Errorf("CurrentMass %f exceeds genome.Mass %d at tick %d", s, genome.Mass, tick)
 		}
-		if s < float32(genome.MinMass) {
+		if s < float64(genome.MinMass) {
 			t.Errorf("CurrentMass %f below genome.MinMass %d at tick %d", s, genome.MinMass, tick)
 		}
 		c.GrowMass(params)
