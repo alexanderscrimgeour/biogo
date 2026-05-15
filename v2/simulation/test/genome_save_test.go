@@ -74,6 +74,7 @@ func TestSelectBestGenomesReturnsAtMostMax(t *testing.T) {
 	for i, g := range result {
 		if g == nil {
 			t.Errorf("result[%d] is nil", i)
+			continue
 		}
 		if len(g.Brain) == 0 {
 			t.Errorf("result[%d] has empty brain", i)

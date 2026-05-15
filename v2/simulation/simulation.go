@@ -22,6 +22,7 @@ type Simulation struct {
 }
 
 func New(params *Parameters) *Simulation {
+	InitResponseCurve(params)
 	sim := &Simulation{
 		Params: params,
 	}
@@ -247,13 +248,13 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	responseAdjust := GetResponseCurve(c.Responsiveness)
 
 	if IsActionEnabled(SET_OSCILLATOR_PERIOD) {
-		actionVal := actionLevels[SET_OSCILLATOR_PERIOD] // [-1, 1]
+		actionVal := float64(actionLevels[SET_OSCILLATOR_PERIOD]) // [-1, 1]
 
 		// Fast approximation of 2^x for x in [-1, 1]
 		// 2^x ≈ 1 + 0.6931x + 0.2402x^2
 		multiplier := 1.0 + (0.693147 * actionVal) + (0.240226 * actionVal * actionVal)
 
-		finalTicks := c.BaseOscTicks / multiplier
+		finalTicks := c.BaseOscTick / multiplier
 
 		if finalTicks < 2 {
 			finalTicks = 2
@@ -274,9 +275,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if level > 0 {
 			// Fast Softsign: level / (1 + level)
 			c.GainDopamine(float32(level / (1.0 + level)))
-			if c.IsSelected {
-				c.LastAction = appendActionString(c.LastAction, "Rewarding")
-			}
+			c.LastAction = appendActionString(c.LastAction, "Rewarding")
 		}
 	}
 
@@ -285,9 +284,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if level > 0 {
 			// Fast Softsign: level / (1 + level)
 			c.LoseDopamine(float32(level / (1.0 + level)))
-			if c.IsSelected {
-				c.LastAction = appendActionString(c.LastAction, "Punishing")
-			}
+			c.LastAction = appendActionString(c.LastAction, "Punishing")
 		}
 	}
 	if IsActionEnabled(REPRODUCE) {
@@ -347,6 +344,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		rotateAmount := float64(0)
 		massNorm := c.CurrentMass() / s.Params.MaxMass
 		if IsActionEnabled(ROTATE) {
+			act := float64(actionLevels[ROTATE])
 			turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
 			softSign := act / (1.0 + math.Abs(act))
 			rotateAmount = softSign * float64(responseAdjust) * s.Params.MaxRotationPerStep * turnInertia
@@ -571,12 +569,6 @@ func (s *Simulation) AverageAge() float64 {
 	return float64(total) / float64(count)
 }
 
-func prob2Bool(val float64) int {
-	if rand.Float64() < val {
-		return 1
-	}
-	return 0
-}
 
 // partitionIDs splits ids into n roughly equal batches using round-robin assignment.
 func partitionIDs(ids []int, n int) [][]int {

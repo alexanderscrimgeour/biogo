@@ -6,9 +6,8 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font"
 )
 
 const (
@@ -105,7 +104,7 @@ func (p *SavedGenomesPanel) HandleInput(mx, my int) bool {
 }
 
 // Draw renders the panel centred on screen.
-func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt font.Face) {
+func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	if !p.visible {
 		return
 	}
@@ -116,19 +115,19 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt font.Face) {
 	px, py := p.panX, p.panY
 
 	// Background + border
-	vector.DrawFilledRect(screen, px, py, sgPanW, sgPanH, color.RGBA{8, 10, 22, 248}, false)
+	vector.FillRect(screen, px, py, sgPanW, sgPanH, color.RGBA{8, 10, 22, 248}, false)
 	vector.StrokeRect(screen, px, py, sgPanW, sgPanH, 2, color.RGBA{90, 90, 155, 255}, false)
 
 	// Title bar
-	vector.DrawFilledRect(screen, px, py, sgPanW, sgTitleH, color.RGBA{18, 18, 48, 255}, false)
-	text.Draw(screen, "SAVED GENOMES", fnt, int(px)+sgPad, int(py)+18, color.RGBA{200, 200, 255, 255})
+	vector.FillRect(screen, px, py, sgPanW, sgTitleH, color.RGBA{18, 18, 48, 255}, false)
+	drawText(screen, "SAVED GENOMES", fnt, int(px)+sgPad, int(py)+18, color.RGBA{200, 200, 255, 255})
 
 	// Close [×]
 	cbx := px + sgPanW - 28
 	cby := py + 3
 	p.closeBtn = [4]float32{cbx, cby, 24, 22}
-	vector.DrawFilledRect(screen, cbx, cby, 24, 22, color.RGBA{160, 50, 50, 200}, false)
-	text.Draw(screen, "×", fnt, int(cbx)+6, int(cby)+16, color.White)
+	vector.FillRect(screen, cbx, cby, 24, 22, color.RGBA{160, 50, 50, 200}, false)
+	drawText(screen, "×", fnt, int(cbx)+6, int(cby)+16, color.White)
 
 	// Scroll arrows (always present)
 	arrowY := py + sgPanH - sgPad - 22
@@ -144,10 +143,10 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt font.Face) {
 	if p.scroll < len(p.genomes)-sgMaxRows {
 		downClr = color.RGBA{80, 80, 160, 220}
 	}
-	vector.DrawFilledRect(screen, p.upBtn[0], p.upBtn[1], p.upBtn[2], p.upBtn[3], upClr, false)
-	text.Draw(screen, "▲", fnt, int(upBtnX)+4, int(arrowY)+16, color.White)
-	vector.DrawFilledRect(screen, p.downBtn[0], p.downBtn[1], p.downBtn[2], p.downBtn[3], downClr, false)
-	text.Draw(screen, "▼", fnt, int(upBtnX)+32, int(arrowY)+16, color.White)
+	vector.FillRect(screen, p.upBtn[0], p.upBtn[1], p.upBtn[2], p.upBtn[3], upClr, false)
+	drawText(screen, "▲", fnt, int(upBtnX)+4, int(arrowY)+16, color.White)
+	vector.FillRect(screen, p.downBtn[0], p.downBtn[1], p.downBtn[2], p.downBtn[3], downClr, false)
+	drawText(screen, "▼", fnt, int(upBtnX)+32, int(arrowY)+16, color.White)
 
 	// Row area
 	listY := py + sgTitleH + sgPad
@@ -155,7 +154,7 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt font.Face) {
 
 	// Empty state
 	if len(p.genomes) == 0 {
-		text.Draw(screen, "No saved genomes found in data/creatures/",
+		drawText(screen, "No saved genomes found in data/creatures/",
 			fnt, int(px)+sgPad, int(listY)+20, color.RGBA{120, 120, 170, 200})
 		p.rowBounds = p.rowBounds[:0]
 		return
@@ -187,28 +186,28 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt font.Face) {
 			rowBg = color.RGBA{30, 30, 60, 120}
 		}
 		if rowBg.A > 0 {
-			vector.DrawFilledRect(screen, px+sgPad, rowY, spawnBtnX-px-sgPad*2, sgRowH-2, rowBg, false)
+			vector.FillRect(screen, px+sgPad, rowY, spawnBtnX-px-sgPad*2, sgRowH-2, rowBg, false)
 		}
 
 		// Separator
-		vector.DrawFilledRect(screen, px+sgPad, rowY+sgRowH-1, float32(sgPanW)-sgPad*2, 1, color.RGBA{35, 35, 60, 180}, false)
+		vector.FillRect(screen, px+sgPad, rowY+sgRowH-1, float32(sgPanW)-sgPad*2, 1, color.RGBA{35, 35, 60, 180}, false)
 
 		// Name + trait summary
 		nameClr := color.RGBA{200, 210, 255, 255}
-		text.Draw(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+15, nameClr)
+		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+15, nameClr)
 		summary := fmt.Sprintf("Mass %d  Neurons %d  Genes %d",
 			ng.Genome.Mass, ng.Genome.CognitiveBreadth, len(ng.Genome.Brain))
-		text.Draw(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+28, color.RGBA{120, 130, 160, 200})
+		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+28, color.RGBA{120, 130, 160, 200})
 
 		// Spawn button
 		sbx := spawnBtnX
 		sby := rowY + (sgRowH-22)/2
 		p.rowBounds = append(p.rowBounds, [4]float32{sbx, sby, sgBtnW, 22})
-		vector.DrawFilledRect(screen, sbx, sby, sgBtnW, 22, color.RGBA{40, 100, 60, 220}, false)
-		text.Draw(screen, "Spawn", fnt, int(sbx)+8, int(sby)+15, color.White)
+		vector.FillRect(screen, sbx, sby, sgBtnW, 22, color.RGBA{40, 100, 60, 220}, false)
+		drawText(screen, "Spawn", fnt, int(sbx)+8, int(sby)+15, color.White)
 	}
 
 	// Scroll counter
-	text.Draw(screen, fmt.Sprintf("%d / %d", p.scroll+1, total), fnt,
+	drawText(screen, fmt.Sprintf("%d / %d", p.scroll+1, total), fnt,
 		int(px)+sgPad, int(arrowY)+16, color.RGBA{100, 100, 150, 200})
 }

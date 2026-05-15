@@ -4,20 +4,18 @@ import (
 	"biogo/v2/ui/components"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 type UserInterface struct {
-	font       font.Face
+	font       *textv2.GoXFace
 	pauseBtn   *components.Button
 	fovBtn     *components.Button
 	newGameBtn *components.Button
 	themeBtn   *components.Button
-	mutSlider  *components.Slider
-	history    *components.Graph
 }
 
-func NewUI(f font.Face) *UserInterface {
+func NewUI(f *textv2.GoXFace) *UserInterface {
 	return &UserInterface{}
 }
 

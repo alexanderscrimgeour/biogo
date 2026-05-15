@@ -20,7 +20,7 @@ func (p *Panel) Draw(screen *ebiten.Image, isPressed bool) {
 	}
 
 	// Background and Border
-	vector.DrawFilledRect(screen, p.X, p.Y, p.W, p.H, drawColor, false)
+	vector.FillRect(screen, p.X, p.Y, p.W, p.H, drawColor, false)
 	vector.StrokeRect(screen, p.X, p.Y, p.W, p.H, 1, p.Border, false)
 }
 

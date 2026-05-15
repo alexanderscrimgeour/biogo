@@ -249,22 +249,6 @@ func (w *World) ClampToBounds(pos Position) Position {
 func (w *World) SizeX() int { return int(w.Width) }
 func (w *World) SizeY() int { return int(w.Height) }
 
-func (w *World) createWalls(wallType int) {
-	const wallThickness = 10.0
-	switch wallType {
-	case 1: // CROSS_WALL
-		cx := w.Width / 2
-		cy := w.Height / 2
-		w.Walls = append(w.Walls, Wall{
-			X: cx - wallThickness/2, Y: w.Height / 4,
-			W: wallThickness, H: w.Height / 2,
-		})
-		w.Walls = append(w.Walls, Wall{
-			X: w.Width / 4, Y: cy - wallThickness/2,
-			W: w.Width / 2, H: wallThickness,
-		})
-	}
-}
 
 func (w *World) FindEmptyLocation() (Position, bool) {
 	for i := 0; i < 200; i++ {

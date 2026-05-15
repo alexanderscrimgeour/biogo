@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewWorld(t *testing.T) {
-	w := grid.NewWorld(100, 80, 0)
+	w := world.NewWorld(100, 80, 0)
 	if w.SizeX() != 100 {
 		t.Errorf("expected SizeX 100, got %d", w.SizeX())
 	}
@@ -16,18 +16,18 @@ func TestNewWorld(t *testing.T) {
 }
 
 func TestIsInBounds(t *testing.T) {
-	w := grid.NewWorld(100, 100, 0)
+	w := world.NewWorld(100, 100, 0)
 	cases := []struct {
-		pos      grid.Position
+		pos      world.Position
 		expected bool
 	}{
-		{grid.Position{X: 0, Y: 0}, true},
-		{grid.Position{X: 99, Y: 99}, true},
-		{grid.Position{X: 50, Y: 50}, true},
-		{grid.Position{X: -1, Y: 0}, false},
-		{grid.Position{X: 0, Y: -1}, false},
-		{grid.Position{X: 100, Y: 0}, false},
-		{grid.Position{X: 0, Y: 100}, false},
+		{world.Position{X: 0, Y: 0}, true},
+		{world.Position{X: 99, Y: 99}, true},
+		{world.Position{X: 50, Y: 50}, true},
+		{world.Position{X: -1, Y: 0}, false},
+		{world.Position{X: 0, Y: -1}, false},
+		{world.Position{X: 100, Y: 0}, false},
+		{world.Position{X: 0, Y: 100}, false},
 	}
 	for _, c := range cases {
 		if got := w.IsInBounds(c.pos); got != c.expected {
@@ -37,8 +37,8 @@ func TestIsInBounds(t *testing.T) {
 }
 
 func TestAddAndGetCreature(t *testing.T) {
-	w := grid.NewWorld(100, 100, 0)
-	pos := grid.Position{X: 50, Y: 50}
+	w := world.NewWorld(100, 100, 0)
+	pos := world.Position{X: 50, Y: 50}
 	id := w.AddCreature(pos)
 
 	got, ok := w.GetCreaturePos(id)
@@ -51,9 +51,9 @@ func TestAddAndGetCreature(t *testing.T) {
 }
 
 func TestMoveCreature(t *testing.T) {
-	w := grid.NewWorld(100, 100, 0)
-	id := w.AddCreature(grid.Position{X: 10, Y: 10})
-	newPos := grid.Position{X: 20, Y: 30}
+	w := world.NewWorld(100, 100, 0)
+	id := w.AddCreature(world.Position{X: 10, Y: 10})
+	newPos := world.Position{X: 20, Y: 30}
 	w.MoveCreature(id, newPos)
 
 	got, ok := w.GetCreaturePos(id)
@@ -63,8 +63,8 @@ func TestMoveCreature(t *testing.T) {
 }
 
 func TestRemoveCreature(t *testing.T) {
-	w := grid.NewWorld(100, 100, 0)
-	id := w.AddCreature(grid.Position{X: 50, Y: 50})
+	w := world.NewWorld(100, 100, 0)
+	id := w.AddCreature(world.Position{X: 50, Y: 50})
 	w.RemoveCreature(id)
 	if _, ok := w.GetCreaturePos(id); ok {
 		t.Error("creature should not be found after RemoveCreature")
@@ -72,12 +72,12 @@ func TestRemoveCreature(t *testing.T) {
 }
 
 func TestGetCreaturesInRadius(t *testing.T) {
-	w := grid.NewWorld(200, 200, 0)
-	id1 := w.AddCreature(grid.Position{X: 100, Y: 100})
-	id2 := w.AddCreature(grid.Position{X: 102, Y: 100}) // within radius 5
-	id3 := w.AddCreature(grid.Position{X: 200, Y: 200}) // far away
+	w := world.NewWorld(200, 200, 0)
+	id1 := w.AddCreature(world.Position{X: 100, Y: 100})
+	id2 := w.AddCreature(world.Position{X: 102, Y: 100}) // within radius 5
+	id3 := w.AddCreature(world.Position{X: 200, Y: 200}) // far away
 
-	ids := w.GetCreaturesInRadius(grid.Position{X: 100, Y: 100}, 5, nil)
+	ids := w.GetCreaturesInRadius(world.Position{X: 100, Y: 100}, 5, nil)
 	found := map[int]bool{}
 	for _, id := range ids {
 		found[id] = true
@@ -91,8 +91,8 @@ func TestGetCreaturesInRadius(t *testing.T) {
 }
 
 func TestAddAndRemoveFood(t *testing.T) {
-	w := grid.NewWorld(100, 100, 0)
-	id := w.AddFood(grid.Position{X: 50, Y: 50}, 10)
+	w := world.NewWorld(100, 100, 0)
+	id := w.AddFood(world.Position{X: 50, Y: 50}, 10)
 	if w.FoodCount() != 1 {
 		t.Errorf("expected 1 food, got %d", w.FoodCount())
 	}
@@ -103,12 +103,12 @@ func TestAddAndRemoveFood(t *testing.T) {
 }
 
 func TestGetFoodInRadius(t *testing.T) {
-	w := grid.NewWorld(200, 200, 0)
-	id1 := w.AddFood(grid.Position{X: 100, Y: 100}, 10)
-	id2 := w.AddFood(grid.Position{X: 102, Y: 100}, 10) // within radius 5
-	_ = w.AddFood(grid.Position{X: 150, Y: 150}, 10) // far away
+	w := world.NewWorld(200, 200, 0)
+	id1 := w.AddFood(world.Position{X: 100, Y: 100}, 10)
+	id2 := w.AddFood(world.Position{X: 102, Y: 100}, 10) // within radius 5
+	_ = w.AddFood(world.Position{X: 150, Y: 150}, 10) // far away
 
-	ids := w.GetFoodInRadius(grid.Position{X: 100, Y: 100}, 5, nil)
+	ids := w.GetFoodInRadius(world.Position{X: 100, Y: 100}, 5, nil)
 	found := map[int]bool{}
 	for _, id := range ids {
 		found[id] = true
@@ -119,7 +119,7 @@ func TestGetFoodInRadius(t *testing.T) {
 }
 
 func TestSpawnFood(t *testing.T) {
-	w := grid.NewWorld(200, 200, 0)
+	w := world.NewWorld(200, 200, 0)
 	w.InitFountains(2)
 	w.SpawnFood(10, 30.0, 10)
 	if w.FoodCount() != 10 {
@@ -129,7 +129,7 @@ func TestSpawnFood(t *testing.T) {
 
 func TestSpawnFoodGaussianFallback(t *testing.T) {
 	// Without fountains initialised, SpawnFood should fall back to random placement.
-	w := grid.NewWorld(500, 500, 0)
+	w := world.NewWorld(500, 500, 0)
 	w.SpawnFood(50, 30.0, 10)
 	if w.FoodCount() != 50 {
 		t.Errorf("SpawnFood(50) without fountains should place exactly 50 items, got %d", w.FoodCount())
@@ -137,7 +137,7 @@ func TestSpawnFoodGaussianFallback(t *testing.T) {
 }
 
 func TestFindEmptyLocation(t *testing.T) {
-	w := grid.NewWorld(200, 200, 0)
+	w := world.NewWorld(200, 200, 0)
 	pos, ok := w.FindEmptyLocation()
 	if !ok {
 		t.Fatal("FindEmptyLocation should succeed on empty world")
@@ -151,30 +151,30 @@ func TestFindEmptyLocation(t *testing.T) {
 }
 
 func TestIsWall_CrossWall(t *testing.T) {
-	w := grid.NewWorld(200, 200, 1)
+	w := world.NewWorld(200, 200, 1)
 	// Center of the world should be inside a wall segment.
-	center := grid.Position{X: 100, Y: 100}
+	center := world.Position{X: 100, Y: 100}
 	if !w.IsWall(center) {
 		t.Error("center of cross-wall world should be a wall")
 	}
 	// Corner should be free.
-	corner := grid.Position{X: 10, Y: 10}
+	corner := world.Position{X: 10, Y: 10}
 	if w.IsWall(corner) {
 		t.Error("corner should not be a wall")
 	}
 }
 
 func TestClampToBounds(t *testing.T) {
-	w := grid.NewWorld(100, 100, 0)
+	w := world.NewWorld(100, 100, 0)
 	cases := []struct {
-		in   grid.Position
+		in   world.Position
 		wantInBounds bool
 	}{
-		{grid.Position{X: -5, Y: 50}, true},
-		{grid.Position{X: 50, Y: -5}, true},
-		{grid.Position{X: 200, Y: 50}, true},
-		{grid.Position{X: 50, Y: 200}, true},
-		{grid.Position{X: 50, Y: 50}, true},
+		{world.Position{X: -5, Y: 50}, true},
+		{world.Position{X: 50, Y: -5}, true},
+		{world.Position{X: 200, Y: 50}, true},
+		{world.Position{X: 50, Y: 200}, true},
+		{world.Position{X: 50, Y: 50}, true},
 	}
 	for _, c := range cases {
 		clamped := w.ClampToBounds(c.in)

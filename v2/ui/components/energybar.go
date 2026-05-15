@@ -16,7 +16,7 @@ type EnergyBar struct {
 }
 
 func (e *EnergyBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
-	vector.DrawFilledRect(screen, x, y, e.Width, 6, color.RGBA{35, 35, 35, 255}, false)
+	vector.FillRect(screen, x, y, e.Width, 6, color.RGBA{35, 35, 35, 255}, false)
 
 	if e.Centered {
 		mid := x + e.Width/2
@@ -28,10 +28,10 @@ func (e *EnergyBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) 
 			frac = -1
 		}
 		if frac >= 0 {
-			vector.DrawFilledRect(screen, mid, y, half*frac, 6, e.energyBarColor(1), false)
+			vector.FillRect(screen, mid, y, half*frac, 6, e.energyBarColor(1), false)
 		} else {
 			w := half * (-frac)
-			vector.DrawFilledRect(screen, mid-w, y, w, 6, e.energyBarColor(0), false)
+			vector.FillRect(screen, mid-w, y, w, 6, e.energyBarColor(0), false)
 		}
 	} else {
 		frac := e.Value / e.Max
@@ -40,7 +40,7 @@ func (e *EnergyBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) 
 		} else if frac > 1 {
 			frac = 1
 		}
-		vector.DrawFilledRect(screen, x, y, e.Width*frac, 6, e.energyBarColor(frac), false)
+		vector.FillRect(screen, x, y, e.Width*frac, 6, e.energyBarColor(frac), false)
 	}
 
 	return e.Width, 10

@@ -228,7 +228,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		prevTemp := w.TemperatureAt(c.LastLoc.Y)
 		delta := float64((currentTemp - prevTemp) * c.Responsiveness * 5)
 		// -1 = Cooling down fast, 0 = No change, 1 = Warming up fast
-		output = float32(d / (1.0 + math.Abs(d)))
+		output = float32(delta / (1.0 + math.Abs(delta)))
 	case TOUCHING:
 		output = calculateTouching(c, p, ctx)
 	case RANDOM:

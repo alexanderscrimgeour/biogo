@@ -191,6 +191,7 @@ func (c *Creature) Digest(params *Parameters) {
 	}
 
 	currentCap := c.StomachCapacity(params)
+	var sizeFactor float64
 	if currentCap > 0 {
 		standardCap := float64(params.MaxMass) * 0.2
 		ratio := standardCap / currentCap

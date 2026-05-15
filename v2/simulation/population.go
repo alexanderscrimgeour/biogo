@@ -163,7 +163,6 @@ func (p *Population) ProcessEating(w *world.World, params *Parameters) {
 				eaten = stomachSpace / foodEff
 			}
 			c.Stomach += stomachGain
-			stomachSpace -= stomachGain
 			w.ReduceFoodMass(closestID, float32(eaten))
 		}
 
@@ -214,11 +213,6 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params) * instruction.Level
-		massRatio := c.Mass / params.MaxMass
-		if massRatio > 1.0 {
-			massRatio = 1.0
-		}
-
 		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.SightDistance, c.SightCreatureBuffer)
 
 		closestPreyID := -1

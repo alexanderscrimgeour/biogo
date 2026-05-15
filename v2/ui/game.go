@@ -12,7 +12,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/examples/resources/fonts"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -114,7 +114,7 @@ type creatureAnim struct {
 type Game struct {
 	sim                SimulationState
 	RenderWorld        *RenderWorld
-	statFont           font.Face
+	statFont           *textv2.GoXFace
 	whiteImage         *ebiten.Image
 	animByID           map[int]*creatureAnim
 	lastTickTime       time.Time
@@ -128,7 +128,6 @@ type Game struct {
 	selectedCreatureID int
 	paused             bool
 	spawnMutRate       float32
-	spawnMutDragging   bool
 	history            [historyLen]histSample
 	histHead           int
 	histCount          int
@@ -165,11 +164,12 @@ var UnitSize int = 2
 
 func NewGame(sim SimulationState) *Game {
 	tt, _ := opentype.Parse(fonts.MPlus1pRegular_ttf)
-	statFont, _ := opentype.NewFace(tt, &opentype.FaceOptions{
+	rawFace, _ := opentype.NewFace(tt, &opentype.FaceOptions{
 		Size:    16,
 		DPI:     72,
 		Hinting: font.HintingFull,
 	})
+	statFont := textv2.NewGoXFace(rawFace)
 
 	wImg := ebiten.NewImage(1, 1)
 	wImg.Fill(color.White)
@@ -651,10 +651,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// massRange := float64(g.maxCreatureMass) - float64(g.minCreatureMass)
 
 	vertsPerCreature := 1 + len(g.unitCircle)
-	maxVerts := 1 + len(g.unitCircle)
-	if maxVerts < 3 {
-		maxVerts = 3
-	}
 	flushCreatures := func() {
 		if len(g.creatureVs) > 0 {
 			g.worldLayer.DrawTriangles(g.creatureVs, g.creatureIs, g.whiteImage, nil)
@@ -726,10 +722,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	flushCreatures()
-
+	// Draw FOV cone before creatures so it renders under the selected creature.
+	// FillPath is lazy: its callback fires when worldLayer.DrawTriangles is called
+	// inside flushCreatures(), ensuring the cone is composited first.
 	if g.selectedCreatureID != -1 {
-		g.drawSelectionHighlight(g.worldLayer)
 		if g.currentSnapshot != nil {
 			if idx, found := g.lookup[g.selectedCreatureID]; found {
 				view := g.currentSnapshot.Creatures[idx]
@@ -738,6 +734,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}, t)
 			}
 		}
+	}
+
+	flushCreatures()
+
+	if g.selectedCreatureID != -1 {
+		g.drawSelectionHighlight(g.worldLayer)
 	}
 
 	// Apply camera transform: blit world to screen.
@@ -811,28 +813,26 @@ func (g *Game) drawFOVCones(img *ebiten.Image, views map[int]simulation.Creature
 		path.MoveTo(cx, cy)
 		path.Arc(cx, cy, r, float32(cv.Heading-halfFOV), float32(cv.Heading+halfFOV), vector.Clockwise)
 		path.Close()
-		vs, is := path.AppendVerticesAndIndicesForFilling(nil, nil)
-		clr := color.RGBA{
-			R: uint8(cv.R),
-			G: uint8(cv.G),
-			B: uint8(cv.B),
-			A: 40,
-		}
-		for i := range vs {
-			vs[i].ColorR, vs[i].ColorG, vs[i].ColorB, vs[i].ColorA = float32(clr.R)/255, float32(clr.G)/255, float32(clr.B)/255, 0.15
-		}
-		img.DrawTriangles(vs, is, g.whiteImage, nil)
+		const alpha = float32(0.25)
+		var cs ebiten.ColorScale
+		cs.Scale(float32(cv.R)/255*alpha, float32(cv.G)/255*alpha, float32(cv.B)/255*alpha, alpha)
+		vector.FillPath(img, &path, nil, &vector.DrawPathOptions{ColorScale: cs})
 	}
 }
 
 func (g *Game) Layout(w, h int) (int, int) { return w, h }
 
-func (g *Game) addStatLine(img *ebiten.Image, desc string, val string, row int) {
-	x := img.Bounds().Dx() - 200
-	text.Draw(img, fmt.Sprintf("%s: %s", desc, val), g.statFont, x, 20*row+3, color.White)
+func drawText(dst *ebiten.Image, str string, face *textv2.GoXFace, x, y int, clr color.Color) {
+	op := &textv2.DrawOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	op.ColorScale.ScaleWithColor(clr)
+	textv2.Draw(dst, str, face, op)
 }
 
-func foodKey(x, y float64) string { return fmt.Sprintf("%f,%f", x, y) }
+func (g *Game) addStatLine(img *ebiten.Image, desc string, val string, row int) {
+	x := img.Bounds().Dx() - 200
+	drawText(img, fmt.Sprintf("%s: %s", desc, val), g.statFont, x, 20*row+3, color.White)
+}
 
 func (g *Game) trySelectCreature(mx, my int) {
 	sw, sh := ebiten.WindowSize()
@@ -969,7 +969,7 @@ func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDet
 	const barLabelOffset = 14.0
 
 	// 1. Draw Title
-	text.Draw(screen, "GENETIC PROFILE", g.statFont, int(x), int(y)-12, color.RGBA{120, 120, 180, 255})
+	drawText(screen, "GENETIC PROFILE", g.statFont, int(x), int(y)-12, color.RGBA{120, 120, 180, 255})
 
 	// 2. Draw Gradient Square
 	step := float32(2)
@@ -980,7 +980,7 @@ func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDet
 		for rx := float32(0); rx < chartSize; rx += step {
 			// X-axis: Physicality (Red). 0.0 (Left) to 1.0 (Right)
 			rVal := uint8((rx/chartSize)*185) + 70
-			vector.DrawFilledRect(screen, x+rx, y+gy, step, step, color.RGBA{rVal, gVal, d.B, 255}, false)
+			vector.FillRect(screen, x+rx, y+gy, step, step, color.RGBA{rVal, gVal, d.B, 255}, false)
 		}
 	}
 
@@ -1010,11 +1010,11 @@ func (g *Game) drawPhenotypeChart(screen *ebiten.Image, d simulation.CreatureDet
 	for i, m := range meters {
 		currX := mx + float32(i)*spacing
 		// Background track
-		vector.DrawFilledRect(screen, currX, y, barWidth, chartSize, color.RGBA{20, 20, 25, 255}, false)
+		vector.FillRect(screen, currX, y, barWidth, chartSize, color.RGBA{20, 20, 25, 255}, false)
 		// Foreground fill
-		vector.DrawFilledRect(screen, currX, y+(chartSize-(m.val*chartSize)), barWidth, m.val*chartSize, m.clr, false)
+		vector.FillRect(screen, currX, y+(chartSize-(m.val*chartSize)), barWidth, m.val*chartSize, m.clr, false)
 		// Label
-		text.Draw(screen, m.lbl, g.statFont, int(currX)+2, int(y+chartSize)+barLabelOffset, m.clr)
+		drawText(screen, m.lbl, g.statFont, int(currX)+2, int(y+chartSize)+barLabelOffset, m.clr)
 	}
 }
 
@@ -1127,9 +1127,9 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 	py := float32(nnPanelY)
 
 	// Panel background.
-	vector.DrawFilledRect(screen, px, py, nnPanelW, panelH, color.RGBA{8, 10, 22, 215}, false)
+	vector.FillRect(screen, px, py, nnPanelW, panelH, color.RGBA{8, 10, 22, 215}, false)
 	vector.StrokeRect(screen, px, py, nnPanelW, panelH, 1, color.RGBA{90, 90, 150, 255}, false)
-	text.Draw(screen, "NEURAL NETWORK", g.statFont, int(px)+nnPadding, int(py)+14, color.RGBA{120, 120, 180, 255})
+	drawText(screen, "NEURAL NETWORK", g.statFont, int(px)+nnPadding, int(py)+14, color.RGBA{120, 120, 180, 255})
 
 	contentTop := py + float32(nnTitleH+nnPadding)
 	contentH := panelH - float32(nnTitleH+nnPadding*2) - float32(nnFooterH)
@@ -1186,13 +1186,10 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 			loopY := neuronY[e.SourceID] - nnNodeR*2
 			var path vector.Path
 			path.Arc(loopX, loopY, nnNodeR*1.5, 0, 2*math.Pi, vector.Clockwise)
-			vs, is := path.AppendVerticesAndIndicesForStroke(nil, nil, &vector.StrokeOptions{Width: 1})
 			lc := nnEdgeColor(e.Weight)
-			cr, cg, cb, ca := float32(lc.R)/255, float32(lc.G)/255, float32(lc.B)/255, float32(lc.A)/255
-			for i := range vs {
-				vs[i].ColorR, vs[i].ColorG, vs[i].ColorB, vs[i].ColorA = cr, cg, cb, ca
-			}
-			screen.DrawTriangles(vs, is, g.whiteImage, nil)
+			var cs ebiten.ColorScale
+			cs.ScaleWithColor(lc)
+			vector.StrokePath(screen, &path, &vector.StrokeOptions{Width: 1}, &vector.DrawPathOptions{ColorScale: cs})
 			continue
 		}
 
@@ -1203,7 +1200,7 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 	for _, s := range sensors {
 		nx := px + float32(nnColSensor)
 		ny := sensorY[s]
-		vector.DrawFilledCircle(screen, nx, ny, nnNodeR, color.RGBA{80, 150, 220, 255}, false)
+		vector.FillCircle(screen, nx, ny, nnNodeR, color.RGBA{80, 150, 220, 255}, false)
 
 		lbl := nnSensorName(s)
 		lblW := float32(len(lbl)) * 8
@@ -1211,7 +1208,7 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 		if labelX < px+4 {
 			labelX = px + 4
 		}
-		text.Draw(screen, lbl, g.statFont, int(labelX), int(ny)+5, color.RGBA{160, 180, 220, 255})
+		drawText(screen, lbl, g.statFont, int(labelX), int(ny)+5, color.RGBA{160, 180, 220, 255})
 
 		if val, ok := nn.SensorValues[s]; ok {
 			barMaxW := float32(nnBarMaxW)
@@ -1220,7 +1217,7 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 			centerX := barX + (barMaxW / 2)
 
 			// 1. Draw Background Track (Dark)
-			vector.DrawFilledRect(screen, barX, barY, barMaxW, float32(nnBarH), color.RGBA{20, 40, 70, 180}, false)
+			vector.FillRect(screen, barX, barY, barMaxW, float32(nnBarH), color.RGBA{20, 40, 70, 180}, false)
 
 			// 2. Draw Center "Zero" Line (Optional but helpful for visual reference)
 			vector.StrokeLine(screen, centerX, barY, centerX, barY+float32(nnBarH), 1, color.RGBA{255, 255, 255, 50}, false)
@@ -1252,7 +1249,7 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 
 			// 4. Draw the actual value bar
 			if halfWidth > 0 {
-				vector.DrawFilledRect(screen, fillX, barY, halfWidth, float32(nnBarH), fillColor, false)
+				vector.FillRect(screen, fillX, barY, halfWidth, float32(nnBarH), fillColor, false)
 			}
 		}
 	}
@@ -1261,7 +1258,7 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 	for _, id := range neurons {
 		nx := px + neuronColX[id]
 		ny := neuronY[id]
-		vector.DrawFilledCircle(screen, nx, ny, nnNodeR, color.RGBA{200, 180, 80, 255}, false)
+		vector.FillCircle(screen, nx, ny, nnNodeR, color.RGBA{200, 180, 80, 255}, false)
 	}
 
 	// Action nodes + left-aligned labels + right-anchored activity bars.
@@ -1270,19 +1267,19 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 		ay := actionY[a]
 
 		// Draw the node dot
-		vector.DrawFilledCircle(screen, ax, ay, nnNodeR, color.RGBA{220, 100, 80, 255}, false)
+		vector.FillCircle(screen, ax, ay, nnNodeR, color.RGBA{220, 100, 80, 255}, false)
 
 		// Draw the label
 		lbl := nnActionName(a)
-		text.Draw(screen, lbl, g.statFont, int(ax)+10, int(ay)+5, color.RGBA{220, 160, 150, 255})
+		drawText(screen, lbl, g.statFont, int(ax)+10, int(ay)+5, color.RGBA{220, 160, 150, 255})
 
 		if val, ok := nn.ActionValues[a]; ok {
 			barX := px + float32(nnPanelW) - float32(nnPadding) - float32(nnBarMaxW)
 			barY := ay - float32(nnBarH)/2
 
-			norm := float32(val / (1.0 + math.Abs(val)))
+			norm := float32(float64(val) / (1.0 + math.Abs(float64(val))))
 
-			vector.DrawFilledRect(screen, barX, barY, float32(nnBarMaxW), float32(nnBarH), color.RGBA{60, 25, 15, 180}, false)
+			vector.FillRect(screen, barX, barY, float32(nnBarMaxW), float32(nnBarH), color.RGBA{60, 25, 15, 180}, false)
 
 			centerX := barX + (float32(nnBarMaxW) / 2)
 			vector.StrokeLine(screen, centerX, barY, centerX, barY+float32(nnBarH), 1, color.RGBA{255, 255, 255, 50}, false)
@@ -1305,14 +1302,14 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 					absFillW = -absFillW
 				}
 
-				vector.DrawFilledRect(screen, drawX, barY, absFillW, float32(nnBarH), fc, false)
+				vector.FillRect(screen, drawX, barY, absFillW, float32(nnBarH), fc, false)
 			}
 		}
 	}
 
 	const baseNeuroplasticity = 0.01
 	footerY := int(py+panelH) - nnPadding - 2
-	text.Draw(screen, fmt.Sprintf("Learning Rate: %.4f", baseNeuroplasticity*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
+	drawText(screen, fmt.Sprintf("Learning Rate: %.4f", baseNeuroplasticity*d.Dopamine), g.statFont, int(px)+nnPadding, footerY, color.RGBA{120, 120, 180, 220})
 }
 func nnEdgeColor(w float32) color.RGBA {
 	absW := float32(math.Abs(float64(w)))
@@ -1342,7 +1339,7 @@ func nnSensorName(id byte) string {
 		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd", "KinshipNearest",
 		"Mass %", "Blocked", "Prey", "Threat Ang",
 		"Prey Ang", "Wall Prox", "Digest", "Food/Cap",
-		"Juvenile", "EnergyDelta", "Temp", "TempDelta",
+		"Juvenile", "EnergyDelta", "Temp", "TempDelta", "Touch",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -1370,17 +1367,6 @@ func clamp(v float32) float32 {
 		return 1
 	}
 	return v
-}
-
-func (g *Game) applySpawnMutSlider(mx int) {
-	t := float32(mx-spawnMutTrackX) / float32(spawnMutTrackW)
-	if t < 0 {
-		t = 0
-	} else if t > 1 {
-		t = 1
-	}
-	g.spawnMutRate = float32(spawnMutRateMin + float64(t)*(spawnMutRateMax-spawnMutRateMin))
-	g.sim.SetSpawnMutationRate(g.spawnMutRate)
 }
 
 // drawTemperatureBackground paints a vertical temperature gradient onto worldLayer.
@@ -1418,18 +1404,18 @@ func (g *Game) drawTemperatureBackground() {
 		r := uint8(float32(coldR)*(1-t) + float32(warmR)*t)
 		gv := uint8(float32(coldG)*(1-t) + float32(warmG)*t)
 		b := uint8(float32(coldB)*(1-t) + float32(warmB)*t)
-		vector.DrawFilledRect(g.worldLayer, 0, y, worldW, bandH, color.RGBA{r, gv, b, 255}, false)
+		vector.FillRect(g.worldLayer, 0, y, worldW, bandH, color.RGBA{r, gv, b, 255}, false)
 	}
-	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 40}, false)
+	vector.FillRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 40}, false)
 	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 60}, false)
 }
 
 func (g *Game) drawSpawnMutSlider(screen *ebiten.Image) {
-	vector.DrawFilledRect(screen, spawnMutSliderX, spawnMutSliderY, spawnMutSliderW, spawnMutSliderH, color.RGBA{30, 30, 50, 220}, false)
-	vector.DrawFilledRect(screen, spawnMutTrackX, spawnMutTrackY, spawnMutTrackW, spawnMutTrackH, color.RGBA{60, 60, 80, 255}, false)
+	vector.FillRect(screen, spawnMutSliderX, spawnMutSliderY, spawnMutSliderW, spawnMutSliderH, color.RGBA{30, 30, 50, 220}, false)
+	vector.FillRect(screen, spawnMutTrackX, spawnMutTrackY, spawnMutTrackW, spawnMutTrackH, color.RGBA{60, 60, 80, 255}, false)
 	t := (float64(g.spawnMutRate) - spawnMutRateMin) / (spawnMutRateMax - spawnMutRateMin)
-	vector.DrawFilledRect(screen, float32(spawnMutTrackX), float32(spawnMutTrackY), float32(spawnMutTrackW)*float32(t), float32(spawnMutTrackH), color.RGBA{80, 140, 210, 255}, false)
-	text.Draw(screen, fmt.Sprintf("Mut: %.4f", g.spawnMutRate), g.statFont, spawnMutSliderX+5, spawnMutSliderY+17, color.White)
+	vector.FillRect(screen, float32(spawnMutTrackX), float32(spawnMutTrackY), float32(spawnMutTrackW)*float32(t), float32(spawnMutTrackH), color.RGBA{80, 140, 210, 255}, false)
+	drawText(screen, fmt.Sprintf("Mut: %.4f", g.spawnMutRate), g.statFont, spawnMutSliderX+5, spawnMutSliderY+17, color.White)
 }
 
 // drawHistoryGraph renders a semi-transparent line graph of population and food
@@ -1441,18 +1427,18 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 
 	panelFill := color.RGBA{8, 10, 22, 160}
 	panelStroke := color.RGBA{50, 60, 90, 180}
-	vector.DrawFilledRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH, panelFill, false)
+	vector.FillRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH, panelFill, false)
 	vector.StrokeRect(screen, graphPanelX, graphPanelY, graphPanelW, graphPanelH, 1, panelStroke, false)
 
 	popColor := color.RGBA{100, 180, 255, 255}
 	foodColor := color.RGBA{80, 210, 100, 255}
 	energyColor := color.RGBA{255, 230, 50, 255}
 
-	text.Draw(screen, fmt.Sprintf("Pop: %d", g.sim.PopulationCount()), g.statFont,
+	drawText(screen, fmt.Sprintf("Pop: %d", g.sim.PopulationCount()), g.statFont,
 		graphPanelX+graphPad, graphPanelY+15, popColor)
-	text.Draw(screen, fmt.Sprintf("Food: %d", g.sim.FoodCount()), g.statFont,
+	drawText(screen, fmt.Sprintf("Food: %d", g.sim.FoodCount()), g.statFont,
 		graphPanelX+graphPad, graphPanelY+31, foodColor)
-	text.Draw(screen, fmt.Sprintf("Energy: %.2f %", (g.sim.TotalEnergy()/g.sim.TargetEnergy()*100)), g.statFont,
+	drawText(screen, fmt.Sprintf("Energy: %.2f%%", (g.sim.TotalEnergy()/g.sim.TargetEnergy()*100)), g.statFont,
 		graphPanelX+graphPad, graphPanelY+47, energyColor)
 
 	gx := float32(graphPanelX + graphPad)
@@ -1522,10 +1508,7 @@ func (g *Game) drawGraphLine(screen *ebiten.Image, gx, gy, gw, gh float32, steps
 		}
 	}
 
-	vs, is := path.AppendVerticesAndIndicesForStroke(nil, nil, &vector.StrokeOptions{Width: 1.5})
-	cr, cg, cb, ca := float32(clr.R)/255, float32(clr.G)/255, float32(clr.B)/255, float32(clr.A)/255
-	for i := range vs {
-		vs[i].ColorR, vs[i].ColorG, vs[i].ColorB, vs[i].ColorA = cr, cg, cb, ca
-	}
-	screen.DrawTriangles(vs, is, g.whiteImage, nil)
+	var cs ebiten.ColorScale
+	cs.ScaleWithColor(clr)
+	vector.StrokePath(screen, &path, &vector.StrokeOptions{Width: 1.5}, &vector.DrawPathOptions{ColorScale: cs})
 }

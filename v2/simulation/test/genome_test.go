@@ -2,7 +2,6 @@ package test
 
 import (
 	"biogo/v2/simulation"
-	"math/rand"
 	"testing"
 )
 
@@ -63,7 +62,6 @@ func TestGeneCopy(t *testing.T) {
 }
 
 func TestMutateChangesGenome(t *testing.T) {
-	rand.Seed(42)
 	p := defaultParams()
 	p.BaseMutationRate = 1.0 // force mutation on every gene
 	g := simulation.MakeRandomGenome(p)
@@ -108,8 +106,8 @@ func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 	p.MaxMass = 50
 	for i := 0; i < 100; i++ {
 		g := simulation.MakeRandomGenome(p)
-		if g.Mass < 3 || g.Mass > p.MaxMass {
-			t.Errorf("Mass %d outside [3, %d]", g.Mass, p.MaxMass)
+		if g.Mass < 3 || float64(g.Mass) > p.MaxMass {
+			t.Errorf("Mass %d outside [3, %g]", g.Mass, p.MaxMass)
 		}
 		if g.MinMass < 1 {
 			t.Errorf("MinMass %d below 1", g.MinMass)

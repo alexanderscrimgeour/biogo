@@ -4,9 +4,8 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font"
 )
 
 var (
@@ -24,7 +23,7 @@ type Button struct {
 	OnClick    func()
 }
 
-func (b *Button) Draw(screen *ebiten.Image, font font.Face) {
+func (b *Button) Draw(screen *ebiten.Image, font *textv2.GoXFace) {
 	displayColor := b.Color
 	mx, my := ebiten.CursorPosition()
 	isHovered := mx >= b.X && mx <= b.X+b.W && my >= b.Y && my <= b.Y+b.H
@@ -32,8 +31,11 @@ func (b *Button) Draw(screen *ebiten.Image, font font.Face) {
 	if isHovered && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		displayColor = lighten(b.Color, 0.1)
 	}
-	vector.DrawFilledRect(screen, float32(b.X), float32(b.Y), float32(b.W), float32(b.H), displayColor, false)
-	text.Draw(screen, b.Label, font, b.X+5, b.Y+17, b.LabelColor)
+	vector.FillRect(screen, float32(b.X), float32(b.Y), float32(b.W), float32(b.H), displayColor, false)
+	op := &textv2.DrawOptions{}
+	op.GeoM.Translate(float64(b.X+5), float64(b.Y+17))
+	op.ColorScale.ScaleWithColor(b.LabelColor)
+	textv2.Draw(screen, b.Label, font, op)
 }
 
 func (b *Button) IsClicked(mx, my int) bool {
