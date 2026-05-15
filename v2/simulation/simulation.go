@@ -132,6 +132,9 @@ func (s *Simulation) step() {
 	if cap(s.Population.ReproductionQueue) < popSize {
 		s.Population.ReproductionQueue = make([]ReproductionInstruction, 0, popSize)
 	}
+	if cap(s.Population.FeedQueue) < popSize {
+		s.Population.FeedQueue = make([]FeedInstruction, 0, popSize)
+	}
 
 	// Each goroutine writes to its own pendingInstructions; no shared mutation.
 	results := make([]pendingInstructions, n)
@@ -155,12 +158,15 @@ func (s *Simulation) step() {
 		s.Population.AttackQueue = append(s.Population.AttackQueue, results[i].attack...)
 		s.Population.ReproductionQueue = append(s.Population.ReproductionQueue, results[i].reproduction...)
 		wantMate = append(wantMate, results[i].mate...)
+		s.Population.FeedQueue = append(s.Population.FeedQueue, results[i].feed...)
 	}
 	s.pairMates(wantMate)
 
-	s.Population.ProcessMoveQueue(s.World, s.Params)
+	s.Population.ProcessMoveQueue(s.World)
+	s.Population.ProcessEating(s.World, s.Params)
 	s.processCollisions()
 	s.Population.ProcessAttackQueue(s.World, s.Params)
+	s.Population.ProcessFeedQueue(s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params)
 
@@ -222,10 +228,12 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if math.Abs(float64(level)) > 0.75 {
 			// Resting pays fraction of the basal metabolic rate: refund the base drain
 			// already charged this tick, then re-charge the lower resting rate.
+			massRatio := c.Mass / s.Params.MaxMass
+			restingCostFactor := 0.1 - (massRatio * 0.08)
 			rate := c.MetabolicRate(s.Params, temp)
 
 			c.GainEnergy(rate, s.Params)
-			c.DrainEnergy(rate * 0.1)
+			c.DrainEnergy(rate * float32(restingCostFactor))
 			c.IsResting = true
 
 			c.LastAction = appendActionString(c.LastAction, "Resting")
@@ -255,9 +263,9 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	}
 
 	if IsActionEnabled(ATTACK) {
-		level := actionLevels[ATTACK]
-		if math.Abs(float64(level)) > 0.8 {
-			pending.attack = append(pending.attack, AttackInstruction{c})
+		level := math.Abs(float64(actionLevels[ATTACK]))
+		if level > 0.7 {
+			pending.attack = append(pending.attack, AttackInstruction{c, level})
 			c.LastAction = appendActionString(c.LastAction, "Attacking")
 		}
 	}
@@ -293,6 +301,43 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			}
 		}
 	}
+
+	if IsActionEnabled(FEED) {
+		level := actionLevels[FEED]
+		if (level > 0.5 && c.Stomach > 0) || (level < -0.5) {
+			fwdX, fwdY := world.HeadingToVec(c.Heading)
+			bestDistSq := math.MaxFloat64
+			var recipient *Creature
+			for _, id := range c.Sensors.SightCreatureIDs {
+				if id == c.Id {
+					continue
+				}
+				other, ok := s.Population.Creatures[id]
+				if !ok || !other.Alive {
+					continue
+				}
+				dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
+				d2 := dx*dx + dy*dy
+				if d2 == 0 || d2 >= bestDistSq {
+					continue
+				}
+				dist := math.Sqrt(d2)
+				dot := (float64(fwdX)*dx + float64(fwdY)*dy) / dist
+				if dot < c.halfFOVCos {
+					continue
+				}
+				if dist <= c.Radius+other.Radius {
+					bestDistSq = d2
+					recipient = other
+				}
+			}
+			if recipient != nil {
+				pending.feed = append(pending.feed, FeedInstruction{c, recipient, level})
+				c.LastAction = appendActionString(c.LastAction, "Feeding")
+			}
+		}
+	}
+
 	if !c.IsResting {
 		// Rotation: positive level turns CCW (left), negative turns CW (right).
 		rotateAmount := float64(0)
@@ -370,7 +415,6 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 	})
 
 	paired := make(map[int]bool, len(candidates))
-	matingRadiusSq := s.Params.MatingRadius * s.Params.MatingRadius
 
 	for i, c := range candidates {
 		if paired[c.Id] || !c.Alive {
@@ -389,6 +433,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 			dx := other.Loc.X - c.Loc.X
 			dy := other.Loc.Y - c.Loc.Y
 			d2 := dx*dx + dy*dy
+			matingRadiusSq := (c.SightDistance + s.Params.MatingRadius) * (c.SightDistance + s.Params.MatingRadius)
 
 			if d2 <= matingRadiusSq {
 				similarity := c.cachedSimilarity(other.Id, other)

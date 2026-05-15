@@ -31,6 +31,7 @@ const (
 	LEARNING_RATE
 	LEARNING_THRESHOLD
 	MASS_SPLIT_RATIO
+	DIGESTION_TYPE
 	// NEUROLOGY - not counted
 	GENOME_STRUCTURE_COUNT
 )
@@ -62,6 +63,7 @@ type Genome struct {
 	Neuroplasticity   byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
 	LearningThreshold byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
 	MassSplitRatio    byte // fraction of mass (and energy) transferred to daughter on asexual reproduction; maps to [0, 0.5]
+	DigestionType     byte // diet specialisation: 0 = pure herbivore, 255 = pure carnivore
 	Brain             []Gene
 
 	// flat byte cache for GenomeSimilarity; recomputed after any mutation or brain change.
@@ -76,7 +78,7 @@ type Genome struct {
 // stamps a new uid so per-creature similarity caches can detect stale entries.
 // Call this after any field change or Brain modification.
 func (g *Genome) recomputeBytes() {
-	need := 16 + len(g.Brain)*5
+	need := 17 + len(g.Brain)*5
 	if cap(g.bytes) >= need {
 		g.bytes = g.bytes[:need]
 	} else {
@@ -99,8 +101,9 @@ func (g *Genome) recomputeBytes() {
 	b[13] = g.Neuroplasticity
 	b[14] = g.LearningThreshold
 	b[15] = g.MassSplitRatio
+	b[16] = g.DigestionType
 	for i, gn := range g.Brain {
-		off := 16 + i*5
+		off := 17 + i*5
 		b[off] = gn.SourceID
 		b[off+1] = gn.SourceType
 		b[off+2] = gn.SinkID
@@ -115,7 +118,7 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio)
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
 	for _, gene := range g.Brain {
 		str += gene.String()
 	}
@@ -127,7 +130,7 @@ func (g Gene) BinaryString() string {
 }
 
 func (g Genome) BinaryString() string {
-	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio)
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
 	for _, gene := range g.Brain {
 		str += gene.BinaryString()
 	}
@@ -135,7 +138,7 @@ func (g Genome) BinaryString() string {
 }
 
 func (g Genome) ToByteArray() []byte {
-	arr := make([]byte, 0, 16+len(g.Brain)*4)
+	arr := make([]byte, 0, 17+len(g.Brain)*4)
 	arr = append(arr, g.OscPeriod)
 	arr = append(arr, g.SightDistance)
 	arr = append(arr, g.FieldOfView)
@@ -152,6 +155,7 @@ func (g Genome) ToByteArray() []byte {
 	arr = append(arr, g.Neuroplasticity)
 	arr = append(arr, g.LearningThreshold)
 	arr = append(arr, g.MassSplitRatio)
+	arr = append(arr, g.DigestionType)
 	for _, n := range g.Brain {
 		arr = append(arr, n.SourceType)
 		arr = append(arr, n.SourceID)
@@ -166,7 +170,7 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio)
+	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
 	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
@@ -215,6 +219,7 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		Neuroplasticity:   utils.MakeRandomByte(),
 		LearningThreshold: utils.MakeRandomByte(),
 		MassSplitRatio:    utils.MakeRandomByte(),
+		DigestionType:     utils.MakeRandomByte(),
 	}
 	maxMinMass := (g.Mass - 1) / 2
 	if maxMinMass < 1 {
@@ -300,6 +305,7 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) 
 	mutateTarget(&g.Neuroplasticity, 0, 255, 10)
 	mutateTarget(&g.LearningThreshold, 0, 255, 10)
 	mutateTarget(&g.MassSplitRatio, 0, 255, 15)
+	mutateTarget(&g.DigestionType, 0, 255, 15)
 
 	for j := 0; j < len(g.Brain); j++ {
 		if rand.Float32() < mutationRate {
@@ -377,6 +383,7 @@ func Crossover(g1, g2 *Genome, p *Parameters, radiationMult float32) *Genome {
 		Neuroplasticity:   pickByte(g1.Neuroplasticity, g2.Neuroplasticity),
 		LearningThreshold: pickByte(g1.LearningThreshold, g2.LearningThreshold),
 		MassSplitRatio:    pickByte(g1.MassSplitRatio, g2.MassSplitRatio),
+		DigestionType:     pickByte(g1.DigestionType, g2.DigestionType),
 	}
 
 	// --- GROUPED TRAITS ---

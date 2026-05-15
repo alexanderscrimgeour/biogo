@@ -88,17 +88,13 @@ func (h *SpatialHash) Move(id int, oldPos, newPos Position) {
 	h.cells[newI] = append(h.cells[newI], id)
 }
 
-// InRadius fills buffer with the IDs of all active entries within radius of
-// center. positions[id] gives the entity's location; active[id] gates inclusion.
-func (h *SpatialHash) InRadius(center Position, radius float64, positions []Position, active []bool, buffer []int) []int {
-	buffer = buffer[:0]
-	rSq := radius * radius
-
-	minBx := int((center.X-radius)*h.invCell)
-	maxBx := int((center.X+radius)*h.invCell)
-	minBy := int((center.Y-radius)*h.invCell)
-	maxBy := int((center.Y+radius)*h.invCell)
-
+// cellBounds returns the clamped grid-cell bounding box for a circle query of
+// halfExtent (radius or maxDist) centred at center.
+func (h *SpatialHash) cellBounds(center Position, halfExtent float64) (minBx, maxBx, minBy, maxBy int) {
+	minBx = int((center.X - halfExtent) * h.invCell)
+	maxBx = int((center.X + halfExtent) * h.invCell)
+	minBy = int((center.Y - halfExtent) * h.invCell)
+	maxBy = int((center.Y + halfExtent) * h.invCell)
 	if minBx < 0 {
 		minBx = 0
 	}
@@ -111,7 +107,15 @@ func (h *SpatialHash) InRadius(center Position, radius float64, positions []Posi
 	if maxBy >= h.numY {
 		maxBy = h.numY - 1
 	}
+	return
+}
 
+// InRadius fills buffer with the IDs of all active entries within radius of
+// center. positions[id] gives the entity's location; active[id] gates inclusion.
+func (h *SpatialHash) InRadius(center Position, radius float64, positions []Position, active []bool, buffer []int) []int {
+	buffer = buffer[:0]
+	rSq := radius * radius
+	minBx, maxBx, minBy, maxBy := h.cellBounds(center, radius)
 	for bx := minBx; bx <= maxBx; bx++ {
 		base := bx * h.numY
 		for by := minBy; by <= maxBy; by++ {
@@ -137,25 +141,7 @@ func (h *SpatialHash) InCone(center Position, heading, halfFOVCos, maxDist float
 	buffer = buffer[:0]
 	fwdX, fwdY := HeadingToVec(heading)
 	rSq := maxDist * maxDist
-
-	minBx := int((center.X-maxDist)*h.invCell)
-	maxBx := int((center.X+maxDist)*h.invCell)
-	minBy := int((center.Y-maxDist)*h.invCell)
-	maxBy := int((center.Y+maxDist)*h.invCell)
-
-	if minBx < 0 {
-		minBx = 0
-	}
-	if maxBx >= h.numX {
-		maxBx = h.numX - 1
-	}
-	if minBy < 0 {
-		minBy = 0
-	}
-	if maxBy >= h.numY {
-		maxBy = h.numY - 1
-	}
-
+	minBx, maxBx, minBy, maxBy := h.cellBounds(center, maxDist)
 	for bx := minBx; bx <= maxBx; bx++ {
 		base := bx * h.numY
 		for by := minBy; by <= maxBy; by++ {

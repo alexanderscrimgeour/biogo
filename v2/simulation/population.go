@@ -16,6 +16,7 @@ type Population struct {
 	MoveQueue         []MoveInstruction
 	AttackQueue       []AttackInstruction
 	ReproductionQueue []ReproductionInstruction
+	FeedQueue         []FeedInstruction
 }
 
 type DeathInstruction struct {
@@ -35,11 +36,13 @@ type MoveInstruction struct {
 
 type AttackInstruction struct {
 	Creature *Creature
+	Level    float64
 }
 
 type FeedInstruction struct {
-	Creature *Creature
-	Level    float32
+	Creature  *Creature // donor
+	Recipient *Creature
+	Level     float32 // raw action level; proportion = tanh(level)
 }
 
 // pendingInstructions accumulates instructions produced by a single goroutine's
@@ -50,6 +53,7 @@ type pendingInstructions struct {
 	attack       []AttackInstruction
 	reproduction []ReproductionInstruction
 	mate         []*Creature // creatures firing the MATE action this tick
+	feed         []FeedInstruction
 }
 
 func NewPopulation(p *Parameters) *Population {
@@ -60,6 +64,7 @@ func NewPopulation(p *Parameters) *Population {
 		MoveQueue:         []MoveInstruction{},
 		AttackQueue:       []AttackInstruction{},
 		ReproductionQueue: []ReproductionInstruction{},
+		FeedQueue:         []FeedInstruction{},
 	}
 }
 
@@ -67,8 +72,8 @@ func (p *Population) QueueForMove(creature *Creature, newLoc world.Position, mov
 	p.MoveQueue = append(p.MoveQueue, MoveInstruction{creature, newLoc, moveAmount})
 }
 
-func (p *Population) QueueForAttack(creature *Creature) {
-	p.AttackQueue = append(p.AttackQueue, AttackInstruction{creature})
+func (p *Population) QueueForAttack(creature *Creature, level float64) {
+	p.AttackQueue = append(p.AttackQueue, AttackInstruction{creature, level})
 }
 
 func (p *Population) QueueForDeath(creature *Creature) {
@@ -105,95 +110,91 @@ func (p *Population) AliveCount() int {
 	return len(p.aliveIDs)
 }
 
-// ProcessMoveQueue moves each queued creature to its target position and
-// consumes the nearest food item within interaction radius if one is present.
-func (p *Population) ProcessMoveQueue(w *world.World, params *Parameters) {
+// ProcessMoveQueue moves each queued creature to its target position.
+func (p *Population) ProcessMoveQueue(w *world.World) {
 	for _, instruction := range p.MoveQueue {
 		c := instruction.Creature
 		if !c.Alive {
 			continue
 		}
-		newPos := instruction.Loc
-
 		if instruction.MoveAmount > 0 {
-			halfFOVCos := c.halfFOVCos
-
-			bite := c.BiteSize(params)
-			massRatio := c.Mass / params.MaxMass
-			if massRatio > 1.0 {
-				massRatio = 1.0
-			}
-
-			// Consume the nearest food item within interaction radius.
-			// If the item has more mass than the bite or the remaining stomach space,
-			// only the appropriate portion is taken and the item stays in the world
-			// with its remaining mass.
-
-			stomachSpace := c.StomachCapacity(params) - c.Stomach
-			if stomachSpace > 0 {
-				foodIDs := w.GetFoodInCone(newPos, c.Heading, halfFOVCos, c.Radius, c.SightFoodBuffer)
-				if len(foodIDs) > 0 {
-					closestID := foodIDs[0]
-					closestDistSq := math.MaxFloat64
-					for _, fid := range foodIDs {
-						fpos := w.GetFoodPos(fid)
-						dx := fpos.X - newPos.X
-						dy := fpos.Y - newPos.Y
-						d2 := dx*dx + dy*dy
-						if d2 < closestDistSq {
-							closestDistSq = d2
-							closestID = fid
-						}
-					}
-					foodMass := w.GetFoodMass(closestID)
-					eaten := bite
-					if eaten > float64(foodMass) {
-						eaten = float64(foodMass)
-					}
-					if eaten > stomachSpace {
-						eaten = stomachSpace
-					}
-					c.Stomach += eaten
-					stomachSpace -= eaten
-					w.ReduceFoodMass(closestID, float32(eaten))
-				}
-			}
-
-			// Eat the nearest meat item within interaction radius.
-			stomachSpace = c.StomachCapacity(params) - c.Stomach
-			if stomachSpace > 0 {
-				meatIDs := w.GetMeatInCone(newPos, c.Heading, halfFOVCos, c.Radius, c.SightMeatBuffer)
-				if len(meatIDs) > 0 {
-					closestMeatID := meatIDs[0]
-					closestMeatDistSq := math.MaxFloat64
-					for _, mid := range meatIDs {
-						mpos := w.GetMeatPos(mid)
-						dx := mpos.X - newPos.X
-						dy := mpos.Y - newPos.Y
-						d2 := dx*dx + dy*dy
-						if d2 < closestMeatDistSq {
-							closestMeatDistSq = d2
-							closestMeatID = mid
-						}
-					}
-					meatMass := w.GetMeatMass(closestMeatID)
-					eaten := bite
-					if eaten > float64(meatMass) {
-						eaten = float64(meatMass)
-					}
-					if eaten > stomachSpace {
-						eaten = stomachSpace
-					}
-					c.Stomach += eaten
-					w.ReduceMeatMass(closestMeatID, float32(eaten))
-				}
-			}
+			w.MoveCreature(c.Id, instruction.Loc)
+			c.Loc = instruction.Loc
 		}
-
-		w.MoveCreature(c.Id, newPos)
-		c.Loc = newPos
 	}
 	p.MoveQueue = p.MoveQueue[:0]
+}
+
+// ProcessEating consumes the nearest food/meat within interaction radius for every
+// alive creature. Called after ProcessMoveQueue so positions are up to date.
+func (p *Population) ProcessEating(w *world.World, params *Parameters) {
+	for _, id := range p.aliveIDs {
+		c := p.Creatures[id]
+		if !c.Alive {
+			continue
+		}
+
+		bite := c.BiteSize(params)
+		foodIDs, meatIDs := w.GetFoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoodBuffer, c.SightMeatBuffer)
+		foodEff, meatEff := c.DigestionEfficiencies()
+
+		stomachSpace := c.StomachCapacity(params) - c.Stomach
+		if stomachSpace > 0 && len(foodIDs) > 0 && foodEff > 0 {
+			closestID := foodIDs[0]
+			closestDistSq := math.MaxFloat64
+			for _, fid := range foodIDs {
+				fpos := w.GetFoodPos(fid)
+				dx := fpos.X - c.Loc.X
+				dy := fpos.Y - c.Loc.Y
+				d2 := dx*dx + dy*dy
+				if d2 < closestDistSq {
+					closestDistSq = d2
+					closestID = fid
+				}
+			}
+			foodMass := w.GetFoodMass(closestID)
+			eaten := bite
+			if eaten > float64(foodMass) {
+				eaten = float64(foodMass)
+			}
+			stomachGain := eaten * foodEff
+			if stomachGain > stomachSpace {
+				stomachGain = stomachSpace
+				eaten = stomachSpace / foodEff
+			}
+			c.Stomach += stomachGain
+			stomachSpace -= stomachGain
+			w.ReduceFoodMass(closestID, float32(eaten))
+		}
+
+		stomachSpace = c.StomachCapacity(params) - c.Stomach
+		if stomachSpace > 0 && len(meatIDs) > 0 && meatEff > 0 {
+			closestMeatID := meatIDs[0]
+			closestMeatDistSq := math.MaxFloat64
+			for _, mid := range meatIDs {
+				mpos := w.GetMeatPos(mid)
+				dx := mpos.X - c.Loc.X
+				dy := mpos.Y - c.Loc.Y
+				d2 := dx*dx + dy*dy
+				if d2 < closestMeatDistSq {
+					closestMeatDistSq = d2
+					closestMeatID = mid
+				}
+			}
+			meatMass := w.GetMeatMass(closestMeatID)
+			eaten := bite
+			if eaten > float64(meatMass) {
+				eaten = float64(meatMass)
+			}
+			stomachGain := eaten * meatEff
+			if stomachGain > stomachSpace {
+				stomachGain = stomachSpace
+				eaten = stomachSpace / meatEff
+			}
+			c.Stomach += stomachGain
+			w.ReduceMeatMass(closestMeatID, float32(eaten))
+		}
+	}
 }
 
 // ProcessAttackQueue resolves ATTACK actions: each attacker bites the nearest live
@@ -212,13 +213,13 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			continue
 		}
 
-		bite := c.BiteSize(params)
+		bite := c.BiteSize(params) * instruction.Level
 		massRatio := c.Mass / params.MaxMass
 		if massRatio > 1.0 {
 			massRatio = 1.0
 		}
 
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius+5.0, c.SightCreatureBuffer)
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.SightDistance, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		closestPreyDistSq := math.MaxFloat64
@@ -257,20 +258,35 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		defenseFactor := 0.5 + 0.5*math.Min(1.0, sizeRatio)
 		effectiveBite := bite * defenseFactor
 
+		_, meatEff := c.DigestionEfficiencies()
+
 		eaten := effectiveBite
 		if eaten > target.Mass {
 			eaten = target.Mass
 		}
 
 		stomachSpace = c.StomachCapacity(params) - c.Stomach
-		if eaten > stomachSpace {
-			eaten = stomachSpace
+		stomachGain := eaten * meatEff
+		if stomachGain > stomachSpace {
+			stomachGain = stomachSpace
+			if meatEff > 0 {
+				eaten = stomachSpace / meatEff
+			} else {
+				eaten = effectiveBite
+				if eaten > target.Mass {
+					eaten = target.Mass
+				}
+			}
 		}
 
-		c.Stomach += eaten
+		waste := eaten - stomachGain
+		c.Stomach += stomachGain
 		target.Mass -= eaten
 		target.UpdateSize(params)
 		target.DrainEnergy(float32(eaten) * params.EnergyPerMassUnit)
+		if waste > 0.01 {
+			w.AddMeat(target.Loc, float32(waste))
+		}
 		struggleCost := params.AttackEnergyCost
 		if sizeRatio < 1.0 {
 			// Gradually increases cost as target gets larger, maxing at 1.5x
@@ -287,6 +303,49 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 	}
 	p.AttackQueue = p.AttackQueue[:0]
+}
+
+// ProcessFeedQueue transfers stomach content from each donor to its recipient.
+// The proportion donated is tanh(level), capped at the recipient's free stomach space.
+func (p *Population) ProcessFeedQueue(params *Parameters) {
+	for _, fi := range p.FeedQueue {
+		donor := fi.Creature
+		recipient := fi.Recipient
+
+		absLevel := math.Abs(float64(fi.Level))
+		if absLevel < 0.5 {
+			continue
+		}
+		// 2. Re-map: 0.5 -> 0.0 and 1.0 -> 1.0
+		// Formula: (input - min) / (max - min)
+		proportion := (absLevel - 0.5) / (0.5)
+		if proportion > 1.0 {
+			proportion = 1.0
+		}
+
+		if fi.Level < 0 {
+			donor, recipient = recipient, donor
+		}
+		if !donor.Alive || !recipient.Alive {
+			continue
+		}
+		amount := donor.Stomach * proportion
+		if amount <= 0 {
+			continue
+		}
+
+		space := recipient.StomachCapacity(params) - recipient.Stomach
+		if space <= 0 {
+			continue
+		}
+		if amount > space {
+			amount = space
+		}
+
+		donor.Stomach -= amount
+		recipient.Stomach += amount
+	}
+	p.FeedQueue = p.FeedQueue[:0]
 }
 
 // ProcessDeathQueue marks queued creatures as dead, spawns meat matching their
@@ -407,7 +466,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 
 			partner.Mass -= float64(massFromPartner)
 			partner.DrainEnergy(energyFromPartner)
-			parent.UpdateSize(params)
+			partner.UpdateSize(params)
 
 			id := w.AddCreature(offspringLoc)
 			child := NewCreature(id, offspringLoc, childGenome, params)

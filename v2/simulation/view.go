@@ -58,7 +58,9 @@ type CreatureDetailView struct {
 	MaxAge           int     // maximum lifespan in ticks
 	Stomach          float64
 	StomachCapacity  float64
-	ReproductionType byte // 0 = asexual, 1 = sexual
+	FoodEfficiency   float32 // fraction of food mass absorbed per bite [0, 1]
+	MeatEfficiency   float32 // fraction of meat mass absorbed per bite [0, 1]
+	ReproductionType byte    // 0 = asexual, 1 = sexual
 	NeuralNet        NeuralNetView
 }
 
@@ -99,6 +101,8 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		}
 	}
 
+	foodEff, meatEff := c.DigestionEfficiencies()
+
 	return CreatureDetailView{
 		ID:               c.Id,
 		Energy:           c.Energy,
@@ -121,6 +125,8 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		MaxAge:           c.MaxAge(s.Params),
 		Stomach:          c.Stomach,
 		StomachCapacity:  c.StomachCapacity(s.Params),
+		FoodEfficiency:   float32(foodEff),
+		MeatEfficiency:   float32(meatEff),
 		ReproductionType: c.Genome.ReproductionType,
 		NeuralNet:        nnView,
 	}, true

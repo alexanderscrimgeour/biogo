@@ -168,6 +168,15 @@ func (c Creature) BiteSize(params *Parameters) float64 {
 	return params.BaseBiteSize * (float64(c.Mass) / params.MaxMass)
 }
 
+// DigestionEfficiencies returns the fraction of food and meat mass this creature
+// can absorb into its stomach per bite.
+// gene=0 → (1.0, 0.0) pure herbivore; gene=255 → (0.0, 1.0) pure carnivore;
+// gene=128 → (~0.5, ~0.5) omnivore.
+func (c Creature) DigestionEfficiencies() (foodEff, meatEff float64) {
+	dt := float64(c.Genome.DigestionType) / 255.0
+	return 1.0 - dt, dt
+}
+
 func (c *Creature) Digest(params *Parameters) {
 	if c.Stomach <= 0 {
 		return
@@ -190,7 +199,8 @@ func (c *Creature) Digest(params *Parameters) {
 	// Higher mass = lower efficiency.
 	efficiency := 0.95 - (massRatio * 0.25)
 	if c.IsResting {
-		digestionRate *= 1.5
+		restingBoost := 1.5 + (2.0 * float64(massNorm))
+		digestionRate *= restingBoost
 	}
 
 	potentialEnergyGain := digestionRate * float64(params.EnergyPerMassUnit*efficiency)
@@ -255,21 +265,22 @@ func (c *Creature) GrowMass(params *Parameters) {
 		return
 	}
 
+	energyRatio := float64(c.Energy) / float64(c.MaxEnergy(params))
+	var energyFactor float64
+	if energyRatio > 0.2 {
+		energyFactor = (energyRatio - 0.2) / 0.8
+	}
 	massRatio := c.Mass / maxMass
 	// von Bertalanffy rate: peaks at massRatio ≈ 0.33, zero at 0 and 1.
 	growthRate := float64(params.MaxGrowthRatePerTick) * math.Sqrt(massRatio) * (1.0 - massRatio)
-	energyCost := growthRate * float64(params.GrowthEnergyCostFactor)
+	actualGrowth := growthRate * energyFactor
+	energyCost := actualGrowth * float64(params.GrowthEnergyCostFactor)
 
-	disposableEnergy := float64(c.Energy - survivalBuffer)
-	actualGrowth := growthRate
-	if energyCost > disposableEnergy {
-		actualGrowth = disposableEnergy / float64(params.GrowthEnergyCostFactor)
-		energyCost = disposableEnergy
+	if actualGrowth > 0.001 {
+		c.Mass = utils.MinFloat64(maxMass, c.Mass+actualGrowth)
+		c.UpdateSize(params)
+		c.DrainEnergy(float32(energyCost))
 	}
-
-	c.Mass = utils.MinFloat64(maxMass, c.Mass+actualGrowth)
-	c.UpdateSize(params)
-	c.DrainEnergy(float32(energyCost))
 }
 
 func (c *Creature) DrainEnergy(amount float32) {
