@@ -66,7 +66,7 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	// Start at 50% of MaxEnergy so the creature is hungry enough to eat.
 	creature.Energy = float32(creature.Mass) * params.EnergyPerMassUnit * 0.5
 
-	w.AddFood(foodPos, 10)
+	w.AddPlant(foodPos, 10)
 
 	pop := simulation.NewPopulation(params)
 	pop.Creatures[id] = creature
@@ -79,10 +79,10 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	if creature.Stomach <= 0 {
 		t.Error("creature should have eaten something (stomach > 0)")
 	}
-	// Food may be fully consumed (FoodCount == 0) or only partially eaten
+	// Plants may be fully consumed (PlantCount == 0) or only partially eaten
 	// (a small creature's bite is less than FoodMass so the item persists with reduced mass).
-	if w.FoodCount() > 0 && w.TotalFoodMass() >= 10 {
-		t.Error("food mass should decrease after creature eats from it")
+	if w.PlantCount() > 0 && w.TotalPlantMass() >= 10 {
+		t.Error("plant mass should decrease after creature eats from it")
 	}
 }
 
@@ -183,7 +183,7 @@ func TestGeneticDiversity(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id := i + 1
 		genome := simulation.MakeRandomGenome(params)
-		pop.Creatures[id] = simulation.NewCreature(id, grid.Position{X: float64(i), Y: 0}, genome, params)
+		pop.Creatures[id] = simulation.NewCreature(id, grid.Position{X: float32(i), Y: 0}, genome, params)
 	}
 
 	diversity := pop.GeneticDiversity()
@@ -239,7 +239,7 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 	pop.QueueForReproduction(parent)
 	pop.ProcessReproductionQueue(w, params)
 
-	wantMass := float64(genome.Mass) / 2
+	wantMass := float32(genome.Mass) / 2
 	if parent.Mass != wantMass {
 		t.Errorf("parent Mass after reproduction: got %f, want %f", parent.Mass, wantMass)
 	}
@@ -277,7 +277,7 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 			break
 		}
 	}
-	wantMass := float64(genome.Mass) / 2
+	wantMass := float32(genome.Mass) / 2
 	if child.Mass != wantMass {
 		t.Errorf("child Mass at birth: got %f, want %f", child.Mass, wantMass)
 	}

@@ -90,8 +90,8 @@ func TestSimulationFoodSpawns(t *testing.T) {
 	sim := simulation.New(p)
 
 	sim.Update()
-	if sim.FoodCount() == 0 {
-		t.Error("expected food to spawn after first update with FoodSpawnInterval=1")
+	if sim.PlantCount() == 0 {
+		t.Error("expected plants to spawn after first update with FoodSpawnInterval=1")
 	}
 }
 
@@ -102,12 +102,18 @@ func TestSimulationFoodViews(t *testing.T) {
 	sim.Update()
 
 	snap := sim.GetSnapshot()
-	if len(snap.Food) != sim.World.FoodCount() {
-		t.Errorf("snapshot food len %d != world FoodCount %d", len(snap.Food), sim.World.FoodCount())
+	plantCount := 0
+	for _, v := range snap.Food {
+		if v.Type == simulation.FoodTypePlant {
+			plantCount++
+		}
+	}
+	if plantCount != sim.World.PlantCount() {
+		t.Errorf("snapshot plant count %d != world PlantCount %d", plantCount, sim.World.PlantCount())
 	}
 	for _, v := range snap.Food {
 		if v.X < 0 || v.X >= p.WorldWidth || v.Y < 0 || v.Y >= p.WorldHeight {
-			t.Errorf("food at (%f,%f) is out of world bounds", v.X, v.Y)
+			t.Errorf("food item at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 	}
 }
@@ -122,7 +128,10 @@ func TestSimulationMeatSpawnedOnDeath(t *testing.T) {
 	sim.Update()
 
 	snap := sim.GetSnapshot()
-	for _, mv := range snap.Meat {
+	for _, mv := range snap.Food {
+		if mv.Type != simulation.FoodTypeMeat {
+			continue
+		}
 		if mv.X < 0 || mv.X >= p.WorldWidth || mv.Y < 0 || mv.Y >= p.WorldHeight {
 			t.Errorf("meat at (%f,%f) is out of world bounds", mv.X, mv.Y)
 		}

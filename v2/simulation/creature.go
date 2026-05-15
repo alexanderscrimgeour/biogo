@@ -23,6 +23,7 @@ type simCacheEntry struct {
 
 type Creature struct {
 	Id             int
+	Generation     int
 	Energy         float32
 	LastTickEnergy float32
 	Responsiveness float32
@@ -33,24 +34,24 @@ type Creature struct {
 	Nnet           NeuralNet
 	Loc            world.Position
 	BirthLoc       world.Position
-	Heading        float64 // radians; 0 = east, π/2 = south (screen-down)
-	Velocity       float64 // current speed along heading; updated each tick via ACCELERATE action
+	Heading        float32 // radians; 0 = east, π/2 = south (screen-down)
+	Velocity       float32 // current speed along heading; updated each tick via ACCELERATE action
 	Genome         *Genome
-	SightDistance  float64
-	Mass           float64 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
-	MaxMass        float64
+	SightDistance  float32
+	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
+	MaxMass        float32
 	Dopamine       float32
-	Stomach        float64 // current food mass in stomach; digested into energy each tick
+	Stomach        float32 // current food mass in stomach; digested into energy each tick
 	LastAction     string
 	LastDopamine   float32
-	LastStomach    float64
+	LastStomach    float32
 	LastLoc        world.Position
 	IsResting      bool
 	Color          color.RGBA
-	Radius         float64
+	Radius         float32
 
 	// Genome-derived constants cached at construction to avoid recomputing each tick.
-	halfFOVCos           float64 // math.Cos(FieldOfView/2 in radians)
+	halfFOVCos           float32 // math.Cos(FieldOfView/2 in radians)
 	cachedMetabolicGene  float32 // 0.7 + 0.6*(MetabolicRate/255)
 	cachedJuvenilePeriod int     // MinJuvenilePeriod + genome fraction * range
 	Sensors              SensorContext
@@ -71,6 +72,7 @@ func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature
 	g.recomputeBytes()
 	c := Creature{
 		Id:             id,
+		Generation:     1,
 		Age:            0,
 		Alive:          true,
 		Clock:          int(g.OscPeriod),
@@ -78,14 +80,14 @@ func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature
 		Loc:            loc,
 		BirthLoc:       loc,
 		Responsiveness: float32(utils.LerpByteAsFloat32(0, 1, g.Responsiveness)) / 2,
-		Heading:        rand.Float64()*2*math.Pi - math.Pi,
+		Heading:        float32(rand.Float64()*2*math.Pi - math.Pi),
 		Genome:         g,
 	}
 
 	c.BaseOscTick = 2.0 * math.Pow(5000.0/2.0, float64(c.Genome.OscPeriod)/255.0)
-	c.Mass = MapGeneToRange(c.Genome.MinMass, float64(3), p.MaxMass)
-	c.MaxMass = MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass)
-	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+c.Radius, p.MaxSightDistance)
+	c.Mass = float32(MapGeneToRange(c.Genome.MinMass, float64(3), p.MaxMass))
+	c.MaxMass = float32(MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass))
+	c.SightDistance = float32(MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+float64(c.Radius), p.MaxSightDistance))
 	c.initCachedFields(g, p)
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
@@ -98,6 +100,7 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 	g.recomputeBytes()
 	c := Creature{
 		Id:             id,
+		Generation:     1,
 		Age:            0,
 		Alive:          true,
 		Clock:          int(g.OscPeriod),
@@ -105,13 +108,13 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 		Loc:            loc,
 		BirthLoc:       loc,
 		Responsiveness: float32(utils.LerpByteAsFloat32(0, 1, g.Responsiveness)) / 2,
-		Heading:        rand.Float64()*2*math.Pi - math.Pi,
+		Heading:        float32(rand.Float64()*2*math.Pi - math.Pi),
 		Genome:         g,
 	}
 
-	c.Mass = MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass)
-	c.MaxMass = MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass)
-	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+c.Radius, p.MaxSightDistance)
+	c.Mass = float32(MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass))
+	c.MaxMass = float32(MapGeneToRange(c.Genome.Mass, float64(3), p.MaxMass))
+	c.SightDistance = float32(MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+float64(c.Radius), p.MaxSightDistance))
 	c.initCachedFields(g, p)
 	c.Energy = c.MaxEnergy(p)
 	c.CreateNeuralNet()
@@ -124,7 +127,7 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 func (c *Creature) initCachedFields(g *Genome, p *Parameters) {
 	fovDegrees := MapGeneToRange(g.FieldOfView, p.MinFieldOfView, p.MaxFieldOfView)
 	halfAngleRad := (float64(fovDegrees) / 2.0) * (math.Pi / 180.0)
-	c.halfFOVCos = math.Cos(halfAngleRad)
+	c.halfFOVCos = float32(math.Cos(halfAngleRad))
 	c.cachedMetabolicGene = 0.7 + 0.6*(float32(g.MetabolicRate)/255.0)
 	c.cachedJuvenilePeriod = p.MinJuvenilePeriod + int(float32(g.JuvenilePeriod)/255.0*float32(p.MaxJuvenilePeriod-p.MinJuvenilePeriod))
 }
@@ -156,26 +159,26 @@ func (c Creature) String() string {
 // MaxEnergy returns the creature's energy storage capacity, derived from current mass.
 // Energy capacity scales linearly with body size (larger creatures can store more energy).
 func (c Creature) MaxEnergy(params *Parameters) float32 {
-	return float32(c.Mass) * params.EnergyPerMassUnit
+	return c.Mass * params.EnergyPerMassUnit
 }
 
 // StomachCapacity returns the maximum food mass this creature's stomach can hold.
-func (c Creature) StomachCapacity(params *Parameters) float64 {
-	return MapGeneToRange(c.Genome.StomachSize, 1, float64(c.Mass))
+func (c Creature) StomachCapacity(params *Parameters) float32 {
+	return float32(MapGeneToRange(c.Genome.StomachSize, 1, float64(c.Mass)))
 }
 
 // BiteSize returns the maximum mass this creature consumes in a single eating interaction.
 // Scales linearly with body mass so smaller creatures take smaller bites.
-func (c Creature) BiteSize(params *Parameters) float64 {
-	return params.BaseBiteSize * (float64(c.Mass) / params.MaxMass)
+func (c Creature) BiteSize(params *Parameters) float32 {
+	return float32(params.BaseBiteSize) * (c.Mass / float32(params.MaxMass))
 }
 
 // DigestionEfficiencies returns the fraction of food and meat mass this creature
 // can absorb into its stomach per bite.
 // gene=0 → (1.0, 0.0) pure herbivore; gene=255 → (0.0, 1.0) pure carnivore;
 // gene=128 → (~0.5, ~0.5) omnivore.
-func (c Creature) DigestionEfficiencies() (foodEff, meatEff float64) {
-	dt := float64(c.Genome.DigestionType) / 255.0
+func (c Creature) DigestionEfficiencies() (foodEff, meatEff float32) {
+	dt := float32(c.Genome.DigestionType) / 255.0
 	return 1.0 - dt, dt
 }
 
@@ -194,19 +197,19 @@ func (c *Creature) Digest(params *Parameters) {
 	var sizeFactor float64
 	if currentCap > 0 {
 		standardCap := float64(params.MaxMass) * 0.2
-		ratio := standardCap / currentCap
+		ratio := standardCap / float64(currentCap)
 		// x^0.75 = sqrt(ratio * sqrt(ratio))
 		sizeFactor = math.Sqrt(ratio * math.Sqrt(ratio))
 	} else {
 		sizeFactor = 1.0 // Fallback
 	}
 
-	massNorm := c.Mass / params.MaxMass
+	massNorm := float64(c.Mass) / params.MaxMass
 	// Efficient M^0.75
 	massEffect := math.Sqrt(massNorm * math.Sqrt(massNorm))
 	digestionRate := params.DigestionRate * massEffect * sizeFactor
 
-	massRatio := float32(c.Mass) / float32(params.MaxMass)
+	massRatio := c.Mass / float32(params.MaxMass)
 	// Higher mass = lower efficiency.
 	efficiency := 0.95 - (massRatio * 0.25)
 	if c.IsResting {
@@ -215,10 +218,10 @@ func (c *Creature) Digest(params *Parameters) {
 	}
 
 	potentialEnergyGain := digestionRate * float64(params.EnergyPerMassUnit*efficiency)
-	digested := digestionRate
+	digested := float32(digestionRate)
 
 	if potentialEnergyGain > float64(energySpace) {
-		digested = float64(energySpace / (params.EnergyPerMassUnit * efficiency))
+		digested = energySpace / (params.EnergyPerMassUnit * efficiency)
 	}
 
 	if digested > c.Stomach {
@@ -226,7 +229,7 @@ func (c *Creature) Digest(params *Parameters) {
 	}
 
 	c.Stomach -= digested
-	actualGain := digested * float64(params.EnergyPerMassUnit*efficiency)
+	actualGain := float64(digested) * float64(params.EnergyPerMassUnit*efficiency)
 	c.GainEnergy(float32(actualGain), params)
 }
 
@@ -235,8 +238,8 @@ func (c *Creature) UpdateSize(p *Parameters) {
 		c.Radius = 0
 		return
 	}
-	c.Radius = math.Sqrt(float64(c.Mass) * math.Pi)
-	c.SightDistance = MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+c.Radius, p.MaxSightDistance)
+	c.Radius = float32(math.Sqrt(float64(c.Mass) * math.Pi))
+	c.SightDistance = float32(MapGeneToRange(c.Genome.SightDistance, p.MinSightDistance+float64(c.Radius), p.MaxSightDistance))
 }
 
 // JuvenilePeriod returns the number of ticks before this creature is considered an adult.
@@ -252,7 +255,7 @@ func (c Creature) IsJuvenile() bool {
 
 // CurrentMass returns the creature's actual tracked body mass.
 func (c Creature) CurrentMass() float64 {
-	return c.Mass
+	return float64(c.Mass)
 }
 
 // GrowMass advances the creature's mass toward Genome.Mass using a von Bertalanffy
@@ -281,14 +284,14 @@ func (c *Creature) GrowMass(params *Parameters) {
 	if energyRatio > 0.2 {
 		energyFactor = (energyRatio - 0.2) / 0.8
 	}
-	massRatio := c.Mass / maxMass
+	massRatio := float64(c.Mass) / float64(maxMass)
 	// von Bertalanffy rate: peaks at massRatio ≈ 0.33, zero at 0 and 1.
 	growthRate := float64(params.MaxGrowthRatePerTick) * math.Sqrt(massRatio) * (1.0 - massRatio)
 	actualGrowth := growthRate * energyFactor
 	energyCost := actualGrowth * float64(params.GrowthEnergyCostFactor)
 
 	if actualGrowth > 0.001 {
-		c.Mass = utils.MinFloat64(maxMass, c.Mass+actualGrowth)
+		c.Mass = utils.MinFloat32(maxMass, c.Mass+float32(actualGrowth))
 		c.UpdateSize(params)
 		c.DrainEnergy(float32(energyCost))
 	}
@@ -323,7 +326,7 @@ func (c *Creature) LoseDopamine(ratio float32) {
 	}
 }
 
-func (c Creature) GetSightDistance() float64 {
+func (c Creature) GetSightDistance() float32 {
 	return c.SightDistance
 }
 
@@ -334,7 +337,7 @@ func (c Creature) GetSightDistance() float64 {
 // Ambient temperature temp (°C) further scales cost: cold environments are more
 // expensive to survive in (ColdMetabolicMultiplier at 10°C, WarmMetabolicMultiplier at 40°C).
 func (c Creature) MetabolicRate(params *Parameters, temp float32) float32 {
-	massNorm := float64(c.Mass / params.MaxMass)
+	massNorm := float64(c.Mass) / params.MaxMass
 
 	// x^0.75 is much faster as sqrt(x * sqrt(x))
 	massEffect := float32(math.Sqrt(massNorm * math.Sqrt(massNorm)))
@@ -367,7 +370,7 @@ func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {
 		return 0
 	}
 
-	numHidden := float32(len(nn.HiddenNeuronIDs))
+	numHidden := float32(len(nn.HiddenNeurons))
 	if numHidden == 0 {
 		numHidden = 1
 	} // Avoid division by zero for reflex-only brains
@@ -453,7 +456,7 @@ func (c *Creature) CalculateColor(p *Parameters) color.RGBA {
 }
 
 func (c Creature) FieldOfView() float64 {
-	return getFOVFromCosine(c.halfFOVCos)
+	return getFOVFromCosine(float64(c.halfFOVCos))
 }
 
 func getFOVFromCosine(halfFOVCos float64) float64 {

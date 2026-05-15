@@ -17,13 +17,13 @@ func (s *Simulation) processCollisions() {
 		return
 	}
 
-	maxRadius := math.Sqrt(float64(s.Params.MaxMass) * math.Pi)
-	repulsion := s.Params.CollisionRepulsion
+	maxRadius := float32(math.Sqrt(float64(s.Params.MaxMass) * math.Pi))
+	repulsion := float32(s.Params.CollisionRepulsion)
 
 	// Expand the search radius to cover the swept path of both creatures this tick.
 	// Each creature moves at most MaxSpeedPerStep per tick, so the worst case
 	// (two creatures tunneling toward each other) requires 2× that expansion.
-	sweptExpansion := 2 * s.Params.MaxSpeedPerStep
+	sweptExpansion := float32(2 * s.Params.MaxSpeedPerStep)
 
 	var buf []int
 	for _, id := range ids {
@@ -51,8 +51,8 @@ func (s *Simulation) processCollisions() {
 
 			if distSq < minDistSq {
 				// Current overlap: apply soft repulsion.
-				dist := math.Sqrt(distSq)
-				var nx, ny float64
+				dist := float32(math.Sqrt(float64(distSq)))
+				var nx, ny float32
 				if dist < 1e-9 {
 					nx, ny = 1, 0
 				} else {
@@ -60,10 +60,10 @@ func (s *Simulation) processCollisions() {
 					ny = dy / dist
 				}
 
-				totalMass := float64(c.Mass + other.Mass)
+				totalMass := c.Mass + other.Mass
 				correction := (minDist - dist) * repulsion
-				pushC := correction * float64(other.Mass) / totalMass
-				pushOther := correction * float64(c.Mass) / totalMass
+				pushC := correction * other.Mass / totalMass
+				pushOther := correction * c.Mass / totalMass
 
 				newCLoc := s.World.ClampToBounds(world.Position{
 					X: c.Loc.X - pushC*nx,
@@ -83,26 +83,27 @@ func (s *Simulation) processCollisions() {
 
 			// Swept-sphere check: did either creature tunnel through the other?
 			// Use relative motion so both moving creatures are handled correctly.
-			relStartX := c.LastLoc.X - other.LastLoc.X
-			relStartY := c.LastLoc.Y - other.LastLoc.Y
-			relEndX := c.Loc.X - other.Loc.X
-			relEndY := c.Loc.Y - other.Loc.Y
+			relStartX := float64(c.LastLoc.X - other.LastLoc.X)
+			relStartY := float64(c.LastLoc.Y - other.LastLoc.Y)
+			relEndX := float64(c.Loc.X - other.Loc.X)
+			relEndY := float64(c.Loc.Y - other.Loc.Y)
 
-			t, hit := sweptSphereContactT(relStartX, relStartY, relEndX, relEndY, minDist)
+			t, hit := sweptSphereContactT(relStartX, relStartY, relEndX, relEndY, float64(minDist))
 			if !hit {
 				continue
 			}
 
 			// Interpolate each creature's position at the moment of first contact.
-			cContactX := c.LastLoc.X + t*(c.Loc.X-c.LastLoc.X)
-			cContactY := c.LastLoc.Y + t*(c.Loc.Y-c.LastLoc.Y)
-			oContactX := other.LastLoc.X + t*(other.Loc.X-other.LastLoc.X)
-			oContactY := other.LastLoc.Y + t*(other.Loc.Y-other.LastLoc.Y)
+			tf := float32(t)
+			cContactX := c.LastLoc.X + tf*(c.Loc.X-c.LastLoc.X)
+			cContactY := c.LastLoc.Y + tf*(c.Loc.Y-c.LastLoc.Y)
+			oContactX := other.LastLoc.X + tf*(other.Loc.X-other.LastLoc.X)
+			oContactY := other.LastLoc.Y + tf*(other.Loc.Y-other.LastLoc.Y)
 
 			// Collision normal from other to c at contact.
 			ncx := cContactX - oContactX
 			ncy := cContactY - oContactY
-			nlen := math.Sqrt(ncx*ncx + ncy*ncy)
+			nlen := float32(math.Sqrt(float64(ncx*ncx + ncy*ncy)))
 			if nlen < 1e-9 {
 				ncx, ncy = 1, 0
 			} else {
@@ -112,9 +113,9 @@ func (s *Simulation) processCollisions() {
 
 			// Place creatures separated by minDist along the collision normal,
 			// mass-weighted so heavier creatures are displaced less.
-			totalMass := float64(c.Mass + other.Mass)
-			pushC := minDist * float64(other.Mass) / totalMass
-			pushOther := minDist * float64(c.Mass) / totalMass
+			totalMass := c.Mass + other.Mass
+			pushC := minDist * other.Mass / totalMass
+			pushOther := minDist * c.Mass / totalMass
 
 			newCLoc := s.World.ClampToBounds(world.Position{
 				X: oContactX + ncx*pushC,

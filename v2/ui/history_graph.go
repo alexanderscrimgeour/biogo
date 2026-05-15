@@ -26,7 +26,7 @@ type HistoryGraph struct {
 	getSample func(i int) histSample
 	sim       interface {
 		PopulationCount() int
-		FoodCount() int
+		PlantCount() int
 		TotalEnergy() float64
 		TargetEnergy() float64
 	}
@@ -55,7 +55,7 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 	if hg.Font != nil {
 		drawText(screen, fmt.Sprintf("Pop: %d", hg.sim.PopulationCount()), hg.Font,
 			int(x+histGraphPad), int(y+15), popColor)
-		drawText(screen, fmt.Sprintf("Food: %d", hg.sim.FoodCount()), hg.Font,
+		drawText(screen, fmt.Sprintf("Plants: %d", hg.sim.PlantCount()), hg.Font,
 			int(x+histGraphPad), int(y+31), foodColor)
 		drawText(screen, fmt.Sprintf("Energy: %.2f%%", hg.sim.TotalEnergy()/hg.sim.TargetEnergy()*100), hg.Font,
 			int(x+histGraphPad), int(y+47), energyColor)

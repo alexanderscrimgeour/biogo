@@ -1,0 +1,34 @@
+{
+  "osc_period": 127,
+  "sight_distance": 127,
+  "field_of_view": 127,
+  "responsiveness": 127,
+  "mutation_rate": 20,
+  "mass": 15,
+  "min_mass": 7,
+  "reproduction_type": 0,
+  "neuron_count": 1,
+  "brain_length": 2,
+  "juvenile_period": 127,
+  "metabolic_rate": 127,
+  "stomach_size": 127,
+  "learning_rate": 127,
+  "learning_threshold": 127,
+  "mass_split_ratio": 127,
+  "brain": [
+    {
+      "source_type": 1,
+      "source_id": 13,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 255
+    },
+    {
+      "source_type": 1,
+      "source_id": 0,
+      "sink_type": 2,
+      "sink_id": 1,
+      "weight": 140
+    }
+  ]
+}

@@ -90,23 +90,23 @@ func TestGetCreaturesInRadius(t *testing.T) {
 	}
 }
 
-func TestAddAndRemoveFood(t *testing.T) {
+func TestAddAndRemovePlant(t *testing.T) {
 	w := world.NewWorld(100, 100, 0)
-	id := w.AddFood(world.Position{X: 50, Y: 50}, 10)
-	if w.FoodCount() != 1 {
-		t.Errorf("expected 1 food, got %d", w.FoodCount())
+	id := w.AddPlant(world.Position{X: 50, Y: 50}, 10)
+	if w.PlantCount() != 1 {
+		t.Errorf("expected 1 plant, got %d", w.PlantCount())
 	}
-	w.RemoveFood(id)
-	if w.FoodCount() != 0 {
-		t.Errorf("expected 0 food after removal, got %d", w.FoodCount())
+	w.RemovePlant(id)
+	if w.PlantCount() != 0 {
+		t.Errorf("expected 0 plants after removal, got %d", w.PlantCount())
 	}
 }
 
 func TestGetFoodInRadius(t *testing.T) {
 	w := world.NewWorld(200, 200, 0)
-	id1 := w.AddFood(world.Position{X: 100, Y: 100}, 10)
-	id2 := w.AddFood(world.Position{X: 102, Y: 100}, 10) // within radius 5
-	_ = w.AddFood(world.Position{X: 150, Y: 150}, 10) // far away
+	id1 := w.AddPlant(world.Position{X: 100, Y: 100}, 10)
+	id2 := w.AddPlant(world.Position{X: 102, Y: 100}, 10) // within radius 5
+	_ = w.AddPlant(world.Position{X: 150, Y: 150}, 10)    // far away
 
 	ids := w.GetFoodInRadius(world.Position{X: 100, Y: 100}, 5, nil)
 	found := map[int]bool{}
@@ -114,25 +114,25 @@ func TestGetFoodInRadius(t *testing.T) {
 		found[id] = true
 	}
 	if !found[id1] || !found[id2] {
-		t.Error("expected food items within radius 5")
+		t.Error("expected plant items within radius 5")
 	}
 }
 
-func TestSpawnFood(t *testing.T) {
+func TestSpawnPlant(t *testing.T) {
 	w := world.NewWorld(200, 200, 0)
 	w.InitFountains(2)
-	w.SpawnFood(10, 30.0, 10)
-	if w.FoodCount() != 10 {
-		t.Errorf("SpawnFood(10) should place exactly 10 items, got %d", w.FoodCount())
+	w.SpawnPlant(10, 30.0, 10)
+	if w.PlantCount() != 10 {
+		t.Errorf("SpawnPlant(10) should place exactly 10 items, got %d", w.PlantCount())
 	}
 }
 
-func TestSpawnFoodGaussianFallback(t *testing.T) {
-	// Without fountains initialised, SpawnFood should fall back to random placement.
+func TestSpawnPlantGaussianFallback(t *testing.T) {
+	// Without fountains initialised, SpawnPlant should fall back to random placement.
 	w := world.NewWorld(500, 500, 0)
-	w.SpawnFood(50, 30.0, 10)
-	if w.FoodCount() != 50 {
-		t.Errorf("SpawnFood(50) without fountains should place exactly 50 items, got %d", w.FoodCount())
+	w.SpawnPlant(50, 30.0, 10)
+	if w.PlantCount() != 50 {
+		t.Errorf("SpawnPlant(50) without fountains should place exactly 50 items, got %d", w.PlantCount())
 	}
 }
 

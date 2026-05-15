@@ -265,11 +265,12 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	x := sw - 200
 	if ui.font != nil {
 		drawText(screen, fmt.Sprintf("Population: %d", ui.sim.PopulationCount()), ui.font, x, 23, color.White)
-		drawText(screen, fmt.Sprintf("Food: %d", ui.sim.FoodCount()), ui.font, x, 43, color.White)
+		drawText(screen, fmt.Sprintf("Plants: %d", ui.sim.PlantCount()), ui.font, x, 43, color.White)
 		drawText(screen, fmt.Sprintf("Avg Age: %.0f", ui.sim.AverageAge()), ui.font, x, 63, color.White)
+		drawText(screen, fmt.Sprintf("Avg Gen: %.1f", ui.sim.AverageGeneration()), ui.font, x, 83, color.White)
 		if state.tickDuration > 0 {
 			simRate := float64(state.simStepsPerTick) / state.tickDuration.Seconds()
-			drawText(screen, fmt.Sprintf("Sim Rate: %.0f/s (%dx)", simRate, state.simStepsPerTick), ui.font, x, 83, color.White)
+			drawText(screen, fmt.Sprintf("Sim Rate: %.0f/s (%dx)", simRate, state.simStepsPerTick), ui.font, x, 103, color.White)
 		}
 	}
 
@@ -319,7 +320,8 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 		Width:    innerW,
 	})
 
-	// Age
+	// Generation / Age
+	p.Add(&components.Label{Text: fmt.Sprintf("Generation: %d", d.Generation), Font: ui.font, Color: color.RGBA{180, 220, 255, 255}})
 	juvenileStr := "Adult"
 	if d.IsJuvenile {
 		juvenileStr = fmt.Sprintf("Juvenile(%d)", d.JuvenilePeriod-d.Age)

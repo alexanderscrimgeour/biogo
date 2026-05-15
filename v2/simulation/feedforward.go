@@ -4,35 +4,15 @@ import (
 	"biogo/v2/world"
 )
 
-// tanhf approximates tanh using a Pade(6,6) rational polynomial.
-// Error < 0.01% for |x| ≤ 4.97; clamped beyond ±4.97.
-func tanhf(x float32) float32 {
-	if x > 4.97 {
-		return 1
-	}
-	if x < -4.97 {
-		return -1
-	}
-	x2 := x * x
-	return x * (135135 + x2*(17325+x2*(378+x2))) / (135135 + x2*(62370+x2*(3150+x2*28)))
-}
-
 const energyCostOfFiring = 0.0001
 const decayRate = 0.0005
 const energyCostOfLearning = 0.005
 
-func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *Parameters) []float32 {
-	var neuroplasticityMod float32
-	if len(c.Nnet.LastActionValues) > int(SET_LEARNING_RATE) {
-		neuroplasticityMod = softsign(c.Nnet.LastActionValues[SET_LEARNING_RATE])
-	}
+func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *Parameters) {
+	neuroplasticityMod := softsign(c.Nnet.LastActionValues[SET_LEARNING_RATE])
 
-	if len(c.Nnet.LastActionValues) != int(ACTION_COUNT) {
-		c.Nnet.LastActionValues = make([]float32, ACTION_COUNT)
-	} else {
-		clear(c.Nnet.LastActionValues)
-	}
-	actionLevels := c.Nnet.LastActionValues
+	c.Nnet.LastActionValues = [ACTION_COUNT]float32{}
+	actionLevels := &c.Nnet.LastActionValues
 
 	var neuronAccumulators [256]float32
 
@@ -54,11 +34,8 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 	learningThreshold := params.MinLearningThreshold + float32(c.Genome.LearningThreshold)/255.0*(params.MaxLearningThreshold-params.MinLearningThreshold)
 
 	dopamineDelta := c.Dopamine - c.LastDopamine
-	absDelta := dopamineDelta
-	if absDelta < 0 {
-		absDelta = -absDelta
-	}
-	surpriseFactor := float32(1.0) + absDelta
+	surpriseFactor := float32(1.0) + absf32(dopamineDelta)
+	dopamineSoftSign := softsign(dopamineDelta)
 
 	neuroplasticity := genomeNeuroplasticity * (1 + neuroplasticityMod) * surpriseFactor
 	if neuroplasticity < 0 {
@@ -83,24 +60,15 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 		if gene.SourceType == SENSOR {
 			inputVal = sensorCache[gene.SourceID]
 		} else {
-			if neuron := c.Nnet.HiddenNeurons[gene.SourceID]; neuron != nil {
-				inputVal = neuron.Output
-			}
+			inputVal = c.Nnet.HiddenNeurons[gene.SourceID].Output
 		}
 
 		neuronAccumulators[gene.SinkID] += inputVal * c.Nnet.Weights[i]
 
 		if c.Energy > energyThreshold {
-			var sinkOutput float32
-			if neuron := c.Nnet.HiddenNeurons[gene.SinkID]; neuron != nil {
-				sinkOutput = neuron.Output
-			}
-			learningSignal := inputVal * sinkOutput * softsign(dopamineDelta)
-			absSignal := learningSignal
-			if absSignal < 0 {
-				absSignal = -absSignal
-			}
-			if absSignal > learningThreshold {
+			sinkOutput := c.Nnet.HiddenNeurons[gene.SinkID].Output
+			learningSignal := inputVal * sinkOutput * dopamineSoftSign
+			if absf32(learningSignal) > learningThreshold {
 				c.Nnet.Weights[i] += neuroplasticity * learningSignal
 				c.Energy -= energyCostOfLearning
 				if c.Nnet.Weights[i] > 4.0 {
@@ -114,15 +82,13 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 	}
 
 	// Evaluate hidden neurons now that all neuron-sink inputs are accumulated.
-	for _, key := range c.Nnet.HiddenNeuronIDs {
-		if neuron := c.Nnet.HiddenNeurons[key]; neuron != nil && neuron.Driven {
+	for key := range c.Nnet.HiddenNeurons {
+		neuron := &c.Nnet.HiddenNeurons[key]
+		if neuron.Driven {
 			sum := neuronAccumulators[key] * neuron.Sensitivity
 			output := tanhf(sum)
 			neuron.Output = output
-			absOutput := output
-			if absOutput < 0 {
-				absOutput = -absOutput
-			}
+			absOutput := absf32(output)
 			neuron.AverageOutput = (neuron.AverageOutput * 0.99) + (absOutput * 0.01)
 			c.Energy -= absOutput * energyCostOfFiring
 		}
@@ -143,9 +109,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 		if gene.SourceType == SENSOR {
 			inputVal = sensorCache[gene.SourceID]
 		} else {
-			if neuron := c.Nnet.HiddenNeurons[gene.SourceID]; neuron != nil {
-				inputVal = neuron.Output
-			}
+			inputVal = c.Nnet.HiddenNeurons[gene.SourceID].Output
 		}
 
 		actionLevels[gene.SinkID] += inputVal * c.Nnet.Weights[i]
@@ -153,11 +117,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 		if c.Energy > energyThreshold {
 			sinkOutput := actionLevels[gene.SinkID]
 			learningSignal := inputVal * sinkOutput * softsign(dopamineDelta)
-			absSignal := learningSignal
-			if absSignal < 0 {
-				absSignal = -absSignal
-			}
-			if absSignal > learningThreshold {
+			if absf32(learningSignal) > learningThreshold {
 				c.Nnet.Weights[i] += neuroplasticity * learningSignal
 				c.Energy -= energyCostOfLearning
 				if c.Nnet.Weights[i] > 4.0 {
@@ -176,11 +136,8 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 
 	const targetActivity = 0.4 // We want the neuron firing at 40% intensity on average
 	const adjustmentSpeed = 0.001
-	for _, key := range c.Nnet.HiddenNeuronIDs {
-		neuron := c.Nnet.HiddenNeurons[key]
-		if neuron == nil {
-			continue
-		}
+	for key := range c.Nnet.HiddenNeurons {
+		neuron := &c.Nnet.HiddenNeurons[key]
 
 		// Error = Target - Actual
 		// If Actual > Target, error is negative, Sensitivity decreases.
@@ -196,7 +153,6 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 		}
 	}
 	c.LastDopamine = c.Dopamine
-	return actionLevels
 }
 
 // normalizeWeights rescales edge weights so no sink's total |weight| exceeds
@@ -206,10 +162,7 @@ func (c *Creature) normalizeWeights() {
 	var weightSumsActions [ACTION_COUNT]float32
 
 	for i, gene := range c.Nnet.Edges {
-		aw := c.Nnet.Weights[i]
-		if aw < 0 {
-			aw = -aw
-		}
+		aw := absf32(c.Nnet.Weights[i])
 		if gene.SinkType == NEURON {
 			weightSumsNeurons[gene.SinkID] += aw
 		} else {
@@ -232,9 +185,3 @@ func (c *Creature) normalizeWeights() {
 	}
 }
 
-func softsign(x float32) float32 {
-	if x >= 0 {
-		return x / (1 + x)
-	}
-	return x / (1 - x)
-}

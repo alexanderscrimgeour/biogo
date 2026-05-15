@@ -1,5 +1,13 @@
 package simulation
 
+import "biogo/v2/world"
+
+// FoodTypePlant and FoodTypeMeat mirror world.FoodType* for use in snapshot views.
+const (
+	FoodTypePlant = world.FoodTypePlant
+	FoodTypeMeat  = world.FoodTypeMeat
+)
+
 // CreatureView is a read-only snapshot of a creature's display state.
 type CreatureView struct {
 	ID               int
@@ -14,11 +22,13 @@ type CreatureView struct {
 	ReproductionType byte // 0 = asexual, 1 = sexual
 }
 
-// FoodView is a read-only snapshot of a food item's position and mass for rendering.
+// FoodView is a read-only snapshot of a food item (plant or meat) for rendering.
+// Type is FoodTypePlant (0) or FoodTypeMeat (1).
 type FoodView struct {
 	ID     int
 	X, Y   float64
 	Radius float64
+	Type   uint8
 }
 
 // NNEdgeView is a single weighted connection in the neural network snapshot.
@@ -41,6 +51,7 @@ type NeuralNetView struct {
 // CreatureDetailView is a rich snapshot of a single creature for the inspector panel.
 type CreatureDetailView struct {
 	ID               int
+	Generation       int
 	Energy           float32
 	MaxEnergy        float32
 	Age              int
@@ -87,33 +98,34 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 			Weight:     w,
 		})
 	}
-	nnView.HiddenNeuronIDs = append(nnView.HiddenNeuronIDs, c.Nnet.HiddenNeuronIDs...)
+	for i := range c.Nnet.HiddenNeurons {
+		nnView.HiddenNeuronIDs = append(nnView.HiddenNeuronIDs, byte(i))
+	}
 	nnView.SensorValues = make(map[byte]float32, SENSOR_COUNT)
 	for sid := byte(0); sid < SENSOR_COUNT; sid++ {
 		if c.Nnet.ActiveSensors[sid] {
 			nnView.SensorValues[sid] = c.Nnet.LastSensorValues[sid]
 		}
 	}
-	if c.Nnet.LastActionValues != nil {
-		nnView.ActionValues = make(map[byte]float32, len(c.Nnet.LastActionValues))
-		for i, v := range c.Nnet.LastActionValues {
-			nnView.ActionValues[byte(i)] = v
-		}
+	nnView.ActionValues = make(map[byte]float32, ACTION_COUNT)
+	for i, v := range c.Nnet.LastActionValues {
+		nnView.ActionValues[byte(i)] = v
 	}
 
 	foodEff, meatEff := c.DigestionEfficiencies()
 
 	return CreatureDetailView{
 		ID:               c.Id,
+		Generation:       c.Generation,
 		Energy:           c.Energy,
 		MaxEnergy:        c.MaxEnergy(s.Params),
 		Age:              c.Age,
 		IsJuvenile:       c.IsJuvenile(),
 		JuvenilePeriod:   c.JuvenilePeriod(),
 		CurrentMass:      float32(c.CurrentMass()),
-		AdultMass:        c.MaxMass,
+		AdultMass:        float64(c.MaxMass),
 		LastAction:       c.LastAction,
-		SightDistance:    c.GetSightDistance(),
+		SightDistance:    float64(c.GetSightDistance()),
 		FieldOfView:      c.FieldOfView(),
 		Dopamine:         c.Dopamine,
 		MutationPct:      s.Params.BaseMutationRate * float32(c.Genome.MutationRate),
@@ -123,10 +135,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		A:                uint8(a >> 8),
 		MetabolicRate:    c.MetabolicRate(s.Params, s.World.TemperatureAt(c.Loc.Y)),
 		MaxAge:           c.MaxAge(s.Params),
-		Stomach:          c.Stomach,
-		StomachCapacity:  c.StomachCapacity(s.Params),
-		FoodEfficiency:   float32(foodEff),
-		MeatEfficiency:   float32(meatEff),
+		Stomach:          float64(c.Stomach),
+		StomachCapacity:  float64(c.StomachCapacity(s.Params)),
+		FoodEfficiency:   foodEff,
+		MeatEfficiency:   meatEff,
 		ReproductionType: c.Genome.ReproductionType,
 		NeuralNet:        nnView,
 	}, true
@@ -144,16 +156,16 @@ func (s *Simulation) CreatureViews() []CreatureView {
 
 		views = append(views, CreatureView{
 			ID:               int(id),
-			X:                c.Loc.X,
-			Y:                c.Loc.Y,
+			X:                float64(c.Loc.X),
+			Y:                float64(c.Loc.Y),
 			R:                uint8(r),
 			G:                uint8(g),
 			B:                uint8(b),
 			A:                uint8(a),
-			Heading:          c.Heading,
-			SightDistance:    c.GetSightDistance(),
+			Heading:          float64(c.Heading),
+			SightDistance:    float64(c.GetSightDistance()),
 			FieldOfView:      c.FieldOfView(),
-			Radius:           c.Radius,
+			Radius:           float64(c.Radius),
 			Mass:             c.Genome.Mass,
 			CurrentMass:      float64(c.Mass),
 			ReproductionType: c.Genome.ReproductionType,

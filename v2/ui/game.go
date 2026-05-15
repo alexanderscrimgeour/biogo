@@ -21,8 +21,9 @@ type SimulationState interface {
 	WorldWidth() float64
 	WorldHeight() float64
 	PopulationCount() int
-	FoodCount() int
+	PlantCount() int
 	AverageAge() float64
+	AverageGeneration() float64
 	CreatureMinMass() byte
 	CreatureMaxMass() float64
 	SaveCreature(id int) error
@@ -182,7 +183,7 @@ func (g *Game) Update() error {
 
 		g.history[g.histHead] = histSample{
 			pop:         g.sim.PopulationCount(),
-			food:        g.sim.FoodCount(),
+			food:        g.sim.PlantCount(),
 			totalEnergy: g.sim.TotalEnergy(),
 		}
 		g.histHead = (g.histHead + 1) % historyLen

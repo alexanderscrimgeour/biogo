@@ -2,6 +2,7 @@ package ui
 
 import (
 	"biogo/v2/simulation"
+	"biogo/v2/world"
 	"image/color"
 	"math"
 	"time"
@@ -29,13 +30,20 @@ type WorldRenderer struct {
 	worldLayer   *ebiten.Image
 	animByID     map[int]*creatureAnim
 	lookup       map[int]int
-	unitCircle   []struct{ x, y float32 }
-	creatureVs   []ebiten.Vertex
-	creatureIs   []uint16
-	whiteImage   *ebiten.Image
-	isDark       bool
-	lastTickTime time.Time
-	tickDuration time.Duration
+	unitCircle       []struct{ x, y float32 }
+	circleIsTemplate []uint16 // pre-baked; shared by food and circle creatures
+	vertsPerCircle   int
+	indicesPerCircle int
+	circleCreatureVs []ebiten.Vertex
+	sexualCreatureVs []ebiten.Vertex
+	sexualCreatureIs []uint16
+	nCreatureCircles int
+	foodVs           []ebiten.Vertex // pooled; reset each frame
+	nFoodCircles     int
+	whiteImage       *ebiten.Image
+	isDark           bool
+	lastTickTime     time.Time
+	tickDuration     time.Duration
 
 	camDragging   bool
 	camDragMoved  bool
@@ -63,19 +71,41 @@ func NewWorldRenderer(sim SimulationState) *WorldRenderer {
 		})
 	}
 
-	const initCap = 500
+	vertsPerCircle := 1 + len(unitCircle)           // 14
+	indicesPerCircle := (len(unitCircle) - 1) * 3   // 36
+	maxCircles := 60_000 / vertsPerCircle            // 4285
+
+	circleIsTemplate := make([]uint16, maxCircles*indicesPerCircle)
+	for k := 0; k < maxCircles; k++ {
+		base := uint16(k * vertsPerCircle)
+		off := k * indicesPerCircle
+		for i := uint16(1); i < uint16(len(unitCircle)); i++ {
+			circleIsTemplate[off] = base
+			circleIsTemplate[off+1] = base + i
+			circleIsTemplate[off+2] = base + i + 1
+			off += 3
+		}
+	}
+
+	params := sim.GetParams()
+	maxPop := params.MaxPopulation
 	return &WorldRenderer{
-		sim:         sim,
-		renderWorld: NewRenderWorld(0, 0, UnitSize),
-		camera:      Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0},
-		worldLayer:  ebiten.NewImage(worldW, worldH),
-		animByID:    make(map[int]*creatureAnim),
-		lookup:      make(map[int]int),
-		whiteImage:  wImg,
-		unitCircle:  unitCircle,
-		isDark:      true,
-		creatureVs:  make([]ebiten.Vertex, 0, initCap*(1+segments+1)),
-		creatureIs:  make([]uint16, 0, initCap*segments*3),
+		sim:              sim,
+		renderWorld:      NewRenderWorld(0, 0, UnitSize),
+		camera:           Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0},
+		worldLayer:       ebiten.NewImage(worldW, worldH),
+		animByID:         make(map[int]*creatureAnim, maxPop),
+		lookup:           make(map[int]int, maxPop),
+		whiteImage:       wImg,
+		unitCircle:       unitCircle,
+		circleIsTemplate: circleIsTemplate,
+		vertsPerCircle:   vertsPerCircle,
+		indicesPerCircle: indicesPerCircle,
+		isDark:           true,
+		circleCreatureVs: make([]ebiten.Vertex, 0, maxPop*vertsPerCircle),
+		sexualCreatureVs: make([]ebiten.Vertex, 0, maxPop*3),
+		sexualCreatureIs: make([]uint16, 0, maxPop*3),
+		foodVs:           make([]ebiten.Vertex, 0, maxCircles*vertsPerCircle),
 	}
 }
 
@@ -236,96 +266,73 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 
 	bs := float64(UnitSize)
 	if snapshot != nil {
-		circ := len(wr.unitCircle)
-		vertsPerCircle := 1 + circ
+		// Plant colour: muted green. Meat colour: dark red.
+		const pr, pg, pb, pa = float32(65) / 255, float32(140) / 255, float32(55) / 255, float32(125) / 255
+		const mr, mg, mb, ma = float32(180) / 255, float32(30) / 255, float32(30) / 255, float32(180) / 255
 
-		fr, fg, fb, fa := float32(65)/255, float32(140)/255, float32(55)/255, float32(125)/255
-		fVs := make([]ebiten.Vertex, 0, min(len(snapshot.Food)*vertsPerCircle, 60_000))
-		fIs := make([]uint16, 0, min(len(snapshot.Food)*circ*3, 60_000))
+		wr.foodVs = wr.foodVs[:0]
+		wr.nFoodCircles = 0
 		flushFood := func() {
-			if len(fVs) > 0 {
-				wr.worldLayer.DrawTriangles(fVs, fIs, wr.whiteImage, nil)
-				fVs, fIs = fVs[:0], fIs[:0]
+			if wr.nFoodCircles > 0 {
+				wr.worldLayer.DrawTriangles(wr.foodVs, wr.circleIsTemplate[:wr.nFoodCircles*wr.indicesPerCircle], wr.whiteImage, nil)
+				wr.foodVs = wr.foodVs[:0]
+				wr.nFoodCircles = 0
 			}
 		}
 		for _, fv := range snapshot.Food {
-			if len(fVs)+vertsPerCircle > 60_000 {
+			if len(wr.foodVs)+wr.vertsPerCircle > 60_000 {
 				flushFood()
 			}
 			cx, cy, r := float32(fv.X*bs), float32(fv.Y*bs), float32(fv.Radius*bs)
-			base := uint16(len(fVs))
-			fVs = append(fVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: fr, ColorG: fg, ColorB: fb, ColorA: fa})
-			for _, u := range wr.unitCircle {
-				fVs = append(fVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: fr, ColorG: fg, ColorB: fb, ColorA: fa})
+			var cr, cg, cb, ca float32
+			if fv.Type == world.FoodTypePlant {
+				cr, cg, cb, ca = pr, pg, pb, pa
+			} else {
+				cr, cg, cb, ca = mr, mg, mb, ma
 			}
-			for i := uint16(1); i <= uint16(circ-1); i++ {
-				fIs = append(fIs, base, base+i, base+i+1)
+			base := len(wr.foodVs)
+			wr.foodVs = wr.foodVs[:base+wr.vertsPerCircle]
+			wr.foodVs[base] = ebiten.Vertex{DstX: cx, DstY: cy, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca}
+			for j, u := range wr.unitCircle {
+				wr.foodVs[base+1+j] = ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca}
 			}
+			wr.nFoodCircles++
 		}
 		flushFood()
-
-		mr, mg, mb2, ma := float32(180)/255, float32(30)/255, float32(30)/255, float32(180)/255
-		mVs := make([]ebiten.Vertex, 0, min(len(snapshot.Meat)*vertsPerCircle, 60_000))
-		mIs := make([]uint16, 0, min(len(snapshot.Meat)*circ*3, 60_000))
-		flushMeat := func() {
-			if len(mVs) > 0 {
-				wr.worldLayer.DrawTriangles(mVs, mIs, wr.whiteImage, nil)
-				mVs, mIs = mVs[:0], mIs[:0]
-			}
-		}
-		for _, mv := range snapshot.Meat {
-			if len(mVs)+vertsPerCircle > 60_000 {
-				flushMeat()
-			}
-			cx, cy, r := float32(mv.X*bs), float32(mv.Y*bs), float32(mv.Radius*bs)
-			base := uint16(len(mVs))
-			mVs = append(mVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: mr, ColorG: mg, ColorB: mb2, ColorA: ma})
-			for _, u := range wr.unitCircle {
-				mVs = append(mVs, ebiten.Vertex{DstX: cx + r*u.x, DstY: cy + r*u.y, ColorR: mr, ColorG: mg, ColorB: mb2, ColorA: ma})
-			}
-			for i := uint16(1); i <= uint16(circ-1); i++ {
-				mIs = append(mIs, base, base+i, base+i+1)
-			}
-		}
-		flushMeat()
 	}
 
-	wr.creatureVs = wr.creatureVs[:0]
-	wr.creatureIs = wr.creatureIs[:0]
-	vertsPerCreature := 1 + len(wr.unitCircle)
-	flushCreatures := func() {
-		if len(wr.creatureVs) > 0 {
-			wr.worldLayer.DrawTriangles(wr.creatureVs, wr.creatureIs, wr.whiteImage, nil)
-			wr.creatureVs = wr.creatureVs[:0]
-			wr.creatureIs = wr.creatureIs[:0]
-		}
-	}
+	wr.circleCreatureVs = wr.circleCreatureVs[:0]
+	wr.sexualCreatureVs = wr.sexualCreatureVs[:0]
+	wr.sexualCreatureIs = wr.sexualCreatureIs[:0]
+	wr.nCreatureCircles = 0
 
 	for _, anim := range wr.animByID {
-		if len(wr.creatureVs)+vertsPerCreature > 60_000 {
-			flushCreatures()
-		}
 		lerpX := anim.prevX + (anim.curX-anim.prevX)*t
 		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
 		cx, cy := float32(lerpX), float32(lerpY)
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
-		baseIdx := uint16(len(wr.creatureVs))
 
 		if anim.sexual {
-			wr.creatureVs = append(wr.creatureVs,
+			baseIdx := uint16(len(wr.sexualCreatureVs))
+			wr.sexualCreatureVs = append(wr.sexualCreatureVs,
 				ebiten.Vertex{DstX: cx + anim.radius*float32(math.Cos(anim.heading)), DstY: cy + anim.radius*float32(math.Sin(anim.heading)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
 				ebiten.Vertex{DstX: cx + anim.radius*float32(math.Cos(anim.heading+2.4)), DstY: cy + anim.radius*float32(math.Sin(anim.heading+2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
 				ebiten.Vertex{DstX: cx + anim.radius*float32(math.Cos(anim.heading-2.4)), DstY: cy + anim.radius*float32(math.Sin(anim.heading-2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
 			)
-			wr.creatureIs = append(wr.creatureIs, baseIdx, baseIdx+1, baseIdx+2)
+			wr.sexualCreatureIs = append(wr.sexualCreatureIs, baseIdx, baseIdx+1, baseIdx+2)
 		} else {
-			wr.creatureVs = append(wr.creatureVs, ebiten.Vertex{DstX: cx, DstY: cy, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca})
-			for _, unit := range wr.unitCircle {
-				wr.creatureVs = append(wr.creatureVs, ebiten.Vertex{DstX: cx + anim.radius*unit.x, DstY: cy + anim.radius*unit.y, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca})
+			if len(wr.circleCreatureVs)+wr.vertsPerCircle > 60_000 {
+				wr.worldLayer.DrawTriangles(wr.circleCreatureVs, wr.circleIsTemplate[:wr.nCreatureCircles*wr.indicesPerCircle], wr.whiteImage, nil)
+				wr.circleCreatureVs = wr.circleCreatureVs[:0]
+				wr.nCreatureCircles = 0
 			}
-			for i := uint16(1); i <= uint16(len(wr.unitCircle)-1); i++ {
-				wr.creatureIs = append(wr.creatureIs, baseIdx, baseIdx+i, baseIdx+i+1)
+			base := len(wr.circleCreatureVs)
+			wr.circleCreatureVs = wr.circleCreatureVs[:base+wr.vertsPerCircle]
+			wr.circleCreatureVs[base] = ebiten.Vertex{DstX: cx, DstY: cy, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca}
+			for j, unit := range wr.unitCircle {
+				wr.circleCreatureVs[base+1+j] = ebiten.Vertex{DstX: cx + anim.radius*unit.x, DstY: cy + anim.radius*unit.y, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca}
 			}
+			wr.nCreatureCircles++
 		}
 	}
 
@@ -335,7 +342,12 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 			wr.drawFOVCones(wr.worldLayer, map[int]simulation.CreatureView{selectedID: view}, t)
 		}
 	}
-	flushCreatures()
+	if wr.nCreatureCircles > 0 {
+		wr.worldLayer.DrawTriangles(wr.circleCreatureVs, wr.circleIsTemplate[:wr.nCreatureCircles*wr.indicesPerCircle], wr.whiteImage, nil)
+	}
+	if len(wr.sexualCreatureVs) > 0 {
+		wr.worldLayer.DrawTriangles(wr.sexualCreatureVs, wr.sexualCreatureIs, wr.whiteImage, nil)
+	}
 
 	if selectedID != -1 {
 		wr.drawSelectionHighlight(wr.worldLayer, selectedID)
