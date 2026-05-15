@@ -265,21 +265,22 @@ func (c *Creature) GrowMass(params *Parameters) {
 		return
 	}
 
+	energyRatio := float64(c.Energy) / float64(c.MaxEnergy(params))
+	var energyFactor float64
+	if energyRatio > 0.2 {
+		energyFactor = (energyRatio - 0.2) / 0.8
+	}
 	massRatio := c.Mass / maxMass
 	// von Bertalanffy rate: peaks at massRatio ≈ 0.33, zero at 0 and 1.
 	growthRate := float64(params.MaxGrowthRatePerTick) * math.Sqrt(massRatio) * (1.0 - massRatio)
-	energyCost := growthRate * float64(params.GrowthEnergyCostFactor)
+	actualGrowth := growthRate * energyFactor
+	energyCost := actualGrowth * float64(params.GrowthEnergyCostFactor)
 
-	disposableEnergy := float64(c.Energy - survivalBuffer)
-	actualGrowth := growthRate
-	if energyCost > disposableEnergy {
-		actualGrowth = disposableEnergy / float64(params.GrowthEnergyCostFactor)
-		energyCost = disposableEnergy
+	if actualGrowth > 0.001 {
+		c.Mass = utils.MinFloat64(maxMass, c.Mass+actualGrowth)
+		c.UpdateSize(params)
+		c.DrainEnergy(float32(energyCost))
 	}
-
-	c.Mass = utils.MinFloat64(maxMass, c.Mass+actualGrowth)
-	c.UpdateSize(params)
-	c.DrainEnergy(float32(energyCost))
 }
 
 func (c *Creature) DrainEnergy(amount float32) {

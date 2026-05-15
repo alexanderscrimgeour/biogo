@@ -304,7 +304,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 
 	if IsActionEnabled(FEED) {
 		level := actionLevels[FEED]
-		if (level > 0 && c.Stomach > 0) || (level < 0) {
+		if (level > 0.5 && c.Stomach > 0) || (level < -0.5) {
 			fwdX, fwdY := world.HeadingToVec(c.Heading)
 			bestDistSq := math.MaxFloat64
 			var recipient *Creature

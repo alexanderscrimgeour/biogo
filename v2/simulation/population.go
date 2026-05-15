@@ -311,17 +311,29 @@ func (p *Population) ProcessFeedQueue(params *Parameters) {
 	for _, fi := range p.FeedQueue {
 		donor := fi.Creature
 		recipient := fi.Recipient
-		if !donor.Alive || !recipient.Alive {
+
+		absLevel := math.Abs(float64(fi.Level))
+		if absLevel < 0.5 {
 			continue
 		}
+		// 2. Re-map: 0.5 -> 0.0 and 1.0 -> 1.0
+		// Formula: (input - min) / (max - min)
+		proportion := (absLevel - 0.5) / (0.5)
+		if proportion > 1.0 {
+			proportion = 1.0
+		}
+
 		if fi.Level < 0 {
 			donor, recipient = recipient, donor
 		}
-		proportion := math.Tanh(float64(fi.Level))
+		if !donor.Alive || !recipient.Alive {
+			continue
+		}
 		amount := donor.Stomach * proportion
 		if amount <= 0 {
 			continue
 		}
+
 		space := recipient.StomachCapacity(params) - recipient.Stomach
 		if space <= 0 {
 			continue
@@ -329,6 +341,7 @@ func (p *Population) ProcessFeedQueue(params *Parameters) {
 		if amount > space {
 			amount = space
 		}
+
 		donor.Stomach -= amount
 		recipient.Stomach += amount
 	}
