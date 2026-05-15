@@ -11,9 +11,9 @@ const (
 	REWARD
 	PUNISH
 	REPRODUCE // signal to reproduce this tick (asexual: splits daughter cell; sexual: seeks mate)
+	FEED      // donate stomach contents proportional to actionLevel to the nearest touching creature ahead
 
 	ACTION_COUNT
-	FEED // if touching the creature in front, donate stomach contents proportional to actionLevel
 )
 
 func IsActionEnabled(a byte) bool {

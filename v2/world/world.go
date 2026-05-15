@@ -495,6 +495,126 @@ func (w *World) GetMeatInCone(center Position, heading float64, halfFOVCos float
 	return w.mHash.InCone(center, heading, halfFOVCos, maxDist, w.meatPos, w.meatActive, buffer)
 }
 
+// GetAllInRadius fills all three buffers (food, meat, creature) in a single cell
+// traversal. All three hashes share the same grid dimensions, so bounds are
+// computed once and each cell is visited exactly once.
+func (w *World) GetAllInRadius(center Position, radius float64, foodBuf, meatBuf, creatureBuf []int) ([]int, []int, []int) {
+	foodBuf = foodBuf[:0]
+	meatBuf = meatBuf[:0]
+	creatureBuf = creatureBuf[:0]
+	rSq := radius * radius
+	minBx, maxBx, minBy, maxBy := w.cHash.cellBounds(center, radius)
+	for bx := minBx; bx <= maxBx; bx++ {
+		base := bx * w.cHash.numY
+		for by := minBy; by <= maxBy; by++ {
+			idx := base + by
+			for _, id := range w.fHash.cells[idx] {
+				if id < len(w.foodActive) && w.foodActive[id] {
+					pos := w.foodPos[id]
+					dx, dy := pos.X-center.X, pos.Y-center.Y
+					if dx*dx+dy*dy <= rSq {
+						foodBuf = append(foodBuf, id)
+					}
+				}
+			}
+			for _, id := range w.mHash.cells[idx] {
+				if id < len(w.meatActive) && w.meatActive[id] {
+					pos := w.meatPos[id]
+					dx, dy := pos.X-center.X, pos.Y-center.Y
+					if dx*dx+dy*dy <= rSq {
+						meatBuf = append(meatBuf, id)
+					}
+				}
+			}
+			for _, id := range w.cHash.cells[idx] {
+				if id < len(w.creatureActive) && w.creatureActive[id] {
+					pos := w.creaturePos[id]
+					dx, dy := pos.X-center.X, pos.Y-center.Y
+					if dx*dx+dy*dy <= rSq {
+						creatureBuf = append(creatureBuf, id)
+					}
+				}
+			}
+		}
+	}
+	return foodBuf, meatBuf, creatureBuf
+}
+
+// GetFoodAndMeatInRadius fills foodBuf and meatBuf for a radius query in one cell
+// traversal, with no directional filter.
+func (w *World) GetFoodAndMeatInRadius(center Position, radius float64, foodBuf, meatBuf []int) ([]int, []int) {
+	foodBuf = foodBuf[:0]
+	meatBuf = meatBuf[:0]
+	rSq := radius * radius
+	minBx, maxBx, minBy, maxBy := w.fHash.cellBounds(center, radius)
+	for bx := minBx; bx <= maxBx; bx++ {
+		base := bx * w.fHash.numY
+		for by := minBy; by <= maxBy; by++ {
+			idx := base + by
+			for _, id := range w.fHash.cells[idx] {
+				if id < len(w.foodActive) && w.foodActive[id] {
+					pos := w.foodPos[id]
+					dx, dy := pos.X-center.X, pos.Y-center.Y
+					if dx*dx+dy*dy <= rSq {
+						foodBuf = append(foodBuf, id)
+					}
+				}
+			}
+			for _, id := range w.mHash.cells[idx] {
+				if id < len(w.meatActive) && w.meatActive[id] {
+					pos := w.meatPos[id]
+					dx, dy := pos.X-center.X, pos.Y-center.Y
+					if dx*dx+dy*dy <= rSq {
+						meatBuf = append(meatBuf, id)
+					}
+				}
+			}
+		}
+	}
+	return foodBuf, meatBuf
+}
+
+// GetFoodAndMeatInCone fills foodBuf and meatBuf for a cone query in one cell
+// traversal. food and meat queries in the eating path share identical parameters.
+func (w *World) GetFoodAndMeatInCone(center Position, heading, halfFOVCos, maxDist float64, foodBuf, meatBuf []int) ([]int, []int) {
+	foodBuf = foodBuf[:0]
+	meatBuf = meatBuf[:0]
+	fwdX, fwdY := HeadingToVec(heading)
+	rSq := maxDist * maxDist
+	minBx, maxBx, minBy, maxBy := w.fHash.cellBounds(center, maxDist)
+	for bx := minBx; bx <= maxBx; bx++ {
+		base := bx * w.fHash.numY
+		for by := minBy; by <= maxBy; by++ {
+			idx := base + by
+			for _, id := range w.fHash.cells[idx] {
+				if id < len(w.foodActive) && w.foodActive[id] {
+					pos := w.foodPos[id]
+					dx, dy := pos.X-center.X, pos.Y-center.Y
+					if dx*dx+dy*dy > rSq || (dx == 0 && dy == 0) {
+						continue
+					}
+					if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
+						foodBuf = append(foodBuf, id)
+					}
+				}
+			}
+			for _, id := range w.mHash.cells[idx] {
+				if id < len(w.meatActive) && w.meatActive[id] {
+					pos := w.meatPos[id]
+					dx, dy := pos.X-center.X, pos.Y-center.Y
+					if dx*dx+dy*dy > rSq || (dx == 0 && dy == 0) {
+						continue
+					}
+					if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
+						meatBuf = append(meatBuf, id)
+					}
+				}
+			}
+		}
+	}
+	return foodBuf, meatBuf
+}
+
 func (w *World) ForEachActiveMeat(fn func(id int, x, y float64, r float64)) {
 	for id, active := range w.meatActive {
 		if active {

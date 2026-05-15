@@ -168,6 +168,15 @@ func (c Creature) BiteSize(params *Parameters) float64 {
 	return params.BaseBiteSize * (float64(c.Mass) / params.MaxMass)
 }
 
+// DigestionEfficiencies returns the fraction of food and meat mass this creature
+// can absorb into its stomach per bite.
+// gene=0 → (1.0, 0.0) pure herbivore; gene=255 → (0.0, 1.0) pure carnivore;
+// gene=128 → (~0.5, ~0.5) omnivore.
+func (c Creature) DigestionEfficiencies() (foodEff, meatEff float64) {
+	dt := float64(c.Genome.DigestionType) / 255.0
+	return 1.0 - dt, dt
+}
+
 func (c *Creature) Digest(params *Parameters) {
 	if c.Stomach <= 0 {
 		return
@@ -190,7 +199,8 @@ func (c *Creature) Digest(params *Parameters) {
 	// Higher mass = lower efficiency.
 	efficiency := 0.95 - (massRatio * 0.25)
 	if c.IsResting {
-		digestionRate *= 1.5
+		restingBoost := 1.5 + (2.0 * float64(massNorm))
+		digestionRate *= restingBoost
 	}
 
 	potentialEnergyGain := digestionRate * float64(params.EnergyPerMassUnit*efficiency)

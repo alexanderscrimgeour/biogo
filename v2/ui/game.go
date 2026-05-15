@@ -880,6 +880,9 @@ func (g *Game) drawCreatureDetail(screen *ebiten.Image, d simulation.CreatureDet
 	stomachBar := &components.EnergyBar{Value: float32(d.Stomach), Max: float32(d.StomachCapacity), MaxColor: color.RGBA{55, 185, 55, 255}, MinColor: color.RGBA{190, 55, 55, 255}, Width: p.W - (detailTpad * 2)}
 	_, h = stomachBar.Draw(screen, currX, currY)
 	currY += h + 15
+	efficiency := &components.Label{Text: fmt.Sprintf("Food Eff: %.1f%%  Meat Eff: %.1f%%", d.FoodEfficiency*100, d.MeatEfficiency*100), Font: g.statFont, Color: color.White}
+	efficiency.Draw(screen, currX, currY)
+	currY += h + 15
 	dopamine := &components.Label{Text: fmt.Sprintf("Dopamine:  %.02f", d.Dopamine), Font: g.statFont, Color: color.White}
 	dopamine.Draw(screen, currX, currY)
 	currY += 5
@@ -1314,7 +1317,7 @@ func nnSensorName(id byte) string {
 func nnActionName(id byte) string {
 	names := [...]string{
 		"Accelerate", "Rotate", "SetOsc", "SetResp",
-		"SetLearn", "Rest", "Attack", "Reward", "Punish", "Mate",
+		"SetLearn", "Rest", "Attack", "Reward", "Punish", "Mate", "Feed",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -1381,10 +1384,8 @@ func (g *Game) drawTemperatureBackground() {
 		b := uint8(float32(coldB)*(1-t) + float32(warmB)*t)
 		vector.DrawFilledRect(g.worldLayer, 0, y, worldW, bandH, color.RGBA{r, gv, b, 255}, false)
 	}
-
-	// Radiation zone: semi-transparent green-yellow tint + border
-	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 250}, false)
-	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 250}, false)
+	vector.DrawFilledRect(g.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 40}, false)
+	vector.StrokeLine(g.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 60}, false)
 }
 
 func (g *Game) drawSpawnMutSlider(screen *ebiten.Image) {

@@ -42,6 +42,7 @@ const (
 	ENERGY_DELTA
 	TEMPERATURE
 	TEMPERATURE_DELTA
+	TOUCHING
 
 	SENSOR_COUNT
 )
@@ -59,9 +60,9 @@ type SensorContext struct {
 }
 
 func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params *Parameters) {
-	c.SightFoodBuffer = world.GetFoodInRadius(c.Loc, c.GetSightDistance(), c.SightFoodBuffer)
-	c.SightMeatBuffer = world.GetMeatInRadius(c.Loc, c.GetSightDistance(), c.SightMeatBuffer)
-	c.SightCreatureBuffer = world.GetCreaturesInRadius(c.Loc, c.GetSightDistance(), c.SightCreatureBuffer)
+	c.SightFoodBuffer, c.SightMeatBuffer, c.SightCreatureBuffer = world.GetAllInRadius(
+		c.Loc, c.GetSightDistance(), c.SightFoodBuffer, c.SightMeatBuffer, c.SightCreatureBuffer,
+	)
 	// LocalCreatureBuffer contains the same set — copy instead of a second query.
 	c.LocalCreatureBuffer = append(c.LocalCreatureBuffer[:0], c.SightCreatureBuffer...)
 
@@ -225,6 +226,8 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		delta := float64((currentTemp - prevTemp) * c.Responsiveness * 5)
 		// -1 = Cooling down fast, 0 = No change, 1 = Warming up fast
 		output = float32(math.Tanh(delta))
+	case TOUCHING:
+		output = calculateTouching(c, p, ctx)
 	case RANDOM:
 		fallthrough
 	default:
@@ -938,6 +941,54 @@ func calculateLocalFoodPerCapita(ctx *SensorContext, params *Parameters) float32
 	input := (ratio - 1.0) / saturation
 
 	return float32(math.Tanh(input * 2.0))
+}
+
+// calculateTouching returns 1 if the nearest creature in the forward FOV is
+// physically touching this creature (centres within combined radii), -1 otherwise.
+func calculateTouching(c Creature, p *Population, ctx *SensorContext) float32 {
+	if p == nil {
+		return -1
+	}
+	fwdX, fwdY := world.HeadingToVec(c.Heading)
+
+	bestDistSq := math.MaxFloat64
+	var bestDist, bestRadius float64
+	found := false
+
+	for _, id := range ctx.SightCreatureIDs {
+		if id == c.Id {
+			continue
+		}
+		other, ok := p.Creatures[id]
+		if !ok || !other.Alive {
+			continue
+		}
+
+		dx, dy := other.Loc.X-c.Loc.X, other.Loc.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 == 0 || d2 >= bestDistSq {
+			continue
+		}
+
+		dist := math.Sqrt(d2)
+		dot := (float64(fwdX)*dx + float64(fwdY)*dy) / dist
+		if dot < c.halfFOVCos {
+			continue
+		}
+
+		bestDistSq = d2
+		bestDist = dist
+		bestRadius = other.Radius
+		found = true
+	}
+
+	if !found {
+		return -1
+	}
+	if bestDist <= c.Radius+bestRadius {
+		return 1
+	}
+	return -1
 }
 
 func fastDist(dx, dy float64) float64 {
