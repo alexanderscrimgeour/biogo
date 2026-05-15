@@ -18,5 +18,10 @@ func (l *Label) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	op.GeoM.Translate(float64(int(x)), float64(int(y)))
 	op.ColorScale.ScaleWithColor(l.Color)
 	textv2.Draw(screen, l.Text, l.Font, op)
-	return 0, 18 // Return the height of a standard line
+	return 0, 18
+}
+
+// Size returns the preferred dimensions of a label line.
+func (l *Label) Size() (float32, float32) {
+	return 0, 18
 }

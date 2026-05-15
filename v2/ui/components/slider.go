@@ -1,46 +1,92 @@
 package components
 
 import (
+	"fmt"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
+// Slider is a horizontal range-selection control.
+// TrackOffX is the horizontal offset from the slider's left edge to where the track begins,
+// allowing a label to occupy the left portion.
+// It stores its last drawn position for hit and drag detection.
 type Slider struct {
-	X, Y, W, H     int
-	TrackX, TrackW int
-	Label          string
-	Color          color.RGBA
-	LabelColor     color.Gray16
-	Min, Max       float64
-	Value          float64
-	Dragging       bool
+	W, H       float32
+	TrackOffX  float32
+	TrackW     float32
+	Label      string
+	Color      color.RGBA
+	LabelColor color.Color
+	Min, Max   float64
+	Value      float64
+	Dragging   bool
+	Font       *textv2.GoXFace
+	OnChange   func(float64)
+	lastX      float32
+	lastY      float32
 }
 
-func (s *Slider) Draw(screen *ebiten.Image, clr color.Color) {
-	// 1. Draw the background panel
-	vector.FillRect(screen, float32(s.X), float32(s.Y), float32(s.W), float32(s.H), color.RGBA{30, 30, 50, 220}, false)
+// Draw renders the slider at (x, y) and returns (W, H).
+func (s *Slider) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
+	s.lastX, s.lastY = x, y
+	trackX := x + s.TrackOffX
+	trackY := y + (s.H-6)/2
 
-	// 2. Draw the track
-	vector.FillRect(screen, float32(s.TrackX), float32(s.Y+9), float32(s.TrackW), 6, color.RGBA{60, 60, 80, 255}, false)
+	vector.FillRect(screen, x, y, s.W, s.H, color.RGBA{30, 30, 50, 220}, false)
+	vector.FillRect(screen, trackX, trackY, s.TrackW, 6, color.RGBA{60, 60, 80, 255}, false)
 
-	// 3. Draw the progress fill
 	t := (s.Value - s.Min) / (s.Max - s.Min)
-	vector.FillRect(screen, float32(s.TrackX), float32(s.Y+9), float32(s.TrackW)*float32(t), 6, color.RGBA{80, 140, 210, 255}, false)
-}
-
-func (s *Slider) InBounds(mx, my int) bool {
-	return mx >= s.X && mx < s.X+s.W && my >= s.Y && my < s.Y+s.H
-}
-
-func (s *Slider) UpdateValue(mx int) {
-	t := float64(mx-s.TrackX) / float64(s.TrackW)
 	if t < 0 {
 		t = 0
+	} else if t > 1 {
+		t = 1
 	}
-	if t > 1 {
+	vector.FillRect(screen, trackX, trackY, s.TrackW*float32(t), 6, color.RGBA{80, 140, 210, 255}, false)
+
+	if s.Font != nil {
+		var lbl string
+		if s.Label != "" {
+			lbl = fmt.Sprintf("%s: %.4f", s.Label, s.Value)
+		} else {
+			lbl = fmt.Sprintf("%.4f", s.Value)
+		}
+		op := &textv2.DrawOptions{}
+		op.GeoM.Translate(float64(x)+5, float64(y)+17)
+		lc := s.LabelColor
+		if lc == nil {
+			lc = color.White
+		}
+		op.ColorScale.ScaleWithColor(lc)
+		textv2.Draw(screen, lbl, s.Font, op)
+	}
+	return s.W, s.H
+}
+
+// Size returns preferred dimensions for layout.
+func (s *Slider) Size() (float32, float32) {
+	return s.W, s.H
+}
+
+// InBounds reports whether (mx, my) falls within the last drawn slider area.
+func (s *Slider) InBounds(mx, my int) bool {
+	return float32(mx) >= s.lastX && float32(mx) < s.lastX+s.W &&
+		float32(my) >= s.lastY && float32(my) < s.lastY+s.H
+}
+
+// UpdateValue sets Value from a mouse X position relative to the track.
+func (s *Slider) UpdateValue(mx int) {
+	trackX := s.lastX + s.TrackOffX
+	t := float64(float32(mx)-trackX) / float64(s.TrackW)
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
 		t = 1
 	}
 	s.Value = s.Min + t*(s.Max-s.Min)
+	if s.OnChange != nil {
+		s.OnChange(s.Value)
+	}
 }

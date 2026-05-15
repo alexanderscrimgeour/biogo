@@ -105,6 +105,9 @@ func (s *Simulation) step() {
 
 	if s.Tick%s.Params.FoodSpawnInterval == 0 {
 		deficit := s.Energy - s.TotalEnergy()
+		if deficit < 0 {
+			deficit = 0
+		}
 		energyPerPiece := float64(s.Params.FoodMass) * float64(s.Params.EnergyPerMassUnit)
 		// number of food items to spawn
 		n := int(deficit / energyPerPiece)
@@ -168,15 +171,6 @@ func (s *Simulation) step() {
 	s.Population.ProcessDeathQueue(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params)
 
-	// Reward decay — iterate only alive creatures via the maintained index.
-	for _, id := range s.Population.aliveIDs {
-		c := s.Population.Creatures[id]
-		c.Dopamine *= 0.9
-		if c.Dopamine > -0.01 && c.Dopamine < 0.01 {
-			c.Dopamine = 0
-		}
-	}
-
 	aliveCount := s.Population.AliveCount()
 	const toSpawn = 5
 	for aliveCount < s.Params.MinPopulation {
@@ -192,8 +186,11 @@ func (s *Simulation) step() {
 }
 
 func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions) {
+	c.Dopamine *= 0.9
+	if c.Dopamine > -0.01 && c.Dopamine < 0.01 {
+		c.Dopamine = 0
+	}
 	c.Age++
-	c.GrowMass(s.Params)
 	c.LastAction = ""
 	temp := s.World.TemperatureAt(c.Loc.Y)
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
@@ -568,7 +565,6 @@ func (s *Simulation) AverageAge() float64 {
 	}
 	return float64(total) / float64(count)
 }
-
 
 // partitionIDs splits ids into n roughly equal batches using round-robin assignment.
 func partitionIDs(ids []int, n int) [][]int {

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"biogo/v2/simulation"
+	"biogo/v2/ui/components"
 	"fmt"
 	"image/color"
 	"math"
@@ -231,26 +232,34 @@ type GenomeEditor struct {
 	nodeHits   []geNodeHit
 	edgeMidPts []edgeMidPoint
 
-	// NN controls (x, y, w, h)
-	addNeuronBtn [4]float32
-	remNeuronBtn [4]float32
+	// NN controls
+	addNeuronBtn *components.Button
+	remNeuronBtn *components.Button
 	wtTrackX     float32
 	wtTrackY     float32
 	wtTrackW     float32
-	delEdgeBtn   [4]float32
-	saveBtn      [4]float32
-	cancelBtn    [4]float32
-	closeBtn     [4]float32
+	delEdgeBtn   *components.Button
+	saveBtn      *components.Button
+	cancelBtn    *components.Button
+	closeBtn     *components.Button
 
+	font           *textv2.GoXFace
 	draggingWeight bool
 }
 
-func newGenomeEditor(onSave func(*simulation.Genome, string)) *GenomeEditor {
+func newGenomeEditor(font *textv2.GoXFace, onSave func(*simulation.Genome, string)) *GenomeEditor {
 	return &GenomeEditor{
 		traitDefs:     makeTraitDefs(),
 		draggingTrait: -1,
 		selEdgeIdx:    -1,
 		onSave:        onSave,
+		font:          font,
+		closeBtn:      &components.Button{W: 24, H: 22, Label: "×", Color: color.RGBA{160, 50, 50, 200}, LabelColor: color.White, Font: font},
+		cancelBtn:     &components.Button{W: 100, H: 26, Label: "Cancel", Color: color.RGBA{80, 40, 40, 220}, LabelColor: color.White, Font: font},
+		saveBtn:       &components.Button{W: 130, H: 26, Label: "Save Genome", Color: color.RGBA{40, 100, 60, 220}, LabelColor: color.White, Font: font},
+		addNeuronBtn:  &components.Button{W: 32, H: 22, Label: "+N", Color: color.RGBA{40, 100, 60, 220}, LabelColor: color.White, Font: font},
+		remNeuronBtn:  &components.Button{W: 32, H: 22, Label: "-N", Color: color.RGBA{100, 40, 40, 220}, LabelColor: color.White, Font: font},
+		delEdgeBtn:    &components.Button{W: 76, H: 22, Label: "Del Edge", Color: color.RGBA{140, 40, 40, 220}, LabelColor: color.White, Font: font},
 	}
 }
 
@@ -307,13 +316,13 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 	fx, fy := float32(mx), float32(my)
 
 	// Close / cancel
-	if inGeRect(fx, fy, e.closeBtn) || inGeRect(fx, fy, e.cancelBtn) {
+	if e.closeBtn.IsClicked(mx, my) || e.cancelBtn.IsClicked(mx, my) {
 		e.visible = false
 		return true
 	}
 
 	// Save
-	if inGeRect(fx, fy, e.saveBtn) {
+	if e.saveBtn.IsClicked(mx, my) {
 		e.genome.SynapticDensity = byte(len(e.genome.Brain))
 		if e.onSave != nil {
 			e.onSave(e.genome, e.name)
@@ -330,7 +339,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 	e.nameInputFocused = false
 
 	// Add neuron
-	if inGeRect(fx, fy, e.addNeuronBtn) {
+	if e.addNeuronBtn.IsClicked(mx, my) {
 		if e.genome.CognitiveBreadth < e.params.MaxSynapticDensity {
 			e.genome.CognitiveBreadth++
 		}
@@ -338,7 +347,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 	}
 
 	// Remove last neuron and all genes referencing it
-	if inGeRect(fx, fy, e.remNeuronBtn) {
+	if e.remNeuronBtn.IsClicked(mx, my) {
 		if e.genome.CognitiveBreadth > e.params.MinSynapticDensity {
 			lastID := e.genome.CognitiveBreadth - 1
 			nc := e.genome.CognitiveBreadth
@@ -358,7 +367,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 	}
 
 	// Delete selected edge
-	if e.selEdgeIdx >= 0 && inGeRect(fx, fy, e.delEdgeBtn) {
+	if e.selEdgeIdx >= 0 && e.delEdgeBtn.IsClicked(mx, my) {
 		idx := e.selEdgeIdx
 		e.genome.Brain = append(e.genome.Brain[:idx], e.genome.Brain[idx+1:]...)
 		e.selEdgeIdx = -1
@@ -545,9 +554,7 @@ func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	// Close [×]
 	cbx := px + gePanW - 28
 	cby := py + 3
-	e.closeBtn = [4]float32{cbx, cby, 24, 22}
-	vector.FillRect(screen, cbx, cby, 24, 22, color.RGBA{160, 50, 50, 200}, false)
-	drawText(screen, "×", fnt, int(cbx)+6, int(cby)+16, color.White)
+	e.closeBtn.Draw(screen, cbx, cby)
 
 	// Vertical separator
 	sepX := px + geNNSectionX - 8
@@ -589,17 +596,10 @@ func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 
 	// Row 2 — Cancel / Save buttons
 	btnRowY := footerY + 32
-	cw, sw2 := float32(100), float32(130)
 	gap := float32(20)
-	bStartX := px + (gePanW-cw-sw2-gap)/2
-	e.cancelBtn = [4]float32{bStartX, btnRowY, cw, 26}
-	e.saveBtn = [4]float32{bStartX + cw + gap, btnRowY, sw2, 26}
-
-	vector.FillRect(screen, e.cancelBtn[0], e.cancelBtn[1], e.cancelBtn[2], e.cancelBtn[3], color.RGBA{80, 40, 40, 220}, false)
-	drawText(screen, "Cancel", fnt, int(e.cancelBtn[0])+16, int(btnRowY)+18, color.White)
-
-	vector.FillRect(screen, e.saveBtn[0], e.saveBtn[1], e.saveBtn[2], e.saveBtn[3], color.RGBA{40, 100, 60, 220}, false)
-	drawText(screen, "Save Genome", fnt, int(e.saveBtn[0])+10, int(btnRowY)+18, color.White)
+	bStartX := px + (gePanW-e.cancelBtn.W-e.saveBtn.W-gap)/2
+	e.cancelBtn.Draw(screen, bStartX, btnRowY)
+	e.saveBtn.Draw(screen, bStartX+e.cancelBtn.W+gap, btnRowY)
 }
 
 // drawTraits renders the left-column trait sliders.
@@ -811,9 +811,19 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 			clr = color.RGBA{255, 255, 80, 255}
 		}
 		vector.FillCircle(screen, sAbsX, sy, geNodeR, clr, false)
+
 		lbl := nnSensorName(byte(i))
-		lblW := float32(len(lbl)) * 7.2
-		drawText(screen, lbl, fnt, int(sAbsX-lblW-7), int(sy)+5, color.RGBA{155, 175, 215, 200})
+
+		metrics := fnt.Metrics()
+		textHeight := float32(metrics.HAscent + metrics.HDescent)
+
+		tw, _ := textv2.Measure(lbl, fnt, 0)
+		lblW := float32(tw)
+
+		tx := int(sAbsX - lblW - 7)
+		ty := int(sy - textHeight/2)
+
+		drawText(screen, lbl, fnt, tx, ty, color.RGBA{155, 175, 215, 200})
 		e.nodeHits = append(e.nodeHits, geNodeHit{cx: sAbsX, cy: sy, typ: simulation.SENSOR, id: byte(i)})
 	}
 
@@ -825,7 +835,12 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 			clr = color.RGBA{255, 255, 80, 255}
 		}
 		vector.FillCircle(screen, nAbsX, ny, geNodeR+1, clr, false)
-		drawText(screen, fmt.Sprintf("N%d", i), fnt, int(nAbsX)+9, int(ny)+5, color.RGBA{195, 175, 80, 200})
+
+		lbl := fmt.Sprintf("N%d", i)
+		metrics := fnt.Metrics()
+		textHeight := float32(metrics.HAscent + metrics.HDescent)
+
+		drawText(screen, lbl, fnt, int(nAbsX)+9, int(ny-textHeight/2), color.RGBA{195, 175, 80, 200})
 		e.nodeHits = append(e.nodeHits, geNodeHit{cx: nAbsX, cy: ny, typ: simulation.NEURON, id: byte(i)})
 	}
 
@@ -833,7 +848,12 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	for i := 0; i < numA; i++ {
 		ay := aY[i]
 		vector.FillCircle(screen, aAbsX, ay, geNodeR, color.RGBA{220, 100, 80, 255}, false)
-		drawText(screen, nnActionName(byte(i)), fnt, int(aAbsX)+9, int(ay)+5, color.RGBA{215, 155, 145, 200})
+
+		lbl := nnActionName(byte(i))
+		metrics := fnt.Metrics()
+		textHeight := float32(metrics.HAscent + metrics.HDescent)
+
+		drawText(screen, lbl, fnt, int(aAbsX)+9, int(ay-textHeight/2), color.RGBA{215, 155, 145, 200})
 		e.nodeHits = append(e.nodeHits, geNodeHit{cx: aAbsX, cy: ay, typ: simulation.ACTION, id: byte(i)})
 	}
 
@@ -844,14 +864,8 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	// +N / -N buttons
 	bnx := nnX + gePad
 	bny := ctrlY + gePad
-	e.addNeuronBtn = [4]float32{bnx, bny, 32, 22}
-	e.remNeuronBtn = [4]float32{bnx + 36, bny, 32, 22}
-
-	vector.FillRect(screen, bnx, bny, 32, 22, color.RGBA{40, 100, 60, 220}, false)
-	drawText(screen, "+N", fnt, int(bnx)+5, int(bny)+16, color.White)
-
-	vector.FillRect(screen, bnx+36, bny, 32, 22, color.RGBA{100, 40, 40, 220}, false)
-	drawText(screen, "-N", fnt, int(bnx)+41, int(bny)+16, color.White)
+	e.addNeuronBtn.Draw(screen, bnx, bny)
+	e.remNeuronBtn.Draw(screen, bnx+36, bny)
 
 	drawText(screen, fmt.Sprintf("Neurons: %d/%d", e.genome.CognitiveBreadth, e.params.MaxSynapticDensity),
 		fnt, int(bnx)+74, int(bny)+16, color.RGBA{155, 175, 195, 220})
@@ -859,9 +873,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	// Delete-edge button (only visible when edge is selected)
 	if e.selEdgeIdx >= 0 {
 		dbx := nnX + geNNW - 82
-		e.delEdgeBtn = [4]float32{dbx, bny, 76, 22}
-		vector.FillRect(screen, dbx, bny, 76, 22, color.RGBA{140, 40, 40, 220}, false)
-		drawText(screen, "Del Edge", fnt, int(dbx)+8, int(bny)+16, color.White)
+		e.delEdgeBtn.Draw(screen, dbx, bny)
 	}
 
 	// Second row of controls: weight slider or status hint

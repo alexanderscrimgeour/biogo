@@ -46,6 +46,11 @@ func (e *EnergyBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) 
 	return e.Width, 10
 }
 
+// Size returns the preferred dimensions of the energy bar.
+func (e *EnergyBar) Size() (float32, float32) {
+	return e.Width, 10
+}
+
 func (e *EnergyBar) energyBarColor(frac float32) color.RGBA {
 	return lerpColor(e.MinColor, e.MaxColor, frac)
 }
