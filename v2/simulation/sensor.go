@@ -206,7 +206,8 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		maxE := c.MaxEnergy(params)
 		if maxE > 0 {
 			delta := float32(c.Energy) - float32(c.LastTickEnergy)
-			output = float32(math.Tanh(float64(delta * c.Responsiveness * 5)))
+			val := float64(delta * c.Responsiveness * 5)
+			output = float32(val / (1.0 + math.Abs(val)))
 		}
 
 	case TEMPERATURE:
@@ -216,7 +217,9 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		halfRange := (world.TempWarm - world.TempCold) / 2
 		tempCentered := (temp - midPoint) / halfRange
 		gain := float32(2.0)
-		curvedOutput := math.Tanh(float64(tempCentered * gain))
+		// Fast Softsign approximation: x / (1 + |x|)
+		val := float64(tempCentered * gain)
+		curvedOutput := val / (1.0 + math.Abs(val))
 
 		return float32(curvedOutput)
 
@@ -225,7 +228,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		prevTemp := w.TemperatureAt(c.LastLoc.Y)
 		delta := float64((currentTemp - prevTemp) * c.Responsiveness * 5)
 		// -1 = Cooling down fast, 0 = No change, 1 = Warming up fast
-		output = float32(math.Tanh(delta))
+		output = float32(d / (1.0 + math.Abs(d)))
 	case TOUCHING:
 		output = calculateTouching(c, p, ctx)
 	case RANDOM:
@@ -789,7 +792,8 @@ func calculateNearestKinship(c Creature, p *Population, ctx *SensorContext) floa
 	centeredSim := bestSim - 0.5
 	// Maps 1.0 (Clone) -> -1.0
 	// Maps -1.0 (Stranger) -> -1.0
-	return float32(math.Tanh(float64(centeredSim * -4.0)))
+	val := float64(centeredSim * -4.0)
+	return float32(val / (1.0 + math.Abs(val)))
 }
 
 // calculateBlockedFwd returns a proximity signal [0,1] for the nearest obstacle
@@ -874,7 +878,8 @@ func calculateNearestThreatAngle(c Creature, p *Population, ctx *SensorContext) 
 		return 0
 	}
 	relAngle := world.NormalizeAngle(math.Atan2(bestDy, bestDx) - c.Heading)
-	return float32(math.Tanh(relAngle * 2.0))
+	val := float64(relAngle * 2.0)
+	return float32(val / (1.0 + math.Abs(val)))
 }
 
 // calculateNearestPreyAngle returns the angle to the nearest creature lighter
@@ -905,33 +910,48 @@ func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) fl
 		return 0
 	}
 	relAngle := world.NormalizeAngle(math.Atan2(bestDy, bestDx) - c.Heading)
-	return float32(math.Tanh(relAngle * 2.0))
+	val := float64(relAngle * 2.0)
+	return float32(val / (1.0 + math.Abs(val)))
 }
 
 // calculateWallProximity returns a proximity signal [0,1] for the nearest wall
 // or world boundary within sight distance. 0 = none within range, 1 = adjacent.
 func calculateWallProximity(c Creature, w *world.World, params *Parameters) float32 {
 	sightDist := c.GetSightDistance()
-	if sightDist == 0 {
+	if sightDist <= 0 {
 		return -1
 	}
-	minDist := math.Min(c.Loc.X, params.WorldWidth-c.Loc.X)
-	minDist = math.Min(minDist, math.Min(c.Loc.Y, params.WorldHeight-c.Loc.Y))
+
+	// Work in squared space to avoid Sqrt inside the loop
+	minDistSq := math.Min(c.Loc.X, params.WorldWidth-c.Loc.X)
+	minDistSq = minDistSq * minDistSq // Square the edge distance
+
+	minYDist := math.Min(c.Loc.Y, params.WorldHeight-c.Loc.Y)
+	minDistSq = math.Min(minDistSq, minYDist*minYDist)
 
 	for _, wall := range w.Walls {
 		nearX := math.Max(wall.X, math.Min(c.Loc.X, wall.X+wall.W))
 		nearY := math.Max(wall.Y, math.Min(c.Loc.Y, wall.Y+wall.H))
 		dx := c.Loc.X - nearX
 		dy := c.Loc.Y - nearY
-		d := math.Sqrt(dx*dx + dy*dy)
-		if d < minDist {
-			minDist = d
+
+		dSq := dx*dx + dy*dy
+		if dSq < minDistSq {
+			minDistSq = dSq
 		}
 	}
 
+	// Only Sqrt once at the very end
+	minDist := math.Sqrt(minDistSq)
 	normDist := 1.0 - (minDist / sightDist)
-	return float32(math.Tanh(normDist * 3.0))
+	if normDist < 0 {
+		normDist = 0
+	} // Clamp to prevent negative values
+
+	val := float64(normDist * 3.0)
+	return float32(val / (1.0 + math.Abs(val)))
 }
+
 func calculateLocalFoodPerCapita(ctx *SensorContext, params *Parameters) float32 {
 	foodCount := float64(len(ctx.SightFoodIDs))
 	creatureCount := float64(math.Max(1, float64(len(ctx.LocalCreatureIDs))))
@@ -939,8 +959,8 @@ func calculateLocalFoodPerCapita(ctx *SensorContext, params *Parameters) float32
 	ratio := foodCount / creatureCount
 	saturation := 4.0
 	input := (ratio - 1.0) / saturation
-
-	return float32(math.Tanh(input * 2.0))
+	val := input * 2.0
+	return float32(val / (1.0 + math.Abs(val)))
 }
 
 // calculateTouching returns 1 if the nearest creature in the forward FOV is

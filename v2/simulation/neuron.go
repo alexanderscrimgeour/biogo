@@ -27,6 +27,7 @@ type NeuralNet struct {
 	Weights          []float32
 	LastSensorValues [SENSOR_COUNT]float32
 	LastActionValues []float32
+	NeuronEdgeCount  int // number of leading Edges with SinkType==NEURON (all come before ACTION edges)
 }
 
 type Node struct {
@@ -101,6 +102,7 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 			edgeIndex++
 		}
 	}
+	nnet.NeuronEdgeCount = edgeIndex
 	for _, gene := range g {
 		if gene.SinkType == ACTION {
 			if gene.SourceType == NEURON {
@@ -185,6 +187,11 @@ func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 				done = false
 				final = removeConnectionsToGene(final, n, key)
 				delete(n, key)
+			} else if node.InputCount == 0 && node.SelfLoopCount == 0 {
+				// No incoming connections: outputs a constant, carries no sensor signal
+				done = false
+				final = removeOutgoingConnections(final, n, key)
+				delete(n, key)
 			}
 		}
 	}
@@ -214,6 +221,22 @@ func removeConnectionsToGene(genes []Gene, n NodeMap, key byte) []Gene {
 		}
 
 		// Keep genes that don't point to the deleted neuron.
+		newGenes = append(newGenes, gene)
+	}
+	return newGenes
+}
+
+func removeOutgoingConnections(genes []Gene, n NodeMap, key byte) []Gene {
+	newGenes := genes[:0]
+	for _, gene := range genes {
+		if gene.SourceType == NEURON && gene.SourceID == key {
+			if gene.SinkType == NEURON {
+				if sinkNode, exists := n[gene.SinkID]; exists && sinkNode.InputCount > 0 {
+					sinkNode.InputCount--
+				}
+			}
+			continue
+		}
 		newGenes = append(newGenes, gene)
 	}
 	return newGenes

@@ -279,7 +279,8 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			}
 		}
 
-		waste := eaten - stomachGain
+		// waste includes compensation for the energy drained from target so TotalEnergy is conserved.
+		waste := 2*eaten - stomachGain
 		c.Stomach += stomachGain
 		target.Mass -= eaten
 		target.UpdateSize(params)

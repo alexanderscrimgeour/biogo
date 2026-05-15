@@ -345,17 +345,6 @@ func (w *World) SpawnFood(n int, sigma float64, mass float32) {
 	randomCount := int(float64(n) * randomScatterFactor)
 	clusterCount := n - randomCount
 
-	// multiplier := rand.NormFloat64()*0.083 + 0.75
-
-	// // Clamp to strictly enforce the 50%-100% boundary
-	// if multiplier < 0.5 {
-	// 	multiplier = 0.5
-	// }
-	// if multiplier > 1.0 {
-	// 	multiplier = 1.0
-	// }
-
-	// mass = mass * float32(multiplier)
 	if randomCount > 0 {
 		w.SpawnRandom(randomCount, mass)
 	}
@@ -565,47 +554,6 @@ func (w *World) GetFoodAndMeatInRadius(center Position, radius float64, foodBuf,
 					pos := w.meatPos[id]
 					dx, dy := pos.X-center.X, pos.Y-center.Y
 					if dx*dx+dy*dy <= rSq {
-						meatBuf = append(meatBuf, id)
-					}
-				}
-			}
-		}
-	}
-	return foodBuf, meatBuf
-}
-
-// GetFoodAndMeatInCone fills foodBuf and meatBuf for a cone query in one cell
-// traversal. food and meat queries in the eating path share identical parameters.
-func (w *World) GetFoodAndMeatInCone(center Position, heading, halfFOVCos, maxDist float64, foodBuf, meatBuf []int) ([]int, []int) {
-	foodBuf = foodBuf[:0]
-	meatBuf = meatBuf[:0]
-	fwdX, fwdY := HeadingToVec(heading)
-	rSq := maxDist * maxDist
-	minBx, maxBx, minBy, maxBy := w.fHash.cellBounds(center, maxDist)
-	for bx := minBx; bx <= maxBx; bx++ {
-		base := bx * w.fHash.numY
-		for by := minBy; by <= maxBy; by++ {
-			idx := base + by
-			for _, id := range w.fHash.cells[idx] {
-				if id < len(w.foodActive) && w.foodActive[id] {
-					pos := w.foodPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy > rSq || (dx == 0 && dy == 0) {
-						continue
-					}
-					if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
-						foodBuf = append(foodBuf, id)
-					}
-				}
-			}
-			for _, id := range w.mHash.cells[idx] {
-				if id < len(w.meatActive) && w.meatActive[id] {
-					pos := w.meatPos[id]
-					dx, dy := pos.X-center.X, pos.Y-center.Y
-					if dx*dx+dy*dy > rSq || (dx == 0 && dy == 0) {
-						continue
-					}
-					if CosSimilarity(fwdX, fwdY, dx, dy) >= halfFOVCos {
 						meatBuf = append(meatBuf, id)
 					}
 				}

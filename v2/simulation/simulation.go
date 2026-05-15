@@ -14,7 +14,7 @@ type Simulation struct {
 	Population   *Population
 	Tick         int
 	Params       *Parameters
-	TargetEnergy float64 // total liquid energy to maintain (set at initialisation)
+	Energy       float64 // total liquid energy to maintain (set at initialisation)
 	displayCache []CreatureView
 	foodCache    []FoodView
 	meatCache    []FoodView
@@ -27,13 +27,13 @@ func New(params *Parameters) *Simulation {
 	}
 	sim.initializeWorld()
 	sim.initializePopulation()
-	sim.TargetEnergy = sim.TotalEnergy()
+	sim.Energy = sim.TotalEnergy()
 	return sim
 }
 
 func (s *Simulation) initializeWorld() {
 	s.World = world.NewWorld(s.Params.WorldWidth, s.Params.WorldHeight, 1)
-	s.World.SpawnRandom(s.Params.MaxFood*2, s.Params.FoodMass)
+	s.World.SpawnRandom(s.Params.MaxFood/2, s.Params.FoodMass)
 	s.World.InitFountains(s.Params.FountainCount)
 }
 func (s *Simulation) initializePopulation() {
@@ -87,7 +87,7 @@ func (s *Simulation) Reset() {
 	s.Tick = 0
 	s.initializeWorld()
 	s.initializePopulation()
-	s.TargetEnergy = s.TotalEnergy()
+	s.Energy = s.TotalEnergy()
 }
 
 func (s *Simulation) Update() {
@@ -103,14 +103,11 @@ func (s *Simulation) step() {
 	s.World.StepFountains(s.Params.FountainDriftSpeed)
 
 	if s.Tick%s.Params.FoodSpawnInterval == 0 {
-		deficit := s.TargetEnergy - s.TotalEnergy()
-		toSpawn := int(deficit / float64(s.Params.FoodMass))
-		if toSpawn > 0 {
-			if available := s.Params.MaxFood - s.World.FoodCount(); toSpawn > available {
-				toSpawn = available
-			}
-			s.World.SpawnFood(toSpawn, s.Params.FountainRadius, s.Params.FoodMass)
-		}
+		deficit := s.Energy - s.TotalEnergy()
+		energyPerPiece := float64(s.Params.FoodMass) * float64(s.Params.EnergyPerMassUnit)
+		// number of food items to spawn
+		n := int(deficit / energyPerPiece)
+		s.World.SpawnFood(n, s.Params.FountainRadius, s.Params.FoodMass)
 	}
 
 	// AliveIDs() now returns the live backing slice — no allocation, O(1).
@@ -201,7 +198,8 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
 	if c.Loc.X < s.Params.RadiationZoneWidth*s.Params.WorldWidth {
 		massNorm := c.Mass / s.Params.MaxMass
-		c.DrainEnergy(s.Params.RadiationDamagePerTick * float32(math.Pow(massNorm, 0.75)))
+		massEffect := float32(math.Sqrt(float64(massNorm) * math.Sqrt(float64(massNorm))))
+		c.DrainEnergy(s.Params.RadiationDamagePerTick * massEffect)
 	}
 	c.Digest(s.Params)
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
@@ -241,20 +239,21 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	}
 
 	if IsActionEnabled(SET_RESPONSIVENESS) {
-		c.Responsiveness = (float32(math.Tanh(float64(actionLevels[SET_RESPONSIVENESS]))) + 1) / 2
+		act := float64(actionLevels[SET_RESPONSIVENESS])
+		// Fast Softsign approximation for [-1, 1]
+		c.Responsiveness = float32(act / (1.0 + math.Abs(act)))
 	}
 
-	responseAdjust := responseCurve(c.Responsiveness, s.Params.ResponseCurveKFactor)
+	responseAdjust := GetResponseCurve(c.Responsiveness)
 
 	if IsActionEnabled(SET_OSCILLATOR_PERIOD) {
 		actionVal := actionLevels[SET_OSCILLATOR_PERIOD] // [-1, 1]
 
-		geneNorm := float64(c.Genome.OscPeriod) / 255.0
-		baseTicks := 2.0 * math.Pow(5000.0/2.0, geneNorm)
+		// Fast approximation of 2^x for x in [-1, 1]
+		// 2^x ≈ 1 + 0.6931x + 0.2402x^2
+		multiplier := 1.0 + (0.693147 * actionVal) + (0.240226 * actionVal * actionVal)
 
-		multiplier := math.Pow(2, float64(actionVal))
-
-		finalTicks := baseTicks / multiplier
+		finalTicks := c.BaseOscTicks / multiplier
 
 		if finalTicks < 2 {
 			finalTicks = 2
@@ -271,21 +270,26 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	}
 
 	if IsActionEnabled(REWARD) {
-		level := actionLevels[REWARD]
+		level := float64(actionLevels[REWARD])
 		if level > 0 {
-			c.GainDopamine(float32(math.Tanh(float64(level))))
-			c.LastAction = appendActionString(c.LastAction, "Rewarding")
+			// Fast Softsign: level / (1 + level)
+			c.GainDopamine(float32(level / (1.0 + level)))
+			if c.IsSelected {
+				c.LastAction = appendActionString(c.LastAction, "Rewarding")
+			}
 		}
 	}
 
 	if IsActionEnabled(PUNISH) {
-		level := actionLevels[PUNISH]
+		level := float64(actionLevels[PUNISH])
 		if level > 0 {
-			c.LoseDopamine(float32(math.Tanh(float64(level))))
-			c.LastAction = appendActionString(c.LastAction, "Punishing")
+			// Fast Softsign: level / (1 + level)
+			c.LoseDopamine(float32(level / (1.0 + level)))
+			if c.IsSelected {
+				c.LastAction = appendActionString(c.LastAction, "Punishing")
+			}
 		}
 	}
-
 	if IsActionEnabled(REPRODUCE) {
 		level := actionLevels[REPRODUCE]
 		if math.Abs(float64(level)) > 0.5 {
@@ -344,9 +348,8 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		massNorm := c.CurrentMass() / s.Params.MaxMass
 		if IsActionEnabled(ROTATE) {
 			turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
-			rotateAmount = math.Tanh(float64(actionLevels[ROTATE])) *
-				float64(responseAdjust) *
-				s.Params.MaxRotationPerStep * float64(turnInertia)
+			softSign := act / (1.0 + math.Abs(act))
+			rotateAmount = softSign * float64(responseAdjust) * s.Params.MaxRotationPerStep * turnInertia
 		}
 		if rotateAmount != 0 {
 			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
@@ -356,11 +359,13 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		c.Heading = world.NormalizeAngle(c.Heading + rotateAmount)
 
 		// ACCELERATE: positive = accelerate forward, negative = decelerate/reverse.
-		massFactor := 1.0 + math.Pow(float64(massNorm), 2)*5.0
+		massFactor := 1.0 + (massNorm * massNorm * 5.0)
 		maxAccel := s.Params.MaxSpeedPerStep / massFactor
 		accelAmount := float64(0)
 		if IsActionEnabled(ACCELERATE) {
-			accelAmount = math.Tanh(float64(actionLevels[ACCELERATE])) * float64(responseAdjust) * maxAccel
+			act := float64(actionLevels[ACCELERATE])
+			approxTanh := act / (1.0 + math.Abs(act))
+			accelAmount = approxTanh * float64(responseAdjust) * maxAccel
 		}
 
 		// Colder temperatures reduce acceleration capability (ectotherm-like muscle penalty).
@@ -550,6 +555,10 @@ func (s *Simulation) TotalEnergy() float64 {
 	return energy
 }
 
+func (s *Simulation) TargetEnergy() float64 {
+	return s.Energy
+}
+
 func (s *Simulation) AverageAge() float64 {
 	count := len(s.Population.aliveIDs)
 	if count == 0 {
@@ -567,11 +576,6 @@ func prob2Bool(val float64) int {
 		return 1
 	}
 	return 0
-}
-
-func responseCurve(resp float32, kFactor float32) float32 {
-	k := float64(kFactor)
-	return float32(math.Pow(float64(resp)-2.0, -2*k)) - float32(math.Pow(2.0, -2.0*k))*(1-resp)
 }
 
 // partitionIDs splits ids into n roughly equal batches using round-robin assignment.
@@ -639,4 +643,43 @@ func (s *Simulation) GetSnapshot() StateSnapshot {
 		Food:      append([]FoodView(nil), s.foodCache...),
 		Meat:      append([]FoodView(nil), s.meatCache...),
 	}
+}
+
+// Pre-cached response curve to save on math.Pow calls
+var ResponseCurveLUT [256]float32
+
+// Initialize at startup
+func InitResponseCurve(params *Parameters) {
+	for i := 0; i < 256; i++ {
+		// Map 0 -> 255 to -1.0 -> 1.0
+		resp := (float32(i) / 127.5) - 1.0
+		ResponseCurveLUT[i] = calculateResponseCurve(resp, params.ResponseCurveKFactor)
+	}
+}
+
+// Fast access using the float32 from the brain
+func GetResponseCurve(resp float32) float32 {
+	// Clamp resp to [-1, 1] then convert to 0-255 index
+	if resp < -1 {
+		resp = -1
+	}
+	if resp > 1 {
+		resp = 1
+	}
+	index := uint8((resp + 1.0) * 127.5)
+	return ResponseCurveLUT[index]
+}
+
+func calculateResponseCurve(resp float32, kFactor float32) float32 {
+	// Use Absolute value so (r - 2.0) is always negative,
+	// but we use the absolute distance from 2.0 to avoid NaN.
+	// Bio-logic: We care about the magnitude of responsiveness.
+	r := math.Abs(float64(resp))
+	k2 := -2.0 * float64(kFactor)
+
+	// Result = (dist from 2)^k2 - (2)^k2 * (1 - r)
+	term1 := math.Pow(2.0-r, k2) // 2.0 - r ensures base is positive (1.0 to 3.0)
+	term2 := math.Pow(2.0, k2)
+
+	return float32(term1 - term2*(1.0-r))
 }

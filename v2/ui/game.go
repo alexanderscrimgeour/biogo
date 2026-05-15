@@ -31,6 +31,7 @@ type SimulationState interface {
 	SaveCreature(id int) error
 	Reset()
 	TotalEnergy() float64
+	TargetEnergy() float64
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetSpawnMutationRate(rate float32)
 	SpawnAt(x, y float64) bool
@@ -157,6 +158,7 @@ type Game struct {
 	camDragStartY      int
 	camDragLastX       int
 	camDragLastY       int
+	simStepsPerTick    int
 }
 
 var UnitSize int = 2
@@ -183,6 +185,7 @@ func NewGame(sim SimulationState) *Game {
 		selectedCreatureID: -1,
 		spawnMutRate:       0.01,
 		isDarkBackground:   true,
+		simStepsPerTick:    1,
 	}
 
 	const segments = 12
@@ -486,7 +489,21 @@ func (g *Game) Update() error {
 		g.camDragging = false
 	}
 
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
+		g.simStepsPerTick++
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) && g.simStepsPerTick > 1 {
+		g.simStepsPerTick--
+	}
+
 	if !g.paused {
+		// Run all steps except the last without tracking positions.
+		for i := 1; i < g.simStepsPerTick; i++ {
+			g.sim.Update()
+		}
+
+		// Capture prev positions immediately before the final step so lerp
+		// interpolates between the two most recent simulation positions.
 		prevByID := make(map[int][2]float64, len(g.animByID))
 		for id, anim := range g.animByID {
 			prevByID[id] = [2]float64{anim.curX, anim.curY}
@@ -768,8 +785,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.addStatLine(screen, "Food", fmt.Sprintf("%d", g.sim.FoodCount()), 2)
 	g.addStatLine(screen, "Avg Age", fmt.Sprintf("%.0f", g.sim.AverageAge()), 3)
 	if g.tickDuration > 0 {
-		tickRate := 1.0 / g.tickDuration.Seconds()
-		g.addStatLine(screen, "Tick Rate", fmt.Sprintf("%.0f/s", tickRate), 4)
+		simRate := float64(g.simStepsPerTick) / g.tickDuration.Seconds()
+		g.addStatLine(screen, "Sim Rate", fmt.Sprintf("%.0f/s (%dx)", simRate, g.simStepsPerTick), 4)
 	}
 
 	g.savedGenomesPanel.Draw(screen, g.statFont)
@@ -1251,25 +1268,44 @@ func (g *Game) drawNeuralNetGraph(screen *ebiten.Image, d simulation.CreatureDet
 	for _, a := range actions {
 		ax := px + float32(nnColAction)
 		ay := actionY[a]
+
+		// Draw the node dot
 		vector.DrawFilledCircle(screen, ax, ay, nnNodeR, color.RGBA{220, 100, 80, 255}, false)
+
+		// Draw the label
 		lbl := nnActionName(a)
 		text.Draw(screen, lbl, g.statFont, int(ax)+10, int(ay)+5, color.RGBA{220, 160, 150, 255})
+
 		if val, ok := nn.ActionValues[a]; ok {
 			barX := px + float32(nnPanelW) - float32(nnPadding) - float32(nnBarMaxW)
 			barY := ay - float32(nnBarH)/2
-			norm := float32(math.Tanh(float64(val)))
-			absNorm := norm
-			if absNorm < 0 {
-				absNorm = -absNorm
-			}
-			fillW := float32(nnBarMaxW) * absNorm
+
+			norm := float32(val / (1.0 + math.Abs(val)))
+
 			vector.DrawFilledRect(screen, barX, barY, float32(nnBarMaxW), float32(nnBarH), color.RGBA{60, 25, 15, 180}, false)
-			if fillW > 0 {
-				fc := color.RGBA{240, 130, 80, 220}
+
+			centerX := barX + (float32(nnBarMaxW) / 2)
+			vector.StrokeLine(screen, centerX, barY, centerX, barY+float32(nnBarH), 1, color.RGBA{255, 255, 255, 50}, false)
+
+			if norm != 0 {
+				halfMaxW := float32(nnBarMaxW) / 2
+				fillW := halfMaxW * norm
+
+				fc := color.RGBA{240, 130, 80, 220} // Orange for Positive
 				if norm < 0 {
-					fc = color.RGBA{80, 130, 240, 220}
+					fc = color.RGBA{80, 130, 240, 220} // Blue for Negative
 				}
-				vector.DrawFilledRect(screen, barX, barY, fillW, float32(nnBarH), fc, false)
+
+				drawX := centerX
+				if norm < 0 {
+					drawX = centerX + fillW // fillW is negative, so this moves left
+				}
+				absFillW := fillW
+				if absFillW < 0 {
+					absFillW = -absFillW
+				}
+
+				vector.DrawFilledRect(screen, drawX, barY, absFillW, float32(nnBarH), fc, false)
 			}
 		}
 	}
@@ -1416,7 +1452,7 @@ func (g *Game) drawHistoryGraph(screen *ebiten.Image) {
 		graphPanelX+graphPad, graphPanelY+15, popColor)
 	text.Draw(screen, fmt.Sprintf("Food: %d", g.sim.FoodCount()), g.statFont,
 		graphPanelX+graphPad, graphPanelY+31, foodColor)
-	text.Draw(screen, fmt.Sprintf("Energy: %.2f", g.sim.TotalEnergy()), g.statFont,
+	text.Draw(screen, fmt.Sprintf("Energy: %.2f %", (g.sim.TotalEnergy()/g.sim.TargetEnergy()*100)), g.statFont,
 		graphPanelX+graphPad, graphPanelY+47, energyColor)
 
 	gx := float32(graphPanelX + graphPad)
