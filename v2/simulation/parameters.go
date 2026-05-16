@@ -31,8 +31,7 @@ type Parameters struct {
 	ResponseCurveKFactor     float32
 
 	// Mutation
-	BaseMutationRate  float32
-	SpawnMutationRate float32
+	BaseMutationRate float32
 
 	// Age / lifecycle
 	BaseMaxAge        int
@@ -129,7 +128,6 @@ func DefaultParams() *Parameters {
 		MaxFieldOfView:              180,
 		ResponseCurveKFactor:        2,
 		BaseMutationRate:            0.005,
-		SpawnMutationRate:           0.5,
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,

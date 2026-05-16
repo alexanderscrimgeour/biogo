@@ -486,12 +486,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 	}
 }
 
-// SetSpawnMutationRate sets the minimum mutation rate applied when artificially
-// spawning creatures to maintain the minimum population.
-func (s *Simulation) SetSpawnMutationRate(rate float32) {
-	s.Params.SpawnMutationRate = rate
-}
-
+func (s *Simulation) SetMaxFood(v int)                { s.Params.MaxFood = v }
 func (s *Simulation) SetFoodRandomFraction(v float64) { s.Params.FoodRandomFraction = v }
 func (s *Simulation) SetFountainDriftSpeed(v float64) { s.Params.FountainDriftSpeed = v }
 func (s *Simulation) SetFountainRadius(v float64)     { s.Params.FountainRadius = v }
@@ -657,6 +652,10 @@ func partitionIDs(ids []int, n int) [][]int {
 	size := (len(ids) + n - 1) / n
 	for i := range batches {
 		start := i * size
+		if start >= len(ids) {
+			batches[i] = nil
+			continue
+		}
 		end := start + size
 		if end > len(ids) {
 			end = len(ids)
