@@ -64,6 +64,8 @@ type UserInterface struct {
 	saveNameFocused  bool
 	saveCreatureID   int
 
+	foodDropdown *FoodDropdown
+
 	// references so buttons can trigger game-level actions
 	onSaveCreature func() error
 	onEditCreature func()
@@ -149,6 +151,8 @@ func NewUserInterface(
 		tierBtn.Label = game.world.CycleTierFilter()
 	}
 
+	foodBtn := &components.Button{W: 60, H: 24, Label: "Food", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+
 	mb := &components.MenuBar{
 		H:       menuBarH,
 		Padding: menuBarPad,
@@ -163,7 +167,11 @@ func NewUserInterface(
 	mb.AddButton(createGenomeBtn)
 	mb.AddButton(spawnSavedBtn)
 	mb.AddButton(tierBtn)
+	mb.AddButton(foodBtn)
 	ui.menuBar = mb
+
+	ui.foodDropdown = newFoodDropdown(font, foodBtn, sim)
+	foodBtn.OnClick = func() { ui.foodDropdown.Toggle() }
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
 	ui.leftStack = &LeftPanelStack{
@@ -199,9 +207,17 @@ func NewUserInterface(
 	return ui
 }
 
+// AnySliderDragging reports whether any non-menubar slider is currently being dragged.
+func (ui *UserInterface) AnySliderDragging() bool {
+	return ui.foodDropdown != nil && ui.foodDropdown.AnySliderDragging()
+}
+
 // HandleClick processes a mouse-down event; returns true if consumed.
 func (ui *UserInterface) HandleClick(mx, my int) bool {
 	if ui.menuBar.HandleClick(mx, my) {
+		return true
+	}
+	if ui.foodDropdown != nil && ui.foodDropdown.HandleClick(mx, my) {
 		return true
 	}
 	// Save name input field
@@ -224,13 +240,19 @@ func (ui *UserInterface) HandleClick(mx, my int) bool {
 	return false
 }
 
-// HandleContinuousInput forwards drag events to the menu bar (slider drag).
+// HandleContinuousInput forwards drag events to the menu bar and dropdown sliders.
 func (ui *UserInterface) HandleContinuousInput() {
 	mx, _ := ebiten.CursorPosition()
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		ui.menuBar.HandleDrag(mx)
+		if ui.foodDropdown != nil {
+			ui.foodDropdown.HandleDrag(mx)
+		}
 	} else {
 		ui.menuBar.HandleRelease()
+		if ui.foodDropdown != nil {
+			ui.foodDropdown.HandleRelease()
+		}
 	}
 }
 
@@ -281,6 +303,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	}
 
 	ui.menuBar.Draw(screen)
+	if ui.foodDropdown != nil {
+		ui.foodDropdown.Draw(screen, ui.font)
+	}
 	ui.leftStack.Draw(screen)
 
 	// Genome panel — drawn to the right of the detail panel.

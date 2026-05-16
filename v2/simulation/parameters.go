@@ -46,9 +46,10 @@ type Parameters struct {
 	FoodInteractionRadius float64
 
 	// Gaussian fountain spawning
-	FountainCount      int     // number of drifting spawn points (3–5)
+	FountainCount      int     // number of drifting spawn points
 	FountainDriftSpeed float64 // world units per tick each fountain moves
 	FountainRadius     float64 // Gaussian sigma for food placement around a fountain
+	FoodRandomFraction float64 // fraction of spawned food placed uniformly at random [0,1]
 
 	// Stomach / digestion
 	MinStomachSize float64 // stomach capacity at StomachSize gene = 0
@@ -132,12 +133,13 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     200000,
+		MaxFood:                     100000,
 		FoodSpawnInterval:           10,
-		FoodMass:                    5.0,
+		FoodMass:                    25.0,
 		FountainCount:               20,
 		FountainDriftSpeed:          10,
 		FountainRadius:              400.0,
+		FoodRandomFraction:          0.05,
 		DigestionRate:               0.2,
 		BaseBMR:                     0.05,
 		EnergyPerMassUnit:           1.0,
@@ -159,7 +161,7 @@ func DefaultParams() *Parameters {
 		MaxNeuroplasticity:          0.001,
 		MinLearningThreshold:        0.05,
 		MaxLearningThreshold:        0.5,
-		ColdMetabolicMultiplier:     2.5,
+		ColdMetabolicMultiplier:     5,
 		WarmMetabolicMultiplier:     0.8,
 		ColdSpeedMultiplier:         0.4,
 		RadiationZoneWidth:          0.2,
@@ -168,7 +170,7 @@ func DefaultParams() *Parameters {
 		CollisionRepulsion:          0.5,
 		SavedGenomeProportion:       0.05,
 		Tier1Generation:             0,
-		Tier2Generation:             5,
+		Tier2Generation:             2,
 		Tier3Generation:             10,
 		Tier4Generation:             50,
 	}

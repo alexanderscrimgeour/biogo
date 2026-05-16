@@ -121,7 +121,7 @@ func (s *Simulation) step() {
 		// number of food items to spawn
 		n := int(deficit / energyPerPiece)
 		// n := s.Params.MaxFood - s.World.PlantCount()
-		s.World.SpawnPlant(n, s.Params.FountainRadius, s.Params.FoodMass)
+		s.World.SpawnPlant(n, s.Params.FountainRadius, s.Params.FoodMass, s.Params.FoodRandomFraction)
 	}
 
 	// AliveIDs() now returns the live backing slice — no allocation, O(1).
@@ -490,6 +490,18 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 // spawning creatures to maintain the minimum population.
 func (s *Simulation) SetSpawnMutationRate(rate float32) {
 	s.Params.SpawnMutationRate = rate
+}
+
+func (s *Simulation) SetFoodRandomFraction(v float64) { s.Params.FoodRandomFraction = v }
+func (s *Simulation) SetFountainDriftSpeed(v float64) { s.Params.FountainDriftSpeed = v }
+func (s *Simulation) SetFountainRadius(v float64)     { s.Params.FountainRadius = v }
+
+func (s *Simulation) SetFountainCount(n int) {
+	if n < 0 {
+		n = 0
+	}
+	s.Params.FountainCount = n
+	s.World.SetFountainCount(n)
 }
 
 // SpawnAt creates a new random creature at the given world-space position.

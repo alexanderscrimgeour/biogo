@@ -222,7 +222,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 	case HEADING:
 		output = float32(c.Heading / math.Pi)
 	case SPEED:
-		output = calculateVelocity(c, params)
+		output = calculateSpeed(c, params)
 
 	case NEAREST_FOOD_ANGLE:
 		output = calculateNearestFoodAngle(c, w, ctx)
@@ -307,11 +307,12 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 	return output
 }
 
-func calculateVelocity(c Creature, p *Parameters) float32 {
+func calculateSpeed(c Creature, p *Parameters) float32 {
 	if p.MaxSpeedPerStep > 0 {
+		massNorm := float64(c.Mass) / p.MaxMass
 		massFactor := 1.0 + (massNorm * massNorm * 5.0)
-		maxSpeed := float32(s.Params.MaxSpeedPerStep / massFactor)
-		output := float64(c.Speed) / p.maxSpeed
+		maxSpeed := p.MaxSpeedPerStep / massFactor
+		output := float64(c.Speed) / maxSpeed
 		if output > 1 {
 			return 1
 		}

@@ -59,7 +59,7 @@ type World struct {
 func NewWorld(width, height float64, _ int) *World {
 	const initialCapacity = 25000
 	const creatureCapacity = 20000
-	const cellSize = 100.0
+	const cellSize = 150.0
 	w := &World{
 		Width:           width,
 		Height:          height,
@@ -367,6 +367,24 @@ func (w *World) InitFountains(count int) {
 	}
 }
 
+// SetFountainCount grows or shrinks the fountain pool without re-seeding existing ones.
+func (w *World) SetFountainCount(n int) {
+	current := len(w.Fountains)
+	if n > current {
+		for i := current; i < n; i++ {
+			pos, ok := w.FindEmptyLocation()
+			if !ok {
+				pos = Position{X: float32(w.Width / 2), Y: float32(w.Height / 2)}
+			}
+			w.Fountains = append(w.Fountains, pos)
+			w.fountainAngles = append(w.fountainAngles, rand.Float64()*2*math.Pi)
+		}
+	} else if n < current {
+		w.Fountains = w.Fountains[:n]
+		w.fountainAngles = w.fountainAngles[:n]
+	}
+}
+
 // StepFountains advances each fountain by driftSpeed units along its current angle,
 // applying a small random angular perturbation each step. Fountains bounce off world
 // edges and walls.
@@ -390,16 +408,21 @@ func (w *World) StepFountains(driftSpeed float64) {
 // SpawnPlant places n plant items (each with the given mass) sampled from Gaussian
 // distributions centred on each fountain. Each item is assigned to a fountain
 // uniformly at random, then offset by a 2-D normal with standard deviation sigma.
+// randomFraction controls what proportion [0,1] is scattered uniformly at random.
 // Items that fall outside the world bounds or inside a wall are retried; if the retry
 // budget is exhausted the remainder are placed uniformly at random so the requested
 // count is always satisfied.
-func (w *World) SpawnPlant(n int, sigma float64, mass float32) {
+func (w *World) SpawnPlant(n int, sigma float64, mass float32, randomFraction float64) {
 	if n <= 0 {
 		return
 	}
 
-	randomScatterFactor := 0.05
-	randomCount := int(float64(n) * randomScatterFactor)
+	if randomFraction < 0 {
+		randomFraction = 0
+	} else if randomFraction > 1 {
+		randomFraction = 1
+	}
+	randomCount := int(float64(n) * randomFraction)
 	clusterCount := n - randomCount
 
 	if randomCount > 0 {

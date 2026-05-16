@@ -40,10 +40,10 @@ func (t *TextInputField) Draw(screen *ebiten.Image, x, y float32) (float32, floa
 
 	if t.Font != nil && display != "" {
 		metrics := t.Font.Metrics()
-		textHeight := float32(metrics.HAscent + metrics.HDescent)
+		textHeight := float32(metrics.HLineGap + metrics.HAscent + metrics.HDescent)
 
 		tx := x + 6
-		ty := y + (t.H-textHeight)/2 + float32(metrics.HAscent)
+		ty := y + (t.H-textHeight)/2
 
 		op := &textv2.DrawOptions{}
 		op.GeoM.Translate(float64(int(tx)), float64(int(ty)))
