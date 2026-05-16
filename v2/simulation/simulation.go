@@ -9,6 +9,12 @@ import (
 	"sync"
 )
 
+// sensorUpdatePeriod controls how often each creature refreshes its spatial
+// sensor context (GetAllInRadius). A value of 4 staggers updates across ticks
+// by creature ID, reducing spatial queries by ~75% at the cost of sensor data
+// being at most (sensorUpdatePeriod-1) ticks stale.
+const sensorUpdatePeriod = 4
+
 type Simulation struct {
 	World        *world.World
 	Population   *Population
@@ -211,6 +217,9 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		return
 	}
 
+	if s.Tick%sensorUpdatePeriod == c.Id%sensorUpdatePeriod {
+		c.UpdateSensorContext(s.World, s.Population, s.Params)
+	}
 	c.FeedForward(s.World, s.Population, s.Tick, s.Params)
 	s.executeActionsLocal(c, c.Nnet.LastActionValues[:], pending, temp)
 
@@ -389,19 +398,19 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		speedMult := float64(s.Params.ColdSpeedMultiplier) + (1.0-float64(s.Params.ColdSpeedMultiplier))*tempNorm
 		accelAmount *= speedMult
 
-		// Integrate acceleration into velocity, apply drag, clamp to mass-adjusted max speed.
-		c.Velocity += float32(accelAmount)
-		c.Velocity = float32(float64(c.Velocity) * s.Params.VelocityDamping)
+		// Integrate acceleration into speed, apply drag, clamp to mass-adjusted max speed.
+		c.Speed += float32(accelAmount)
+		c.Speed = float32(float64(c.Speed) * s.Params.SpeedDamping)
 		maxSpeed := float32(s.Params.MaxSpeedPerStep / massFactor)
-		if c.Velocity > maxSpeed {
-			c.Velocity = maxSpeed
-		} else if c.Velocity < -maxSpeed {
-			c.Velocity = -maxSpeed
+		if c.Speed > maxSpeed {
+			c.Speed = maxSpeed
+		} else if c.Speed < -maxSpeed {
+			c.Speed = -maxSpeed
 		}
 
-		if math.Abs(float64(c.Velocity)) >= 0.001 {
-			dx := float32(math.Cos(float64(c.Heading))) * c.Velocity
-			dy := float32(math.Sin(float64(c.Heading))) * c.Velocity
+		if math.Abs(float64(c.Speed)) >= 0.001 {
+			dx := float32(math.Cos(float64(c.Heading))) * c.Speed
+			dy := float32(math.Sin(float64(c.Heading))) * c.Speed
 			newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 			if !s.World.IsWall(newPos) {
@@ -411,7 +420,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 					c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(accelAmount)) * float32(massCostMult))
 				}
 				c.LastActionMask |= ActionMoving
-				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Velocity})
+				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Speed})
 			}
 		}
 	}
@@ -647,7 +656,7 @@ func partitionIDs(ids []int, n int) [][]int {
 
 // LastAction bitmask constants — one bit per action verb.
 const (
-	ActionResting      uint16 = 1 << iota // 1
+	ActionResting       uint16 = 1 << iota // 1
 	ActionAttacking                        // 2
 	ActionRewarding                        // 4
 	ActionPunishing                        // 8

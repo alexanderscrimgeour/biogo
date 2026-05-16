@@ -34,7 +34,7 @@ const (
 	// Current heading angle normalised to [0, 1].
 	HEADING
 	// Current speed as a fraction of maximum speed [-1, 1].
-	VELOCITY
+	SPEED
 	// Sinusoidal oscillator whose period is set by the creature's clock gene [-1, 1].
 	OSC1
 	// Proximity of the nearest obstacle (wall or creature) along heading; 0 = clear, 1 = adjacent.
@@ -221,7 +221,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 		}
 	case HEADING:
 		output = float32(c.Heading / math.Pi)
-	case VELOCITY:
+	case SPEED:
 		output = calculateVelocity(c, params)
 
 	case NEAREST_FOOD_ANGLE:
@@ -309,7 +309,9 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 
 func calculateVelocity(c Creature, p *Parameters) float32 {
 	if p.MaxSpeedPerStep > 0 {
-		output := float64(c.Velocity) / p.MaxSpeedPerStep
+		massFactor := 1.0 + (massNorm * massNorm * 5.0)
+		maxSpeed := float32(s.Params.MaxSpeedPerStep / massFactor)
+		output := float64(c.Speed) / p.maxSpeed
 		if output > 1 {
 			return 1
 		}

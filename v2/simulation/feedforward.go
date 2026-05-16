@@ -16,8 +16,6 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 
 	var neuronAccumulators [256]float32
 
-	// update the SensorContext once to eliminate duplicate spatial queries
-	c.UpdateSensorContext(w, p, params)
 	ctx := &c.Sensors
 
 	var sensorCache [SENSOR_COUNT]float32

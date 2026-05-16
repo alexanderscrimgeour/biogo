@@ -60,7 +60,7 @@ type Parameters struct {
 	EnergyPerMassUnit      float32 // MaxEnergy = currentMass * EnergyPerMassUnit
 	MoveCost               float32
 	MaxSpeedPerStep        float64
-	VelocityDamping        float64 // fraction of velocity retained each tick (drag/friction coefficient)
+	SpeedDamping           float64 // fraction of speed retained each tick (drag/friction coefficient)
 	MaxRotationPerStep     float64
 	MaxGrowthRatePerTick   float32 // peak mass units gained per tick (von Bertalanffy)
 	GrowthEnergyCostFactor float32
@@ -143,7 +143,7 @@ func DefaultParams() *Parameters {
 		EnergyPerMassUnit:           1.0,
 		MoveCost:                    0.05,
 		MaxSpeedPerStep:             10.0,
-		VelocityDamping:             0.85,
+		SpeedDamping:                0.85,
 		MaxRotationPerStep:          math.Pi / 4,
 		MaxGrowthRatePerTick:        1.0,
 		GrowthEnergyCostFactor:      0.2,
@@ -169,7 +169,7 @@ func DefaultParams() *Parameters {
 		SavedGenomeProportion:       0.05,
 		Tier1Generation:             0,
 		Tier2Generation:             5,
-		Tier3Generation:             25,
+		Tier3Generation:             10,
 		Tier4Generation:             50,
 	}
 	if err := p.Validate(); err != nil {
