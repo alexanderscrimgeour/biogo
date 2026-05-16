@@ -300,33 +300,55 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 
 	if IsActionEnabled(REPRODUCE) {
 		currentTier := c.Tier
-		reproThreshold := s.Params.Reproduction.EnergyThreshold * c.MaxEnergy(s.Params)
-		isPhysicallyReady := c.Energy >= reproThreshold &&
-			c.Age >= c.cachedJuvenilePeriod &&
-			float64(c.Mass) >= float64(c.Genome.Mass)*0.9 &&
+		baseThreshold := s.Params.Reproduction.EnergyThreshold * c.MaxEnergy(s.Params)
+
+		splitRatio := 0.1 + (float32(c.Genome.MassSplitRatio)/255.0)*0.4
+		estimatedChildMass := c.Mass * splitRatio
+		remainingParentMass := c.Mass - estimatedChildMass
+
+		// Check baseline physiological milestones
+		milestonesMet := c.Age >= c.cachedJuvenilePeriod &&
+			remainingParentMass >= c.MinMass &&
 			float32(c.Genome.MinMass)*2 < float32(c.Genome.Mass)
-		// Reproduction is not introduced until tier 3
 		if currentTier >= 2 {
 			level := actionLevels[REPRODUCE]
-			if math.Abs(float64(level)) > 0.5 && isPhysicallyReady {
-				if c.Genome.ReproductionType == 0 {
+			brainWantsToReproduce := math.Abs(float64(level)) > 0.5
+
+			// --- THE EVOLUTIONARY BRIDGE ---
+			// If the brain fires the action, give them a 25% discount on the energy required to encourage using it
+			var dynamicEnergyThreshold float32
+			if brainWantsToReproduce {
+				dynamicEnergyThreshold = baseThreshold * 0.75
+			} else {
+				dynamicEnergyThreshold = baseThreshold // Standard high requirement
+			}
+
+			isPhysicallyReady := c.Energy >= dynamicEnergyThreshold && milestonesMet
+			if isPhysicallyReady {
+				if brainWantsToReproduce {
+					if c.Genome.ReproductionType == 0 {
+						pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
+						c.LastActionMask |= ActionReproducing
+					} else {
+						pending.mate = append(pending.mate, c)
+						c.LastActionMask |= ActionSeekingMate
+					}
+				} else if currentTier == 2 && c.Energy >= baseThreshold {
+					// If the brain fails to press the button at tier 2,
+					// they still auto-split at maximum energy so they don't go extinct.
 					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
-					c.LastActionMask |= ActionReproducing
-				} else {
-					pending.mate = append(pending.mate, c)
-					c.LastActionMask |= ActionSeekingMate
+					c.LastActionMask |= ActionAutoSplitting
 				}
 			}
 		} else {
-			// Automatic physiological reproduction
+			// Tier 1: Purely automatic physiological reproduction
+			isPhysicallyReady := c.Energy >= baseThreshold && milestonesMet
 			if isPhysicallyReady {
-				// Force asexual division for lower tiers to scale population early on
 				pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
 				c.LastActionMask |= ActionAutoSplitting
 			}
 		}
 	}
-
 	if IsActionEnabled(FEED) {
 		level := actionLevels[FEED]
 		if (level > 0.5 && c.Stomach > 0) || (level < -0.5) {

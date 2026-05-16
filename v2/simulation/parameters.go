@@ -96,9 +96,9 @@ type EnvironmentParameters struct {
 }
 
 type EvolutionParameters struct {
+	Tier1Generation int
 	Tier2Generation int
 	Tier3Generation int
-	Tier4Generation int
 }
 
 type Parameters struct {
@@ -190,9 +190,9 @@ func DefaultParams() *Parameters {
 			},
 		},
 		Evolution: EvolutionParameters{
-			Tier2Generation: 3,
-			Tier3Generation: 10,
-			Tier4Generation: 50,
+			Tier1Generation: 3,
+			Tier2Generation: 6,
+			Tier3Generation: 50,
 		},
 		Spawn: SpawnParameters{
 			SavedGenomeProportion: 0.05,

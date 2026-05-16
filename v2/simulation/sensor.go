@@ -8,7 +8,7 @@ import (
 
 const (
 
-	// -- TIER 1 --
+	// -- TIER 0 --
 
 	// Always outputs 1; gives the network a learnable bias via connection weights.
 	BIAS byte = iota
@@ -23,7 +23,7 @@ const (
 	// Distance to the nearest meat item normalised by sight range [-1, 1]; 1 = nothing visible.
 	NEAREST_MEAT_DIST
 
-	// -- TIER 2 --
+	// -- TIER 1 --
 
 	// Age mapped to [-1, 1]: -1 at birth, 0 at maturity (end of juvenile period), 1 at max age.
 	AGE
@@ -42,7 +42,7 @@ const (
 	// Proximity to the nearest wall or world boundary [0, 1].
 	WALL_PROXIMITY
 
-	// -- TIER 3 --
+	// -- TIER 2 --
 
 	// Proximity-weighted density of food in the forward FOV cone [-1, 1]: -1 = empty, 0 = moderate density, 1 = fully dense.
 	SIGHT_FOOD_FORWARD
@@ -65,7 +65,7 @@ const (
 	// Rate of stomach content change per digestion tick; positive = absorbing faster than baseline.
 	STOMACH_RATE
 
-	// -- TIER 4 --
+	// -- TIER 3 --
 
 	// Bearing to the centre of mass of nearby creatures relative to own heading [-1, 1].
 	POPULATION_LOCAL_CENTRE_OF_MASS
@@ -100,9 +100,9 @@ const (
 )
 
 const (
-	MaxTier1Sensor = 5
-	MaxTier2Sensor = 13
-	MaxTier3Sensor = 23
+	MaxTier0Sensor = 5
+	MaxTier1Sensor = 13
+	MaxTier2Sensor = 23
 )
 
 // Expected creature density
@@ -317,7 +317,7 @@ func calculateSpeed(c Creature, p *Parameters) float32 {
 	if output < -1.0 {
 		return -1.0
 	}
-	return float32(output)
+	return float32(tanhf(float32(output)))
 }
 
 // calculateFoodDensityFwd returns a proximity-weighted density of food in the

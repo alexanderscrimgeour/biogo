@@ -114,20 +114,27 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	p.panY = float32(sh/2 - sgPanH/2)
 	px, py := p.panX, p.panY
 
+	// Derive text heights from font metrics so positioning is resolution-independent.
+	m := fnt.Metrics()
+	textH := float32(m.HLineGap + m.HAscent + m.HDescent)
+	glyphH := float32(m.HAscent + m.HDescent)
+	// vertCenter returns the top offset that centres text of height textH inside boxH.
+	vertCenter := func(boxH float32) int { return int((boxH - textH) / 2) }
+
 	// Background + border
 	vector.FillRect(screen, px, py, sgPanW, sgPanH, color.RGBA{8, 10, 22, 248}, false)
 	vector.StrokeRect(screen, px, py, sgPanW, sgPanH, 2, color.RGBA{90, 90, 155, 255}, false)
 
 	// Title bar
 	vector.FillRect(screen, px, py, sgPanW, sgTitleH, color.RGBA{18, 18, 48, 255}, false)
-	drawText(screen, "SAVED GENOMES", fnt, int(px)+sgPad, int(py)+18, color.RGBA{200, 200, 255, 255})
+	drawText(screen, "SAVED GENOMES", fnt, int(px)+sgPad, int(py)+vertCenter(sgTitleH), color.RGBA{200, 200, 255, 255})
 
 	// Close [×]
 	cbx := px + sgPanW - 28
 	cby := py + 3
 	p.closeBtn = [4]float32{cbx, cby, 24, 22}
 	vector.FillRect(screen, cbx, cby, 24, 22, color.RGBA{160, 50, 50, 200}, false)
-	drawText(screen, "×", fnt, int(cbx)+6, int(cby)+16, color.White)
+	drawText(screen, "×", fnt, int(cbx)+6, int(cby)+vertCenter(22), color.White)
 
 	// Scroll arrows (always present)
 	arrowY := py + sgPanH - sgPad - 22
@@ -144,9 +151,9 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 		downClr = color.RGBA{80, 80, 160, 220}
 	}
 	vector.FillRect(screen, p.upBtn[0], p.upBtn[1], p.upBtn[2], p.upBtn[3], upClr, false)
-	drawText(screen, "▲", fnt, int(upBtnX)+4, int(arrowY)+16, color.White)
+	drawText(screen, "▲", fnt, int(upBtnX)+4, int(arrowY)+vertCenter(22), color.White)
 	vector.FillRect(screen, p.downBtn[0], p.downBtn[1], p.downBtn[2], p.downBtn[3], downClr, false)
-	drawText(screen, "▼", fnt, int(upBtnX)+32, int(arrowY)+16, color.White)
+	drawText(screen, "▼", fnt, int(upBtnX)+32, int(arrowY)+vertCenter(22), color.White)
 
 	// Row area
 	listY := py + sgTitleH + sgPad
@@ -155,7 +162,7 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	// Empty state
 	if len(p.genomes) == 0 {
 		drawText(screen, "No saved genomes found in data/creatures/",
-			fnt, int(px)+sgPad, int(listY)+20, color.RGBA{120, 120, 170, 200})
+			fnt, int(px)+sgPad, int(listY)+sgPad, color.RGBA{120, 120, 170, 200})
 		p.rowBounds = p.rowBounds[:0]
 		return
 	}
@@ -169,6 +176,11 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 
 	cmx, cmy := ebiten.CursorPosition()
 	cfx, cfy := float32(cmx), float32(cmy)
+
+	// Vertical offsets for two lines of text within a row.
+	twoLineH := 2*glyphH + 2
+	rowLine1Off := int((float32(sgRowH) - twoLineH) / 2)
+	rowLine2Off := rowLine1Off + int(glyphH) + 2
 
 	p.rowBounds = p.rowBounds[:0]
 	for i := p.scroll; i < end; i++ {
@@ -192,22 +204,22 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 		// Separator
 		vector.FillRect(screen, px+sgPad, rowY+sgRowH-1, float32(sgPanW)-sgPad*2, 1, color.RGBA{35, 35, 60, 180}, false)
 
-		// Name + trait summary
+		// Name + trait summary, vertically centred as a two-line block
 		nameClr := color.RGBA{200, 210, 255, 255}
-		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+15, nameClr)
+		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+rowLine1Off, nameClr)
 		summary := fmt.Sprintf("Mass %d  Neurons %d  Genes %d  Gen %.1f",
 			ng.Genome.Mass, ng.Genome.CognitiveBreadth, len(ng.Genome.Brain), ng.Generation)
-		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+28, color.RGBA{120, 130, 160, 200})
+		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+rowLine2Off, color.RGBA{120, 130, 160, 200})
 
 		// Spawn button
 		sbx := spawnBtnX
 		sby := rowY + (sgRowH-22)/2
 		p.rowBounds = append(p.rowBounds, [4]float32{sbx, sby, sgBtnW, 22})
 		vector.FillRect(screen, sbx, sby, sgBtnW, 22, color.RGBA{40, 100, 60, 220}, false)
-		drawText(screen, "Spawn", fnt, int(sbx)+8, int(sby)+15, color.White)
+		drawText(screen, "Spawn", fnt, int(sbx)+8, int(sby)+vertCenter(22), color.White)
 	}
 
-	// Scroll counter
+	// Scroll counter, aligned with the arrow buttons
 	drawText(screen, fmt.Sprintf("%d / %d", p.scroll+1, total), fnt,
-		int(px)+sgPad, int(arrowY)+16, color.RGBA{100, 100, 150, 200})
+		int(px)+sgPad, int(arrowY)+vertCenter(22), color.RGBA{100, 100, 150, 200})
 }

@@ -630,15 +630,15 @@ func MapGeneToRange(gene byte, minRange, maxRange float64) float64 {
 
 func IsSensorAllowed(sensorID byte, breadth byte) bool {
 	// Tier 1 always allowed (Breadth >= 0)
-	if sensorID <= MaxTier1Sensor {
+	if sensorID <= MaxTier0Sensor {
 		return true
 	}
 	// Tier 2 requires ~25% cognitive breadth
-	if sensorID <= MaxTier2Sensor && breadth >= 64 {
+	if sensorID <= MaxTier1Sensor && breadth >= 64 {
 		return true
 	}
 	// Tier 3 requires ~50% cognitive breadth
-	if sensorID <= MaxTier3Sensor && breadth >= 128 {
+	if sensorID <= MaxTier2Sensor && breadth >= 128 {
 		return true
 	}
 	// Tier 4 requires ~75% cognitive breadth
@@ -646,13 +646,13 @@ func IsSensorAllowed(sensorID byte, breadth byte) bool {
 }
 
 func IsActionAllowed(actionID byte, breadth byte) bool {
-	if actionID <= MaxTier1Action {
+	if actionID <= MaxTier0Action {
 		return true
 	}
-	if actionID <= MaxTier2Action && breadth >= 64 {
+	if actionID <= MaxTier1Action && breadth >= 64 {
 		return true
 	}
-	if actionID <= MaxTier3Action && breadth >= 128 {
+	if actionID <= MaxTier2Action && breadth >= 128 {
 		return true
 	}
 	return breadth >= 192

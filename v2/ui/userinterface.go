@@ -566,34 +566,38 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 		Color: color.RGBA{255, 220, 80, 255},
 	})
 	g := d.Genome
+	barW := detailPanelW - genomePad*2
 	type trait struct {
-		name string
-		val  byte
+		name   string
+		val    byte
+		binary bool
 	}
 	traits := []trait{
-		{"OscPeriod", g.OscPeriod},
-		{"VisionRadius", g.VisionRadius},
-		{"FieldOfView", g.FieldOfView},
-		{"Responsiveness", g.Responsiveness},
-		{"MutationRate", g.MutationRate},
-		{"Mass", g.Mass},
-		{"MinMass", g.MinMass},
-		{"ReproductionType", g.ReproductionType},
-		{"CognitiveBreadth", g.CognitiveBreadth},
-		{"SynapticDensity", g.SynapticDensity},
-		{"JuvenilePeriod", g.JuvenilePeriod},
-		{"MetabolicRate", g.MetabolicRate},
-		{"StomachSize", g.StomachSize},
-		{"Neuroplasticity", g.Neuroplasticity},
-		{"LearningThreshold", g.LearningThreshold},
-		{"MassSplitRatio", g.MassSplitRatio},
-		{"DigestionType", g.DigestionType},
+		{"OscPeriod", g.OscPeriod, false},
+		{"VisionRadius", g.VisionRadius, false},
+		{"FieldOfView", g.FieldOfView, false},
+		{"Responsiveness", g.Responsiveness, false},
+		{"MutationRate", g.MutationRate, false},
+		{"Mass", g.Mass, false},
+		{"MinMass", g.MinMass, false},
+		{"ReproductionType", g.ReproductionType, true},
+		{"CognitiveBreadth", g.CognitiveBreadth, false},
+		{"SynapticDensity", g.SynapticDensity, false},
+		{"JuvenilePeriod", g.JuvenilePeriod, false},
+		{"MetabolicRate", g.MetabolicRate, false},
+		{"StomachSize", g.StomachSize, false},
+		{"Neuroplasticity", g.Neuroplasticity, false},
+		{"LearningThreshold", g.LearningThreshold, false},
+		{"MassSplitRatio", g.MassSplitRatio, false},
+		{"DigestionType", g.DigestionType, false},
 	}
 	for _, t := range traits {
-		p.Add(&components.Label{
-			Text:  fmt.Sprintf("%s: %d", t.name, t.val),
-			Font:  ui.smallFont,
-			Color: color.White,
+		p.Add(&components.GenomeBar{
+			Name:   t.name,
+			Val:    t.val,
+			Font:   ui.smallFont,
+			W:      barW,
+			Binary: t.binary,
 		})
 	}
 	return p

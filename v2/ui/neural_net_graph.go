@@ -406,7 +406,7 @@ func nnSensorName(id byte) string {
 func nnActionName(id byte) string {
 	names := [...]string{
 		"Accelerate", "Rotate", "SetOsc",
-		"Rest", "Attack", "Reproduce",
+		"Rest", "Reproduce", "Attack",
 		"Feed", "SetResp",
 		"SetLearn", "Reward", "Punish",
 	}

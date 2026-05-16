@@ -1,28 +1,30 @@
 package simulation
 
 const (
-	// -- Tier 1 --
+	// -- Tier 0 --
 
 	// Positive = accelerate forward, negative = decelerate/reverse.
 	ACCELERATE byte = iota
 	// Positive = turn left (CCW), negative = turn right (CW).
 	ROTATE
 
-	// -- Tier 2 --
+	// -- Tier 1 --
 
 	// Adjusts the period of the OSC1 oscillator each tick.
 	SET_OSCILLATOR_PERIOD
 	// Reduces energy expenditure; creature conserves energy while resting.
 	REST
+	// Triggers reproduction this tick: asexual splits a daughter cell; sexual seeks a mate.
+	// NOTE: Not necessary for survival until tier 3, however this is intended to positively reinforce
+	// before they reach tier 3
+	REPRODUCE
 
-	// -- Tier 3 --
+	// -- Tier 2 --
 
 	// Attacks the nearest lighter creature ahead; transfers mass on a successful hit.
 	ATTACK
-	// Triggers reproduction this tick: asexual splits a daughter cell; sexual seeks a mate.
-	REPRODUCE
 
-	// -- Tier 4 --
+	// -- Tier 3 --
 
 	// Donates stomach contents proportional to action level to the nearest touching creature ahead.
 	FEED
@@ -39,9 +41,9 @@ const (
 )
 
 const (
-	MaxTier1Action = 1
-	MaxTier2Action = 3
-	MaxTier3Action = 5
+	MaxTier0Action = 1
+	MaxTier1Action = 4
+	MaxTier2Action = 5
 )
 
 func IsActionEnabled(a byte) bool {

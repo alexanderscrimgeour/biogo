@@ -39,7 +39,8 @@ type Creature struct {
 	Genome         *Genome
 	VisionRadius   float32
 	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
-	MaxMass        float32
+	MinMass        float32 // Smallest mass based on genome
+	MaxMass        float32 // Largest mass based on genome
 	Dopamine       float32
 	Stomach        float32 // current food mass in stomach; digested into energy each tick
 	LastActionMask uint16
@@ -87,6 +88,7 @@ func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature
 
 	c.BaseOscTick = 2.0 * math.Pow(5000.0/2.0, float64(c.Genome.OscPeriod)/255.0)
 	c.Mass = float32(MapGeneToRange(c.Genome.MinMass, p.Creature.MinMass, p.Creature.MaxMass))
+	c.MinMass = c.Mass
 	c.MaxMass = float32(MapGeneToRange(c.Genome.Mass, p.Creature.MinMass, p.Creature.MaxMass))
 	c.VisionRadius = float32(MapGeneToRange(c.Genome.VisionRadius, p.Creature.MinVisionRadius+float64(c.Radius), p.Creature.MaxVisionRadius))
 	c.initCachedFields(g, p)
@@ -114,8 +116,9 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 		Genome:         g,
 	}
 
+	c.MinMass = float32(MapGeneToRange(c.Genome.MinMass, p.Creature.MinMass, p.Creature.MaxMass))
 	c.Mass = float32(MapGeneToRange(c.Genome.Mass, p.Creature.MinMass, p.Creature.MaxMass))
-	c.MaxMass = float32(MapGeneToRange(c.Genome.Mass, p.Creature.MinMass, p.Creature.MaxMass))
+	c.MaxMass = c.Mass
 	c.VisionRadius = float32(MapGeneToRange(c.Genome.VisionRadius, p.Creature.MinVisionRadius+float64(c.Radius), p.Creature.MaxVisionRadius))
 	c.initCachedFields(g, p)
 	c.Energy = c.MaxEnergy(p)

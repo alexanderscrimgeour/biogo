@@ -57,7 +57,7 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
 		Font: font, LabelColor: color.White,
-		Min: 0, Max: 25,
+		Min: 0, Max: 10,
 		Value: p.Food.FountainDriftSpeed,
 		FormatFunc: func(v float64) string {
 			return fmt.Sprintf("Drift: %.1f", v)
@@ -68,7 +68,7 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
 		Font: font, LabelColor: color.White,
-		Min: 50, Max: 3000,
+		Min: 50, Max: 500,
 		Value: p.Food.FountainRadius,
 		FormatFunc: func(v float64) string {
 			return fmt.Sprintf("Radius: %.0f", v)
