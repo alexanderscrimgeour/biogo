@@ -371,7 +371,7 @@ func (c Creature) MaxAge(params *Parameters) int {
 	return int((baseLife * sizeMult) / metabolicPenalty)
 }
 
-func (c *Creature) CalculateGenerationBonus() float32 {
+func (c *Creature) CalculateGenerationBonus(params *Parameters) float32 {
 	massRatio := c.Mass / c.MaxMass
 	if massRatio > 1.0 {
 		massRatio = 1.0
@@ -379,11 +379,11 @@ func (c *Creature) CalculateGenerationBonus() float32 {
 
 	// High-performance squared growth factor
 	growthFactor := massRatio * massRatio
-
+	maxAge := float32(c.MaxAge(params))
 	// Longevity factor scales up if they lived past their juvenile threshold
 	longevityFactor := float32(1.0)
-	if c.cachedJuvenilePeriod > 0 && c.Age > c.cachedJuvenilePeriod {
-		longevityFactor = float32(c.Age) / float32(c.cachedJuvenilePeriod)
+	if maxAge > 0 {
+		longevityFactor = float32(c.Age) / maxAge
 	}
 
 	deltaGen := growthFactor * longevityFactor

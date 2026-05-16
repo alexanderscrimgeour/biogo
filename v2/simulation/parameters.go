@@ -134,7 +134,7 @@ func DefaultParams() *Parameters {
 		MaxJuvenilePeriod:           1000,
 		MaxFood:                     50000,
 		FoodSpawnInterval:           10,
-		FoodMass:                    10.0,
+		FoodMass:                    5.0,
 		FountainCount:               20,
 		FountainDriftSpeed:          10,
 		FountainRadius:              200.0,

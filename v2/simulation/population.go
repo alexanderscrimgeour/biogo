@@ -442,8 +442,8 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 
 			// 1. Find the baseline mid-point of the parental lineages
 			baseGen := (parent.Generation + partner.Generation) * 0.5
-			bonusA := parent.CalculateGenerationBonus()
-			bonusB := partner.CalculateGenerationBonus()
+			bonusA := parent.CalculateGenerationBonus(params)
+			bonusB := partner.CalculateGenerationBonus(params)
 			childGen := baseGen + (bonusA+bonusB)*0.5
 
 			radMult := radiationMult(parent.Loc.X, params)
@@ -516,7 +516,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		childGenome := AsexualReproduction(parent.Genome, params, radMult, childGen)
 		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
-		child.Generation = parent.CalculateGenerationBonus()
+		child.Generation = parent.CalculateGenerationBonus(params)
 		child.Tier = GetTierFromGeneration(childGen, params)
 		child.Mass = childMass
 		child.UpdateSize(params)
