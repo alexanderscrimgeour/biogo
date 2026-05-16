@@ -45,6 +45,7 @@ type genomeData struct {
 	LearningThreshold byte       `json:"learning_threshold"`
 	MassSplitRatio    byte       `json:"mass_split_ratio"`
 	Brain             []geneData `json:"brain"`
+	Generation        float32    `json:"generation,omitempty"`
 }
 
 func toGenomeData(g *Genome) genomeData {
@@ -209,13 +210,14 @@ func SaveGenomesToFile(genomes []*Genome, path string) error {
 }
 
 // SaveCreatureToFile saves a single genome as a uniquely-named JSON file in data/creatures/.
-func SaveCreatureToFile(g *Genome) error {
+func SaveCreatureToFile(g *Genome, generation float32) error {
 	if err := os.MkdirAll(creaturesSaveDir, 0755); err != nil {
 		return err
 	}
 	name := fmt.Sprintf("%d_%d.json", time.Now().UnixNano(), rand.Int63())
 	path := filepath.Join(creaturesSaveDir, name)
 	data := toGenomeData(g)
+	data.Generation = generation
 	encoded, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
@@ -223,10 +225,11 @@ func SaveCreatureToFile(g *Genome) error {
 	return os.WriteFile(path, encoded, 0644)
 }
 
-// NamedGenome pairs a display name (derived from the filename) with a Genome.
+// NamedGenome pairs a display name (derived from the filename) with a Genome and its saved generation.
 type NamedGenome struct {
-	Name   string
-	Genome *Genome
+	Name       string
+	Genome     *Genome
+	Generation float32
 }
 
 // sanitizeFilename converts a user-supplied name into a safe filename component.
@@ -251,7 +254,7 @@ func sanitizeFilename(name string) string {
 // SaveCreatureToFileNamed saves a genome with a user-provided name as the filename.
 // If name is empty or produces no safe characters, falls back to timestamp-based naming.
 // Appends a timestamp suffix if a file with that name already exists.
-func SaveCreatureToFileNamed(g *Genome, name string) error {
+func SaveCreatureToFileNamed(g *Genome, generation float32, name string) error {
 	if err := os.MkdirAll(creaturesSaveDir, 0755); err != nil {
 		return err
 	}
@@ -266,6 +269,7 @@ func SaveCreatureToFileNamed(g *Genome, name string) error {
 		}
 	}
 	data := toGenomeData(g)
+	data.Generation = generation
 	encoded, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
@@ -297,7 +301,7 @@ func LoadAllCreatureGenomesNamed() ([]NamedGenome, error) {
 			continue
 		}
 		name := strings.TrimSuffix(entry.Name(), ".json")
-		result = append(result, NamedGenome{Name: name, Genome: fromGenomeData(gd)})
+		result = append(result, NamedGenome{Name: name, Genome: fromGenomeData(gd), Generation: gd.Generation})
 	}
 	return result, nil
 }

@@ -10,7 +10,7 @@ import (
 )
 
 // simCacheCapacity must be a power of two; index = otherID & (simCacheCapacity-1).
-const simCacheCapacity = 256
+const simCacheCapacity = 64
 
 // simCacheEntry is one slot in the direct-mapped similarity cache.
 // key==0 with peerUID==0 is the zero value; it never matches a real creature
@@ -400,25 +400,12 @@ func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {
 	}
 
 	numHidden := float32(len(nn.HiddenNeurons))
-	if numHidden == 0 {
-		numHidden = 1
-	} // Avoid division by zero for reflex-only brains
-
-	density := float32(len(nn.Edges)) / numHidden
-	connectivityScore := clamp(density / 15.0)
-
-	var weightSum float32
-	for _, w := range nn.Weights {
-		if w < 0 {
-			weightSum -= w
-		} else {
-			weightSum += w
-		}
+	connectivityScore := float32(0.0)
+	if numHidden > 0 {
+		// Measures how densely intertwined the hidden processing layer is
+		density := float32(len(nn.Edges)) / numHidden
+		connectivityScore = clamp(density / 15.0)
 	}
-	avgWeight := weightSum / float32(len(nn.Weights))
-	weightScore := clamp(avgWeight / 2.0)
-
-	plasticity := float32(g.Neuroplasticity) / 255.0
 
 	activeSensors := 0
 	for _, active := range nn.ActiveSensors {
@@ -426,11 +413,14 @@ func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {
 			activeSensors++
 		}
 	}
-	ioBreadth := clamp(float32(activeSensors+len(nn.LastActionValues)) / 20.0)
+	totalNodes := float32(activeSensors + len(nn.HiddenNeurons) + len(nn.LastActionValues))
+	// Normalize ~30
+	nodeScore := clamp(totalNodes / 30.0)
+	plasticity := float32(g.Neuroplasticity) / 255.0
+	complexityBlueprint := (connectivityScore * 0.45) + (nodeScore * 0.35) + (plasticity * 0.20)
 
-	iq := (connectivityScore * 0.45) + (plasticity * 0.25) + (weightScore * 0.20) + (ioBreadth * 0.10)
-
-	return iq
+	// INVERSION: The most green (1.0) is the LEAST structurally complex brain.
+	return 1.0 - complexityBlueprint
 }
 
 func clamp(v float32) float32 {

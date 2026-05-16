@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
@@ -55,8 +56,12 @@ type UserInterface struct {
 	genomeEditor      *GenomeEditor
 	savedGenomesPanel *SavedGenomesPanel
 
-	saveFeedback   string
-	saveFeedbackAt time.Time
+	saveFeedback    string
+	saveFeedbackAt  time.Time
+	saveCreatureName string
+	saveNameFocused  bool
+	saveNameBounds   [4]float32
+	saveCreatureID   int
 
 	// references so buttons can trigger game-level actions
 	onSaveCreature func() error
@@ -77,8 +82,9 @@ func NewUserInterface(
 	game *Game,
 ) *UserInterface {
 	ui := &UserInterface{
-		font: font,
-		sim:  sim,
+		font:           font,
+		sim:            sim,
+		saveCreatureID: -1,
 	}
 
 	// ── Mutation-rate slider ──────────────────────────────────────────────────
@@ -177,13 +183,13 @@ func NewUserInterface(
 
 	// ── Modals ────────────────────────────────────────────────────────────────
 	ui.genomeEditor = newGenomeEditor(font, func(genome *simulation.Genome, name string) {
-		game.sim.SpawnGenome(genome)
-		simulation.SaveCreatureToFileNamed(genome, name) //nolint:errcheck
+		game.sim.SpawnGenome(genome, 1.0)
+		simulation.SaveCreatureToFileNamed(genome, 1.0, name) //nolint:errcheck
 	})
 	game.genomeEditor = ui.genomeEditor
 
-	ui.savedGenomesPanel = newSavedGenomesPanel(func(genome *simulation.Genome) {
-		game.sim.SpawnGenome(genome)
+	ui.savedGenomesPanel = newSavedGenomesPanel(func(genome *simulation.Genome, generation float32) {
+		game.sim.SpawnGenome(genome, generation)
 	})
 	game.savedGenomesPanel = ui.savedGenomesPanel
 
@@ -194,6 +200,15 @@ func NewUserInterface(
 func (ui *UserInterface) HandleClick(mx, my int) bool {
 	if ui.menuBar.HandleClick(mx, my) {
 		return true
+	}
+	// Save name input field
+	if ui.saveNameBounds[2] > 0 {
+		fx, fy := float32(mx), float32(my)
+		b := ui.saveNameBounds
+		if fx >= b[0] && fx <= b[0]+b[2] && fy >= b[1] && fy <= b[1]+b[3] {
+			ui.saveNameFocused = true
+			return true
+		}
 	}
 	if ui.currentSaveBtn != nil && ui.currentSaveBtn.IsClicked(mx, my) {
 		if ui.currentSaveBtn.OnClick != nil {
@@ -217,6 +232,22 @@ func (ui *UserInterface) HandleContinuousInput() {
 		ui.menuBar.HandleDrag(mx)
 	} else {
 		ui.menuBar.HandleRelease()
+	}
+}
+
+// HandleSaveNameKeyInput processes keyboard input for the creature save name field.
+func (ui *UserInterface) HandleSaveNameKeyInput() {
+	if !ui.saveNameFocused {
+		return
+	}
+	runes := ebiten.AppendInputChars([]rune(ui.saveCreatureName))
+	ui.saveCreatureName = string(runes)
+	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) && len([]rune(ui.saveCreatureName)) > 0 {
+		r := []rune(ui.saveCreatureName)
+		ui.saveCreatureName = string(r[:len(r)-1])
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		ui.saveNameFocused = false
 	}
 }
 
@@ -247,6 +278,35 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 
 	ui.menuBar.Draw(screen)
 	ui.leftStack.Draw(screen)
+
+	// Save name input — drawn below the edit button when a creature is selected
+	if ui.currentEditBtn != nil {
+		bx, by, bw, bh := ui.currentEditBtn.Bounds()
+		inputY := by + bh + 4
+		inputW := bw
+		inputH := float32(22)
+		ui.saveNameBounds = [4]float32{bx, inputY, inputW, inputH}
+
+		vector.FillRect(screen, bx-detailPad, inputY-2, inputW+detailPad*2, inputH+4, color.RGBA{8, 10, 22, 215}, false)
+		borderClr := color.RGBA{55, 55, 90, 200}
+		if ui.saveNameFocused {
+			borderClr = color.RGBA{100, 110, 210, 255}
+		}
+		vector.FillRect(screen, bx, inputY, inputW, inputH, color.RGBA{14, 14, 32, 230}, false)
+		vector.StrokeRect(screen, bx, inputY, inputW, inputH, 1, borderClr, false)
+
+		display := ui.saveCreatureName
+		var nameClr color.Color = color.White
+		if ui.saveNameFocused {
+			display += "|"
+		} else if ui.saveCreatureName == "" {
+			display = "(save name...)"
+			nameClr = color.RGBA{80, 80, 110, 200}
+		}
+		drawText(screen, display, ui.font, int(bx)+4, int(inputY)+15, nameClr)
+	} else {
+		ui.saveNameBounds = [4]float32{}
+	}
 
 	// Spawn label update on button
 	if game.spawnRandomBtn != nil {
@@ -295,6 +355,12 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 // buildDetailPanel constructs a Panel containing all creature stat rows.
 // It is rebuilt each frame so data is always fresh.
 func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creatureID int, game *Game) *components.Panel {
+	if creatureID != ui.saveCreatureID {
+		ui.saveCreatureID = creatureID
+		ui.saveCreatureName = ""
+		ui.saveNameFocused = false
+	}
+
 	innerW := detailPanelW - detailPad*2
 
 	p := &components.Panel{
@@ -422,10 +488,12 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 		Font:       ui.font,
 	}
 	saveBtn.OnClick = func() {
-		if err := game.sim.SaveCreature(creatureID); err != nil {
+		if err := game.sim.SaveCreature(creatureID, ui.saveCreatureName); err != nil {
 			ui.saveFeedback = "Save failed"
 		} else {
 			ui.saveFeedback = "Saved!"
+			ui.saveCreatureName = ""
+			ui.saveNameFocused = false
 		}
 		ui.saveFeedbackAt = time.Now()
 	}

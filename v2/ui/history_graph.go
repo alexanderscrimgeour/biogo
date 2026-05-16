@@ -13,7 +13,7 @@ import (
 const (
 	histGraphW     = float32(220)
 	histGraphH     = float32(220)
-	histGraphTextH = float32(81)
+	histGraphTextH = float32(97)
 	histGraphPad   = float32(4)
 )
 
@@ -26,7 +26,8 @@ type HistoryGraph struct {
 	getSample func(i int) histSample
 	sim       interface {
 		PopulationCount() int
-		PlantCount() int
+		PlantEnergy() float64
+		MeatEnergy() float64
 		TotalEnergy() float64
 		TargetEnergy() float64
 	}
@@ -50,15 +51,18 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 
 	popColor := color.RGBA{100, 180, 255, 255}
 	foodColor := color.RGBA{80, 210, 100, 255}
+	meatColor := color.RGBA{210, 90, 90, 255}
 	energyColor := color.RGBA{255, 230, 50, 255}
 
 	if hg.Font != nil {
 		drawText(screen, fmt.Sprintf("Pop: %d", hg.sim.PopulationCount()), hg.Font,
 			int(x+histGraphPad), int(y+15), popColor)
-		drawText(screen, fmt.Sprintf("Plants: %d", hg.sim.PlantCount()), hg.Font,
+		drawText(screen, fmt.Sprintf("Plants: %.0f", hg.sim.PlantEnergy()), hg.Font,
 			int(x+histGraphPad), int(y+31), foodColor)
+		drawText(screen, fmt.Sprintf("Meat: %.0f", hg.sim.MeatEnergy()), hg.Font,
+			int(x+histGraphPad), int(y+47), meatColor)
 		drawText(screen, fmt.Sprintf("Energy: %.2f%%", hg.sim.TotalEnergy()/hg.sim.TargetEnergy()*100), hg.Font,
-			int(x+histGraphPad), int(y+47), energyColor)
+			int(x+histGraphPad), int(y+63), energyColor)
 	}
 
 	gx := x + histGraphPad
@@ -67,15 +71,19 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 	gh := histGraphH - histGraphTextH - histGraphPad
 
 	head := hg.getHead()
-	foodMax, popMax := 1, 1
+	popMax := 1
+	var foodEnergyMax float64 = 1
 	for i := 0; i < count; i++ {
 		idx := ((head-1-i)%historyLen + historyLen) % historyLen
 		s := hg.getSample(idx)
 		if s.pop > popMax {
 			popMax = s.pop
 		}
-		if s.food > foodMax {
-			foodMax = s.food
+		if s.plantEnergy > foodEnergyMax {
+			foodEnergyMax = s.plantEnergy
+		}
+		if s.meatEnergy > foodEnergyMax {
+			foodEnergyMax = s.meatEnergy
 		}
 		if s.totalEnergy > hg.maxEnergy {
 			hg.maxEnergy = s.totalEnergy
@@ -87,8 +95,11 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 		steps = count
 	}
 
-	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodMax*2, foodColor,
-		func(s histSample) int { return s.food })
+	foodEnergyScale := int(foodEnergyMax * 2)
+	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, foodColor,
+		func(s histSample) int { return int(s.plantEnergy) })
+	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, meatColor,
+		func(s histSample) int { return int(s.meatEnergy) })
 	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, popMax*2, popColor,
 		func(s histSample) int { return s.pop })
 	if hg.maxEnergy > 0 {

@@ -386,7 +386,8 @@ func nnEdgeColor(w float32) color.RGBA {
 func nnSensorName(id byte) string {
 	names := [...]string{
 		"Bias", "Energy", "NearFoodAngle",
-		"NearFoodDist", "Age", "LocX", "LocY",
+		"NearFoodDist", "NearMeatAngle",
+		"NearMeatDist", "Age", "LocX", "LocY",
 		"Heading", "Velocity", "Osc1", "BlockedFwd",
 		"WallProx", "PlantFwd", "MeatFwd", "PreyFwd",
 		"NearPreyAngle", "ThreatFwd", "NearThreatAngle",

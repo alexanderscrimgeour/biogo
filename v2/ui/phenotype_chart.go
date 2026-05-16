@@ -29,7 +29,6 @@ type PhenotypeChart struct {
 func (c *PhenotypeChart) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	w, h := c.Size()
 
-	// Title
 	textHeight := phenoTitleH
 	if c.Font != nil {
 		metrics := c.Font.Metrics()
@@ -38,8 +37,11 @@ func (c *PhenotypeChart) Draw(screen *ebiten.Image, x, y float32) (float32, floa
 	}
 	chartY := y + textHeight
 	step := float32(2)
+
 	for gy := float32(0); gy < phenoChartSize; gy += step {
-		gVal := uint8((gy/phenoChartSize)*185) + 70
+		gPercInv := 1.0 - (gy / phenoChartSize)
+		gVal := uint8(gPercInv*185) + 70
+
 		for rx := float32(0); rx < phenoChartSize; rx += step {
 			rVal := uint8((rx/phenoChartSize)*185) + 70
 			vector.FillRect(screen, x+rx, chartY+gy, step, step, color.RGBA{rVal, gVal, c.Data.B, 255}, false)
@@ -48,8 +50,10 @@ func (c *PhenotypeChart) Draw(screen *ebiten.Image, x, y float32) (float32, floa
 
 	rPerc := clamp((float32(c.Data.R) - 70) / 185)
 	gPerc := clamp((float32(c.Data.G) - 70) / 185)
+
 	cx := x + (rPerc * phenoChartSize)
 	cy := chartY + (phenoChartSize - (gPerc * phenoChartSize))
+
 	vector.StrokeLine(screen, cx, chartY, cx, chartY+phenoChartSize, 1, color.White, false)
 	vector.StrokeLine(screen, x, cy, x+phenoChartSize, cy, 1, color.White, false)
 

@@ -23,6 +23,7 @@ type NeuralNet struct {
 	Edges            []Gene
 	HiddenNeurons    []Neuron           // packed slice, indexed 0..N-1 by NewID; iterate directly
 	ActiveSensors    [SENSOR_COUNT]bool // true for each sensor ID wired into at least one edge; set once at construction
+	NeedsKinship     bool               // true if any kinship sensor (KINSHIP_LOCAL/NEAREST/NEAREST_DISTANCE) is wired in
 	Weights          []float32
 	LastSensorValues [SENSOR_COUNT]float32
 	LastActionValues [ACTION_COUNT]float32
@@ -158,6 +159,9 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap, cognitiveBreadt
 			nnet.ActiveSensors[nnet.Edges[i].SourceID] = true
 		}
 	}
+	nnet.NeedsKinship = nnet.ActiveSensors[KINSHIP_LOCAL] ||
+		nnet.ActiveSensors[KINSHIP_NEAREST] ||
+		nnet.ActiveSensors[KINSHIP_NEAREST_DISTANCE]
 	return &nnet
 }
 

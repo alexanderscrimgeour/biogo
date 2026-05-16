@@ -10,8 +10,8 @@ import (
 )
 
 type Population struct {
-	Creatures         map[int]*Creature
-	aliveIDs          []int // incrementally maintained; avoids full-map scan each step
+	Creatures         []*Creature // indexed by creature ID; nil = slot empty
+	aliveIDs          []int       // incrementally maintained; avoids full-slice scan each step
 	DeathQueue        []DeathInstruction
 	MoveQueue         []MoveInstruction
 	AttackQueue       []AttackInstruction
@@ -58,7 +58,7 @@ type pendingInstructions struct {
 
 func NewPopulation(p *Parameters) *Population {
 	return &Population{
-		Creatures:         make(map[int]*Creature, p.StartingPopulation),
+		Creatures:         make([]*Creature, 0, p.StartingPopulation+1),
 		aliveIDs:          make([]int, 0, p.StartingPopulation),
 		DeathQueue:        []DeathInstruction{},
 		MoveQueue:         []MoveInstruction{},
@@ -66,6 +66,35 @@ func NewPopulation(p *Parameters) *Population {
 		ReproductionQueue: []ReproductionInstruction{},
 		FeedQueue:         []FeedInstruction{},
 	}
+}
+
+// Get returns the creature with the given ID, or (nil, false) if the slot is empty.
+func (p *Population) Get(id int) (*Creature, bool) {
+	if id >= 0 && id < len(p.Creatures) {
+		if c := p.Creatures[id]; c != nil {
+			return c, true
+		}
+	}
+	return nil, false
+}
+
+// SetCreature stores a creature at its ID, growing the slice if needed.
+func (p *Population) SetCreature(id int, c *Creature) {
+	if id >= len(p.Creatures) {
+		if id < cap(p.Creatures) {
+			// Extend length within existing capacity: O(1) reslice, no allocation.
+			p.Creatures = p.Creatures[:id+1]
+		} else {
+			newCap := cap(p.Creatures) * 2
+			if newCap <= id {
+				newCap = id + 1
+			}
+			grown := make([]*Creature, id+1, newCap)
+			copy(grown, p.Creatures)
+			p.Creatures = grown
+		}
+	}
+	p.Creatures[id] = c
 }
 
 func (p *Population) QueueForMove(creature *Creature, newLoc world.Position, moveAmount float32) {
@@ -129,8 +158,8 @@ func (p *Population) ProcessMoveQueue(w *world.World) {
 // alive creature. Called after ProcessMoveQueue so positions are up to date.
 func (p *Population) ProcessEating(w *world.World, params *Parameters) {
 	for _, id := range p.aliveIDs {
-		c := p.Creatures[id]
-		if !c.Alive {
+		c, ok := p.Get(id)
+		if !ok || !c.Alive {
 			continue
 		}
 
@@ -225,7 +254,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			if cid == c.Id {
 				continue
 			}
-			cr, ok := p.Creatures[cid]
+			cr, ok := p.Get(cid)
 			if !ok || !cr.Alive {
 				continue
 			}
@@ -246,7 +275,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			continue
 		}
 
-		target, ok := p.Creatures[closestPreyID]
+		target, ok := p.Get(closestPreyID)
 		if !ok {
 			continue
 		}
@@ -298,7 +327,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			target.Energy = 0
 			p.removeAlive(closestPreyID)
 			w.RemoveCreature(closestPreyID)
-			delete(p.Creatures, closestPreyID)
+			p.Creatures[closestPreyID] = nil
 		}
 	}
 	p.AttackQueue = p.AttackQueue[:0]
@@ -376,7 +405,7 @@ func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 		p.removeAlive(c.Id)
 		spawnMeatFromCreature(w, c, params)
 		w.RemoveCreature(c.Id)
-		delete(p.Creatures, c.Id)
+		p.Creatures[c.Id] = nil
 	}
 	p.DeathQueue = p.DeathQueue[:0]
 }
@@ -477,7 +506,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 			child.Generation = childGen
 			child.Tier = GetTierFromGeneration(childGen, params)
 			child.GainEnergy(energyTransferred, params)
-			p.Creatures[id] = child
+			p.SetCreature(id, child)
 			p.AddAlive(id)
 			aliveCount++
 			continue
@@ -516,12 +545,12 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		childGenome := AsexualReproduction(parent.Genome, params, radMult, childGen)
 		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
-		child.Generation = parent.CalculateGenerationBonus(params)
+		child.Generation = parent.Generation + parent.CalculateGenerationBonus(params)
 		child.Tier = GetTierFromGeneration(childGen, params)
 		child.Mass = childMass
 		child.UpdateSize(params)
 		child.Energy = energyTransferred
-		p.Creatures[id] = child
+		p.SetCreature(id, child)
 		p.AddAlive(id)
 		aliveCount++
 	}
@@ -571,7 +600,10 @@ func findOffspringLocation(w *world.World, parent *Creature) (world.Position, bo
 func (p *Population) OldestGenome() *Genome {
 	var oldest *Creature
 	for _, id := range p.aliveIDs {
-		c := p.Creatures[id]
+		c, ok := p.Get(id)
+		if !ok {
+			continue
+		}
 		if oldest == nil || c.Age > oldest.Age {
 			oldest = c
 		}
@@ -596,8 +628,11 @@ func (p *Population) GeneticDiversity() float32 {
 		for i2 == i1 {
 			i2 = rand.Intn(n)
 		}
-		c1 := p.Creatures[p.aliveIDs[i1]]
-		c2 := p.Creatures[p.aliveIDs[i2]]
+		c1, ok1 := p.Get(p.aliveIDs[i1])
+		c2, ok2 := p.Get(p.aliveIDs[i2])
+		if !ok1 || !ok2 {
+			continue
+		}
 		total += 1 - GenomeSimilarity(c1.Genome, c2.Genome)
 	}
 	return total / float32(sampleSize)

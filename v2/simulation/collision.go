@@ -27,8 +27,8 @@ func (s *Simulation) processCollisions() {
 
 	var buf []int
 	for _, id := range ids {
-		c := s.Population.Creatures[id]
-		if !c.Alive {
+		c, ok := s.Population.Get(id)
+		if !ok || !c.Alive {
 			continue
 		}
 
@@ -38,7 +38,7 @@ func (s *Simulation) processCollisions() {
 			if otherID <= id {
 				continue
 			}
-			other, ok := s.Population.Creatures[otherID]
+			other, ok := s.Population.Get(otherID)
 			if !ok || !other.Alive {
 				continue
 			}

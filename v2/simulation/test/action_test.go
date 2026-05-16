@@ -20,8 +20,10 @@ func TestDoNothingReducesMetabolicCost(t *testing.T) {
 
 	var c *simulation.Creature
 	for _, v := range sim.Population.Creatures {
-		c = v
-		break
+		if v != nil {
+			c = v
+			break
+		}
 	}
 	c.Genome.MetabolicRate = 127
 	c.Energy = float32(c.Mass) * p.EnergyPerMassUnit // start at full MaxEnergy
@@ -65,7 +67,7 @@ func TestPassivePredation_TakesBiteFromNearbyMeat(t *testing.T) {
 
 	w := grid.NewWorld(20, 20, 0)
 
-	predGenome := simulation.MakeRandomGenome(params)
+	predGenome := simulation.MakeRandomGenome(params, 0)
 	predGenome.Mass = 128
 	predGenome.MinMass = 10
 	predGenome.FieldOfView = 180
@@ -82,7 +84,7 @@ func TestPassivePredation_TakesBiteFromNearbyMeat(t *testing.T) {
 	w.AddMeat(meatPos, meatMassBefore)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[predID] = pred
+	pop.SetCreature(predID, pred)
 
 	newPos := grid.Position{X: 6, Y: 5}
 	pop.QueueForMove(pred, newPos, 1.0)

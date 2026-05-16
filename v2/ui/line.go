@@ -20,6 +20,8 @@ func NewLine(minX, minY, maxX, maxY float64) *Line {
 	return &Line{img: img, geoM: geoM}
 }
 
-func (l *Line) Draw(targetImage *ebiten.Image) {
-	targetImage.DrawImage(l.img, &ebiten.DrawImageOptions{GeoM: *l.geoM})
+func (l *Line) Draw(targetImage *ebiten.Image, camGeoM ebiten.GeoM) {
+	combined := *l.geoM
+	combined.Concat(camGeoM)
+	targetImage.DrawImage(l.img, &ebiten.DrawImageOptions{GeoM: combined})
 }

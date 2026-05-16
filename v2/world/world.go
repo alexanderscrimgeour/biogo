@@ -398,7 +398,7 @@ func (w *World) SpawnPlant(n int, sigma float64, mass float32) {
 		return
 	}
 
-	randomScatterFactor := 0.15
+	randomScatterFactor := 0.05
 	randomCount := int(float64(n) * randomScatterFactor)
 	clusterCount := n - randomCount
 
