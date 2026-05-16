@@ -92,21 +92,6 @@ func NewUserInterface(
 		saveCreatureID: -1,
 	}
 
-	// ── Mutation-rate slider ──────────────────────────────────────────────────
-	mutSlider := &components.Slider{
-		W: 240, H: 24,
-		TrackOffX: 135, TrackW: 100,
-		Label:      "Mut",
-		Font:       font,
-		LabelColor: color.White,
-		Min:        0.0001, Max: 0.2,
-		Value: 0.01,
-		OnChange: func(v float64) {
-			sim.SetSpawnMutationRate(float32(v))
-		},
-	}
-	game.spawnMutSlider = mutSlider
-
 	// ── Menu bar buttons ─────────────────────────────────────────────────────
 	pauseBtn := &components.Button{W: 80, H: 24, Label: "Pause", Color: components.ColorButtonRed, LabelColor: color.White, Font: font}
 	pauseBtn.OnClick = func() {
@@ -162,7 +147,6 @@ func NewUserInterface(
 	mb.AddButton(pauseBtn)
 	mb.AddButton(restartBtn)
 	mb.AddButton(themeBtn)
-	mb.AddSlider(mutSlider)
 	mb.AddButton(spawnRandomBtn)
 	mb.AddButton(createGenomeBtn)
 	mb.AddButton(spawnSavedBtn)

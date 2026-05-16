@@ -33,7 +33,6 @@ type SimulationState interface {
 	TotalEnergy() float64
 	TargetEnergy() float64
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
-	SetSpawnMutationRate(rate float32)
 	SetFoodRandomFraction(v float64)
 	SetFountainCount(n int)
 	SetFountainDriftSpeed(v float64)
@@ -75,6 +74,7 @@ type Game struct {
 	snapshot           simulation.StateSnapshot // persistent; backing slices reused each tick
 	currentSnapshot    *simulation.StateSnapshot
 	tickDuration       time.Duration
+	uiConsumedClick    bool
 
 	// Held by UI for input routing (updated each frame by UserInterface)
 	spawnMutSlider    *components.Slider
@@ -156,17 +156,21 @@ func (g *Game) Update() error {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if g.genomeEditor != nil && g.genomeEditor.visible {
 			g.genomeEditor.HandleInput(mx, my)
+			g.uiConsumedClick = true
 		} else if g.savedGenomesPanel != nil && g.savedGenomesPanel.visible {
 			g.savedGenomesPanel.HandleInput(mx, my)
+			g.uiConsumedClick = true
 		} else if g.ui.HandleClick(mx, my) {
-			// UI consumed the click
+			g.uiConsumedClick = true
 		} else if g.spawnPlacing {
+			g.uiConsumedClick = false
 			sw, sh := ebiten.WindowSize()
 			cam := g.world.Camera()
 			wx, wy := cam.ScreenToWorld(float64(mx), float64(my), float64(sw), float64(sh))
 			bs := float64(UnitSize)
 			g.sim.SpawnClusterAt(wx/bs, wy/bs, 5)
 		} else {
+			g.uiConsumedClick = false
 			g.world.StartCameraDrag(mx, my)
 		}
 	}
@@ -174,12 +178,13 @@ func (g *Game) Update() error {
 	// Mouse-up
 	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
 		moved := g.world.StopCameraDrag()
-		if !moved {
+		if !g.uiConsumedClick && !moved {
 			sx, sy := g.world.CamDragStartPos()
 			sw, sh := ebiten.WindowSize()
 			newID := g.world.TrySelectCreature(sx, sy, sw, sh, g.selectedCreatureID)
 			g.selectedCreatureID = newID
 		}
+		g.uiConsumedClick = false
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {

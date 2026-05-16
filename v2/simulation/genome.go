@@ -306,15 +306,12 @@ func nudgeByte(val byte, strength int) byte {
 	return byte(newVal)
 }
 
-// Mutate randomly mutates genes in the genome at a rate of p.BaseMutationRate * g.MutationRate * radiationMult.
-// Pass radiationMult=1.0 for normal reproduction; pass params.RadiationMutationMultiplier for irradiated parents.
-func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32, childGeneration float32) {
+// Mutate randomly mutates genes in the genome at a rate of p.BaseMutationRate * g.MutationRate * mutationMult.
+// Pass mutationMult=1.0 for normal reproduction; pass params.RadiationMutationMultiplier for irradiated parents.
+func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, childGeneration float32) {
 	rateMultiplier := float32(g.MutationRate) / 128.0
-	mutationRate := p.BaseMutationRate * rateMultiplier * radiationMult
+	mutationRate := p.BaseMutationRate * rateMultiplier * mutationMult
 
-	if isArtificial {
-		mutationRate = p.SpawnMutationRate * float32(g.MutationRate)
-	}
 	mutateTarget := func(val *byte, min, max byte, strength int) {
 		if rand.Float32() < mutationRate {
 			*val = utils.LerpByte(min, max, nudgeByte(*val, strength))
@@ -435,8 +432,8 @@ func pickGene(a, b Gene) Gene {
 // by mutation. Each header byte is drawn independently from either parent. Brain
 // genes in the overlapping range are drawn from either parent; excess genes from
 // the longer parent survive with 50% probability.
-// radiationMult amplifies the mutation rate; pass 1.0 for normal conditions.
-func Crossover(g1, g2 *Genome, p *Parameters, radiationMult float32, childGeneration float32) *Genome {
+// mutationMult amplifies the mutation rate; pass 1.0 for normal conditions.
+func Crossover(g1, g2 *Genome, p *Parameters, mutationMult float32, childGeneration float32) *Genome {
 	child := &Genome{
 		OscPeriod:         pickByte(g1.OscPeriod, g2.OscPeriod),
 		SightDistance:     pickByte(g1.SightDistance, g2.SightDistance),
@@ -508,22 +505,22 @@ func Crossover(g1, g2 *Genome, p *Parameters, radiationMult float32, childGenera
 	// Align SynapticDensity with the actual brain length so Mutate does not
 	// immediately re-grow the brain beyond what crossover intended.
 	child.SynapticDensity = byte(targetLen)
-	mutationChance := 0.01 * radiationMult
+	mutationChance := 0.01 * mutationMult
 	if rand.Float32() < mutationChance {
-		Mutate(child, p, false, radiationMult, childGeneration)
+		Mutate(child, p, false, mutationMult, childGeneration)
 	}
 	return child
 }
 
 // AsexualReproduction creates a deep copy of the parent genome then mutates it.
-// radiationMult amplifies the mutation rate; pass 1.0 for normal conditions.
-func AsexualReproduction(parent *Genome, p *Parameters, radiationMult float32, childGeneration float32) *Genome {
+// mutationMult amplifies the mutation rate; pass 1.0 for normal conditions.
+func AsexualReproduction(parent *Genome, p *Parameters, mutationMult float32, childGeneration float32) *Genome {
 	child := parent.Copy()
 	minTierBreadth, _ := getTierBoundaries(childGeneration, p)
 	if child.CognitiveBreadth < minTierBreadth {
 		child.CognitiveBreadth = minTierBreadth // Push up to the new tier minimum
 	}
-	Mutate(child, p, false, radiationMult, childGeneration)
+	Mutate(child, p, false, mutationMult, childGeneration)
 	return child
 }
 
