@@ -55,7 +55,8 @@ func (s *Simulation) initializePopulation() {
 		if numSaved > 0 && i < maxSeeded {
 			genome = savedGenomes[(i/bubbleSize)%numSaved]
 		} else {
-			genome = MakeRandomGenome(s.Params)
+			// Initialise genomes at tier zero
+			genome = MakeRandomGenome(s.Params, 0)
 		}
 
 		for j := 0; j < bubbleSize; j++ {
@@ -105,14 +106,14 @@ func (s *Simulation) step() {
 	if s.Tick%s.Params.FoodSpawnInterval == 0 {
 		// Spawning food by energy temporarily disabled. Not enough creatures
 		// eat meat and so it energy ends up stagnating in meat.+
-		// deficit := s.Energy - s.TotalEnergy()
-		// if deficit < 0 {
-		// 	deficit = 0
-		// }
-		// energyPerPiece := float64(s.Params.FoodMass) * float64(s.Params.EnergyPerMassUnit)
+		deficit := s.Energy - s.TotalEnergy()
+		if deficit < 0 {
+			deficit = 0
+		}
+		energyPerPiece := float64(s.Params.FoodMass) * float64(s.Params.EnergyPerMassUnit)
 		// number of food items to spawn
-		// n := int(deficit / energyPerPiece)
-		n := s.Params.MaxFood - s.World.PlantCount()
+		n := int(deficit / energyPerPiece)
+		// n := s.Params.MaxFood - s.World.PlantCount()
 		s.World.SpawnPlant(n, s.Params.FountainRadius, s.Params.FoodMass)
 	}
 
@@ -202,6 +203,8 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		c.DrainEnergy(s.Params.RadiationDamagePerTick * massEffect)
 	}
 	c.Digest(s.Params)
+	c.GrowMass(s.Params)
+
 	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
 		pending.death = append(pending.death, DeathInstruction{c})
 		return
@@ -284,18 +287,32 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			c.LastAction = appendActionString(c.LastAction, "Punishing")
 		}
 	}
+
 	if IsActionEnabled(REPRODUCE) {
-		level := actionLevels[REPRODUCE]
-		if math.Abs(float64(level)) > 0.5 {
-			reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
-			if c.Energy >= reproThreshold && c.Age >= c.cachedJuvenilePeriod && float64(c.Mass) >= float64(c.Genome.Mass)*0.9 {
+		currentTier := c.Tier
+		reproThreshold := s.Params.ReproductionEnergyThreshold * c.MaxEnergy(s.Params)
+		isPhysicallyReady := c.Energy >= reproThreshold &&
+			c.Age >= c.cachedJuvenilePeriod &&
+			float64(c.Mass) >= float64(c.Genome.Mass)*0.9 &&
+			float32(c.Genome.MinMass)*2 < float32(c.Genome.Mass)
+		// Reproduction is not introduced until tier 3
+		if currentTier >= 2 {
+			level := actionLevels[REPRODUCE]
+			if math.Abs(float64(level)) > 0.5 && isPhysicallyReady {
 				if c.Genome.ReproductionType == 0 {
 					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
-					c.LastAction = appendActionString(c.LastAction, "Reproducing")
+					c.LastAction = appendActionString(c.LastAction, "Reproducing (Intent)")
 				} else {
 					pending.mate = append(pending.mate, c)
 					c.LastAction = appendActionString(c.LastAction, "Seeking mate")
 				}
+			}
+		} else {
+			// Automatic physiological reproduction
+			if isPhysicallyReady {
+				// Force asexual division for lower tiers to scale population early on
+				pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
+				c.LastAction = appendActionString(c.LastAction, "Auto-Splitting")
 			}
 		}
 	}
@@ -475,7 +492,8 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 	spawnParams := *s.Params
 
 	id := s.World.AddCreature(pos)
-	genome := MakeRandomGenome(&spawnParams)
+	// Initialise genomes at tier zero
+	genome := MakeRandomGenome(&spawnParams, 0)
 	c := NewAdultCreature(id, pos, genome, s.Params)
 	s.Population.Creatures[id] = c
 	s.Population.AddAlive(id)
@@ -487,7 +505,8 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 // All creatures share the same randomly generated genome. Positions that are walls are skipped.
 func (s *Simulation) SpawnClusterAt(x, y float64, count int) bool {
 	spawnParams := *s.Params
-	genome := MakeRandomGenome(&spawnParams)
+	// Initialise genomes at tier zero
+	genome := MakeRandomGenome(&spawnParams, 0)
 
 	offsets := [][2]float64{{0, 0}, {4, 0}, {-4, 0}, {0, 4}, {0, -4}}
 	spawned := 0
@@ -570,7 +589,7 @@ func (s *Simulation) AverageGeneration() float64 {
 	if count == 0 {
 		return 0
 	}
-	total := 0
+	total := float32(0.0)
 	for _, id := range s.Population.aliveIDs {
 		total += s.Population.Creatures[id].Generation
 	}
@@ -609,6 +628,7 @@ func (s *Simulation) updatePopulationCaches() {
 			FieldOfView:      c.FieldOfView(),
 			Radius:           float64(c.Radius),
 			ReproductionType: c.Genome.ReproductionType,
+			Tier:             c.Tier,
 		})
 	}
 }
@@ -643,8 +663,8 @@ var ResponseCurveLUT [256]float32
 // Initialize at startup
 func InitResponseCurve(params *Parameters) {
 	for i := 0; i < 256; i++ {
-		// Map 0 -> 255 to -1.0 -> 1.0
-		resp := (float32(i) / 127.5) - 1.0
+		// Map index 0 -> 255 directly to a 0.0 -> 1.0 float range
+		resp := float32(i) / 255.0
 		ResponseCurveLUT[i] = calculateResponseCurve(resp, params.ResponseCurveKFactor)
 	}
 }

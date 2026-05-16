@@ -415,7 +415,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		if parent.Energy < params.ReproductionEnergyThreshold*parent.MaxEnergy(params) {
 			continue
 		}
-		if float64(parent.Mass) < float64(parent.Genome.Mass)*0.9 {
+		if parent.Mass < parent.MaxMass*0.9 {
 			continue
 		}
 		if float32(parent.Genome.MinMass)*2 >= float32(parent.Genome.Mass) {
@@ -431,7 +431,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 			if partner.Energy < params.ReproductionEnergyThreshold*partner.MaxEnergy(params) {
 				continue
 			}
-			if float64(partner.Mass) < float64(partner.Genome.Mass)*0.9 {
+			if partner.Mass < partner.MaxMass*0.9 {
 				continue
 			}
 
@@ -440,8 +440,14 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 				continue
 			}
 
+			// 1. Find the baseline mid-point of the parental lineages
+			baseGen := (parent.Generation + partner.Generation) * 0.5
+			bonusA := parent.CalculateGenerationBonus()
+			bonusB := partner.CalculateGenerationBonus()
+			childGen := baseGen + (bonusA+bonusB)*0.5
+
 			radMult := radiationMult(parent.Loc.X, params)
-			childGenome := Crossover(parent.Genome, partner.Genome, params, radMult)
+			childGenome := Crossover(parent.Genome, partner.Genome, params, radMult, childGen)
 			childStartingMass := float32(childGenome.Mass)
 
 			ratioA := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
@@ -468,7 +474,8 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 
 			id := w.AddCreature(offspringLoc)
 			child := NewCreature(id, offspringLoc, childGenome, params)
-			child.Generation = maxInt(parent.Generation, partner.Generation) + 1
+			child.Generation = childGen
+			child.Tier = GetTierFromGeneration(childGen, params)
 			child.GainEnergy(energyTransferred, params)
 			p.Creatures[id] = child
 			p.AddAlive(id)
@@ -485,16 +492,32 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		childMass := parent.Mass * splitRatio
 		energyToSplit := parent.Energy * splitRatio
 		energyTransferred := energyToSplit * params.ReproductionEfficiency
+		massRatio := parent.Mass / parent.MaxMass
+		if massRatio > 1.0 {
+			massRatio = 1.0
+		}
+		growthFactor := massRatio * massRatio
+
+		// 3. Longevity factor scales above 1.0 if they outlived their juvenile period
+		longevityFactor := float32(1.0)
+		if parent.cachedJuvenilePeriod > 0 && parent.Age > parent.cachedJuvenilePeriod {
+			longevityFactor = float32(parent.Age) / float32(parent.cachedJuvenilePeriod)
+		}
+		deltaGen := growthFactor * longevityFactor
+		if deltaGen > 2.0 {
+			deltaGen = 2.0
+		}
+		childGen := parent.Generation + deltaGen
 
 		parent.Mass -= childMass
 		parent.UpdateSize(params)
 		parent.DrainEnergy(energyToSplit)
-
 		radMult := radiationMult(parent.Loc.X, params)
-		childGenome := AsexualReproduction(parent.Genome, params, radMult)
+		childGenome := AsexualReproduction(parent.Genome, params, radMult, childGen)
 		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
-		child.Generation = parent.Generation + 1
+		child.Generation = parent.CalculateGenerationBonus()
+		child.Tier = GetTierFromGeneration(childGen, params)
 		child.Mass = childMass
 		child.UpdateSize(params)
 		child.Energy = energyTransferred
