@@ -381,13 +381,13 @@ func (c *Creature) CalculateGenerationBonus(params *Parameters) float32 {
 	// High-performance squared growth factor
 	growthFactor := massRatio * massRatio
 	maxAge := float32(c.MaxAge(params))
-	// Longevity factor scales up if they lived past their juvenile threshold
+	// Longevity factor scales up if their parent was older
 	longevityFactor := float32(1.0)
 	if maxAge > 0 {
 		longevityFactor = float32(c.Age) / maxAge
 	}
 
-	deltaGen := growthFactor * longevityFactor
+	deltaGen := (0.8 * growthFactor) * (0.2 * longevityFactor)
 	if deltaGen > 2.0 {
 		deltaGen = 2.0
 	}

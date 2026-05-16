@@ -66,6 +66,7 @@ type UserInterface struct {
 
 	foodDropdown    *Dropdown
 	climateDropdown *Dropdown
+	spawnDropdown   *Dropdown
 
 	// references so buttons can trigger game-level actions
 	onSaveCreature func() error
@@ -139,6 +140,7 @@ func NewUserInterface(
 
 	foodBtn := &components.Button{W: 60, H: 24, Label: "Food", Color: components.ColorDefault, LabelColor: color.White, Font: font}
 	climateBtn := &components.Button{W: 80, H: 24, Label: "Climate", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	spawnBtn := &components.Button{W: 80, H: 24, Label: "Spawning", Color: components.ColorDefault, LabelColor: color.White, Font: font}
 
 	mb := &components.MenuBar{
 		H:       menuBarH,
@@ -155,6 +157,7 @@ func NewUserInterface(
 	mb.AddButton(tierBtn)
 	mb.AddButton(foodBtn)
 	mb.AddButton(climateBtn)
+	mb.AddButton(spawnBtn)
 	ui.menuBar = mb
 
 	ui.foodDropdown = newFoodDropdown(font, foodBtn, sim)
@@ -162,6 +165,9 @@ func NewUserInterface(
 
 	ui.climateDropdown = newClimateDropdown(font, climateBtn, sim)
 	climateBtn.OnClick = func() { ui.climateDropdown.Toggle() }
+
+	ui.spawnDropdown = newSpawnDropdown(font, spawnBtn, sim)
+	spawnBtn.OnClick = func() { ui.spawnDropdown.Toggle() }
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
 	ui.leftStack = &LeftPanelStack{
@@ -200,7 +206,8 @@ func NewUserInterface(
 // AnySliderDragging reports whether any non-menubar slider is currently being dragged.
 func (ui *UserInterface) AnySliderDragging() bool {
 	return (ui.foodDropdown != nil && ui.foodDropdown.AnyDragging()) ||
-		(ui.climateDropdown != nil && ui.climateDropdown.AnyDragging())
+		(ui.climateDropdown != nil && ui.climateDropdown.AnyDragging()) ||
+		(ui.spawnDropdown != nil && ui.spawnDropdown.AnyDragging())
 }
 
 // HandleClick processes a mouse-down event; returns true if consumed.
@@ -212,6 +219,9 @@ func (ui *UserInterface) HandleClick(mx, my int) bool {
 		return true
 	}
 	if ui.climateDropdown != nil && ui.climateDropdown.HandleClick(mx, my) {
+		return true
+	}
+	if ui.spawnDropdown != nil && ui.spawnDropdown.HandleClick(mx, my) {
 		return true
 	}
 	// Save name input field
@@ -245,6 +255,9 @@ func (ui *UserInterface) HandleContinuousInput() {
 		if ui.climateDropdown != nil {
 			ui.climateDropdown.HandleDrag(mx)
 		}
+		if ui.spawnDropdown != nil {
+			ui.spawnDropdown.HandleDrag(mx)
+		}
 	} else {
 		ui.menuBar.HandleRelease()
 		if ui.foodDropdown != nil {
@@ -252,6 +265,9 @@ func (ui *UserInterface) HandleContinuousInput() {
 		}
 		if ui.climateDropdown != nil {
 			ui.climateDropdown.HandleRelease()
+		}
+		if ui.spawnDropdown != nil {
+			ui.spawnDropdown.HandleRelease()
 		}
 	}
 }
@@ -308,6 +324,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	}
 	if ui.climateDropdown != nil {
 		ui.climateDropdown.Draw(screen)
+	}
+	if ui.spawnDropdown != nil {
+		ui.spawnDropdown.Draw(screen)
 	}
 	ui.leftStack.Draw(screen)
 

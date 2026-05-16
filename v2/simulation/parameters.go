@@ -18,6 +18,9 @@ type PopulationParameters struct {
 
 type SpawnParameters struct {
 	SavedGenomeProportion float64
+	ClusterEnabled        bool
+	ClusterInterval       int
+	ClusterSize           int
 }
 
 type FoodParameters struct {
@@ -191,11 +194,14 @@ func DefaultParams() *Parameters {
 		},
 		Evolution: EvolutionParameters{
 			Tier1Generation: 3,
-			Tier2Generation: 6,
+			Tier2Generation: 10,
 			Tier3Generation: 50,
 		},
 		Spawn: SpawnParameters{
 			SavedGenomeProportion: 0.05,
+			ClusterEnabled:        false,
+			ClusterInterval:       500,
+			ClusterSize:           10,
 		},
 	}
 	if err := p.Validate(); err != nil {

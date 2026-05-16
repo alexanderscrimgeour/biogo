@@ -192,6 +192,14 @@ func (s *Simulation) step() {
 		aliveCount += toSpawn
 	}
 
+	if s.Params.Spawn.ClusterEnabled && s.Tick > 0 && s.Tick%s.Params.Spawn.ClusterInterval == 0 &&
+		aliveCount < s.Params.Population.Max {
+		loc, ok := s.World.FindEmptyLocation()
+		if ok {
+			s.SpawnClusterAt(float64(loc.X), float64(loc.Y), s.Params.Spawn.ClusterSize)
+		}
+	}
+
 	s.Tick++
 }
 
@@ -505,6 +513,10 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 		}
 	}
 }
+
+func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled = v }
+func (s *Simulation) SetClusterInterval(v int) { s.Params.Spawn.ClusterInterval = v }
+func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v }
 
 func (s *Simulation) SetMaxFood(v int)                { s.Params.Food.Max = v }
 func (s *Simulation) SetFoodRandomFraction(v float64) { s.Params.Food.RandomFraction = v }

@@ -74,14 +74,6 @@ func NewWorld(width, height float64, wallType int) *World {
 		freeFoodIDs:     make([]int, 0, 100),
 		foodHash:        newSpatialHash(width, height, cellSize),
 	}
-	if wallType == 1 {
-		const thickness = 10.0
-		cx, cy := width/2-thickness/2, height/2-thickness/2
-		w.Walls = []Wall{
-			{X: 0, Y: cy, W: width, H: thickness},
-			{X: cx, Y: 0, W: thickness, H: height},
-		}
-	}
 	return w
 }
 

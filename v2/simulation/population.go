@@ -525,18 +525,8 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		if massRatio > 1.0 {
 			massRatio = 1.0
 		}
-		growthFactor := massRatio * massRatio
 
-		// 3. Longevity factor scales above 1.0 if they outlived their juvenile period
-		longevityFactor := float32(1.0)
-		if parent.cachedJuvenilePeriod > 0 && parent.Age > parent.cachedJuvenilePeriod {
-			longevityFactor = float32(parent.Age) / float32(parent.cachedJuvenilePeriod)
-		}
-		deltaGen := growthFactor * longevityFactor
-		if deltaGen > 2.0 {
-			deltaGen = 2.0
-		}
-		childGen := parent.Generation + deltaGen
+		childGen := parent.Generation + parent.CalculateGenerationBonus(params)
 
 		parent.Mass -= childMass
 		parent.UpdateSize(params)
@@ -545,7 +535,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		childGenome := AsexualReproduction(parent.Genome, params, radMult, childGen)
 		id := w.AddCreature(offspringLoc)
 		child := NewCreature(id, offspringLoc, childGenome, params)
-		child.Generation = parent.Generation + parent.CalculateGenerationBonus(params)
+		child.Generation = childGen
 		child.Tier = GetTierFromGeneration(childGen, params)
 		child.Mass = childMass
 		child.UpdateSize(params)

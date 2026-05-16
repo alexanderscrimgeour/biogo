@@ -40,6 +40,9 @@ type SimulationState interface {
 	SetFountainRadius(v float64)
 	SetColdMetabolicMultiplier(v float32)
 	SetWarmMetabolicMultiplier(v float32)
+	SetClusterEnabled(v bool)
+	SetClusterInterval(v int)
+	SetClusterSize(v int)
 	SpawnAt(x, y float64) bool
 	SpawnClusterAt(x, y float64, count int) bool
 	SpawnGenome(g *simulation.Genome, generation float32) bool

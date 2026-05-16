@@ -61,6 +61,21 @@ func (d *Dropdown) addSlider(s *components.Slider) {
 	})
 }
 
+func (d *Dropdown) addButton(b *components.Button) {
+	d.items = append(d.items, ddItem{
+		h:    b.H,
+		draw: func(screen *ebiten.Image, x, y float32) { b.Draw(screen, x, y) },
+		onDown: func(mx, my int) {
+			if b.IsClicked(mx, my) && b.OnClick != nil {
+				b.OnClick()
+			}
+		},
+		onDrag:   func(mx int) {},
+		release:  func() {},
+		dragging: func() bool { return false },
+	})
+}
+
 func (d *Dropdown) addRangeSlider(s *components.RangeSlider) {
 	d.items = append(d.items, ddItem{
 		h:        s.H,
