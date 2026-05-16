@@ -9,6 +9,12 @@ import (
 	"sync"
 )
 
+// sensorUpdatePeriod controls how often each creature refreshes its spatial
+// sensor context (GetAllInRadius). A value of 4 staggers updates across ticks
+// by creature ID, reducing spatial queries by ~75% at the cost of sensor data
+// being at most (sensorUpdatePeriod-1) ticks stale.
+const sensorUpdatePeriod = 4
+
 type Simulation struct {
 	World        *world.World
 	Population   *Population
@@ -115,7 +121,7 @@ func (s *Simulation) step() {
 		// number of food items to spawn
 		n := int(deficit / energyPerPiece)
 		// n := s.Params.MaxFood - s.World.PlantCount()
-		s.World.SpawnPlant(n, s.Params.FountainRadius, s.Params.FoodMass)
+		s.World.SpawnPlant(n, s.Params.FountainRadius, s.Params.FoodMass, s.Params.FoodRandomFraction)
 	}
 
 	// AliveIDs() now returns the live backing slice — no allocation, O(1).
@@ -195,7 +201,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		c.Dopamine = 0
 	}
 	c.Age++
-	c.LastAction = ""
+	c.LastActionMask = 0
 	temp := s.World.TemperatureAt(c.Loc.Y)
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
 	if float64(c.Loc.X) < s.Params.RadiationZoneWidth*s.Params.WorldWidth {
@@ -211,6 +217,9 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		return
 	}
 
+	if s.Tick%sensorUpdatePeriod == c.Id%sensorUpdatePeriod {
+		c.UpdateSensorContext(s.World, s.Population, s.Params)
+	}
 	c.FeedForward(s.World, s.Population, s.Tick, s.Params)
 	s.executeActionsLocal(c, c.Nnet.LastActionValues[:], pending, temp)
 
@@ -238,7 +247,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			c.DrainEnergy(rate * float32(restingCostFactor))
 			c.IsResting = true
 
-			c.LastAction = appendActionString(c.LastAction, "Resting")
+			c.LastActionMask |= ActionResting
 		}
 	}
 
@@ -267,7 +276,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		level := math.Abs(float64(actionLevels[ATTACK]))
 		if level > 0.7 {
 			pending.attack = append(pending.attack, AttackInstruction{c, level})
-			c.LastAction = appendActionString(c.LastAction, "Attacking")
+			c.LastActionMask |= ActionAttacking
 		}
 	}
 
@@ -276,7 +285,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if level > 0 {
 			// Fast Softsign: level / (1 + level)
 			c.GainDopamine(float32(level / (1.0 + level)))
-			c.LastAction = appendActionString(c.LastAction, "Rewarding")
+			c.LastActionMask |= ActionRewarding
 		}
 	}
 
@@ -285,7 +294,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if level > 0 {
 			// Fast Softsign: level / (1 + level)
 			c.LoseDopamine(float32(level / (1.0 + level)))
-			c.LastAction = appendActionString(c.LastAction, "Punishing")
+			c.LastActionMask |= ActionPunishing
 		}
 	}
 
@@ -302,10 +311,10 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			if math.Abs(float64(level)) > 0.5 && isPhysicallyReady {
 				if c.Genome.ReproductionType == 0 {
 					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
-					c.LastAction = appendActionString(c.LastAction, "Reproducing (Intent)")
+					c.LastActionMask |= ActionReproducing
 				} else {
 					pending.mate = append(pending.mate, c)
-					c.LastAction = appendActionString(c.LastAction, "Seeking mate")
+					c.LastActionMask |= ActionSeekingMate
 				}
 			}
 		} else {
@@ -313,7 +322,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			if isPhysicallyReady {
 				// Force asexual division for lower tiers to scale population early on
 				pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
-				c.LastAction = appendActionString(c.LastAction, "Auto-Splitting")
+				c.LastActionMask |= ActionAutoSplitting
 			}
 		}
 	}
@@ -349,7 +358,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			}
 			if recipient != nil {
 				pending.feed = append(pending.feed, FeedInstruction{c, recipient, level})
-				c.LastAction = appendActionString(c.LastAction, "Feeding")
+				c.LastActionMask |= ActionFeeding
 			}
 		}
 	}
@@ -366,7 +375,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if rotateAmount != 0 {
 			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
 			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * float32(massCostMult))
-			c.LastAction = appendActionString(c.LastAction, "Rotating")
+			c.LastActionMask |= ActionRotating
 		}
 		c.Heading = float32(world.NormalizeAngle(float64(c.Heading) + rotateAmount))
 
@@ -389,19 +398,19 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		speedMult := float64(s.Params.ColdSpeedMultiplier) + (1.0-float64(s.Params.ColdSpeedMultiplier))*tempNorm
 		accelAmount *= speedMult
 
-		// Integrate acceleration into velocity, apply drag, clamp to mass-adjusted max speed.
-		c.Velocity += float32(accelAmount)
-		c.Velocity = float32(float64(c.Velocity) * s.Params.VelocityDamping)
+		// Integrate acceleration into speed, apply drag, clamp to mass-adjusted max speed.
+		c.Speed += float32(accelAmount)
+		c.Speed = float32(float64(c.Speed) * s.Params.SpeedDamping)
 		maxSpeed := float32(s.Params.MaxSpeedPerStep / massFactor)
-		if c.Velocity > maxSpeed {
-			c.Velocity = maxSpeed
-		} else if c.Velocity < -maxSpeed {
-			c.Velocity = -maxSpeed
+		if c.Speed > maxSpeed {
+			c.Speed = maxSpeed
+		} else if c.Speed < -maxSpeed {
+			c.Speed = -maxSpeed
 		}
 
-		if math.Abs(float64(c.Velocity)) >= 0.001 {
-			dx := float32(math.Cos(float64(c.Heading))) * c.Velocity
-			dy := float32(math.Sin(float64(c.Heading))) * c.Velocity
+		if math.Abs(float64(c.Speed)) >= 0.001 {
+			dx := float32(math.Cos(float64(c.Heading))) * c.Speed
+			dy := float32(math.Sin(float64(c.Heading))) * c.Speed
 			newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 			if !s.World.IsWall(newPos) {
@@ -410,8 +419,8 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 					massCostMult := 0.5 + massNorm*2.0
 					c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(accelAmount)) * float32(massCostMult))
 				}
-				c.LastAction = appendActionString(c.LastAction, "Moving")
-				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Velocity})
+				c.LastActionMask |= ActionMoving
+				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Speed})
 			}
 		}
 	}
@@ -481,6 +490,18 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 // spawning creatures to maintain the minimum population.
 func (s *Simulation) SetSpawnMutationRate(rate float32) {
 	s.Params.SpawnMutationRate = rate
+}
+
+func (s *Simulation) SetFoodRandomFraction(v float64) { s.Params.FoodRandomFraction = v }
+func (s *Simulation) SetFountainDriftSpeed(v float64) { s.Params.FountainDriftSpeed = v }
+func (s *Simulation) SetFountainRadius(v float64)     { s.Params.FountainRadius = v }
+
+func (s *Simulation) SetFountainCount(n int) {
+	if n < 0 {
+		n = 0
+	}
+	s.Params.FountainCount = n
+	s.World.SetFountainCount(n)
 }
 
 // SpawnAt creates a new random creature at the given world-space position.
@@ -618,23 +639,76 @@ func (s *Simulation) AverageGeneration() float64 {
 	return float64(total) / float64(count)
 }
 
-// partitionIDs splits ids into n roughly equal batches using round-robin assignment.
+// partitionIDs splits ids into n contiguous sub-slices. Contiguous layout keeps
+// Creatures[id] accesses sequential in memory, improving L1 cache hit rates vs
+// the previous round-robin approach. Each sub-slice shares the backing array of
+// ids so no additional allocation occurs for the batch data.
 func partitionIDs(ids []int, n int) [][]int {
 	if n <= 0 {
 		n = 1
 	}
+	if n > len(ids) {
+		n = len(ids)
+	}
+	if n == 0 {
+		return nil
+	}
 	batches := make([][]int, n)
-	for i, id := range ids {
-		batches[i%n] = append(batches[i%n], id)
+	size := (len(ids) + n - 1) / n
+	for i := range batches {
+		start := i * size
+		end := start + size
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batches[i] = ids[start:end]
 	}
 	return batches
 }
 
-func appendActionString(base, new string) string {
-	if base == "" {
-		return new
+// LastAction bitmask constants — one bit per action verb.
+const (
+	ActionResting       uint16 = 1 << iota // 1
+	ActionAttacking                        // 2
+	ActionRewarding                        // 4
+	ActionPunishing                        // 8
+	ActionReproducing                      // 16
+	ActionSeekingMate                      // 32
+	ActionAutoSplitting                    // 64
+	ActionFeeding                          // 128
+	ActionRotating                         // 256
+	ActionMoving                           // 512
+)
+
+func actionMaskToString(mask uint16) string {
+	if mask == 0 {
+		return ""
 	}
-	return base + " | " + new
+	names := [...]struct {
+		bit  uint16
+		name string
+	}{
+		{ActionResting, "Resting"},
+		{ActionAttacking, "Attacking"},
+		{ActionRewarding, "Rewarding"},
+		{ActionPunishing, "Punishing"},
+		{ActionReproducing, "Reproducing (Intent)"},
+		{ActionSeekingMate, "Seeking mate"},
+		{ActionAutoSplitting, "Auto-Splitting"},
+		{ActionFeeding, "Feeding"},
+		{ActionRotating, "Rotating"},
+		{ActionMoving, "Moving"},
+	}
+	out := ""
+	for _, n := range names {
+		if mask&n.bit != 0 {
+			if out != "" {
+				out += " | "
+			}
+			out += n.name
+		}
+	}
+	return out
 }
 
 func (s *Simulation) updatePopulationCaches() {
@@ -685,6 +759,21 @@ func (s *Simulation) GetSnapshot() StateSnapshot {
 	}
 	s.cacheMu.Unlock()
 	return snap
+}
+
+// FillSnapshot writes the current display state into dst, reusing its backing
+// slices if they are large enough. After the first call the slices reach full
+// capacity and subsequent calls allocate nothing.
+func (s *Simulation) FillSnapshot(dst *StateSnapshot) {
+	s.cacheMu.Lock()
+	if s.cacheDirty {
+		s.updatePopulationCaches()
+		s.updateFoodCache()
+		s.cacheDirty = false
+	}
+	dst.Creatures = append(dst.Creatures[:0], s.displayCache...)
+	dst.Food = append(dst.Food[:0], s.foodCache...)
+	s.cacheMu.Unlock()
 }
 
 // Pre-cached response curve to save on math.Pow calls

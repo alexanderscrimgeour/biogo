@@ -34,12 +34,17 @@ type SimulationState interface {
 	TargetEnergy() float64
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetSpawnMutationRate(rate float32)
+	SetFoodRandomFraction(v float64)
+	SetFountainCount(n int)
+	SetFountainDriftSpeed(v float64)
+	SetFountainRadius(v float64)
 	SpawnAt(x, y float64) bool
 	SpawnClusterAt(x, y float64, count int) bool
 	SpawnGenome(g *simulation.Genome, generation float32) bool
 	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
 	GetParams() *simulation.Parameters
 	GetSnapshot() simulation.StateSnapshot
+	FillSnapshot(dst *simulation.StateSnapshot)
 }
 
 const historyLen = 5000
@@ -57,23 +62,24 @@ var UnitSize int = 2
 // Game is the root ebiten.Game implementation. It coordinates WorldRenderer
 // (world-space drawing) and UserInterface (HUD) while owning shared state.
 type Game struct {
-	sim             SimulationState
-	world           *WorldRenderer
-	ui              *UserInterface
+	sim                SimulationState
+	world              *WorldRenderer
+	ui                 *UserInterface
 	selectedCreatureID int
-	paused          bool
-	spawnPlacing    bool
-	history         [historyLen]histSample
-	histHead        int
-	histCount       int
-	simStepsPerTick int
-	currentSnapshot *simulation.StateSnapshot
-	tickDuration    time.Duration
+	paused             bool
+	spawnPlacing       bool
+	history            [historyLen]histSample
+	histHead           int
+	histCount          int
+	simStepsPerTick    int
+	snapshot           simulation.StateSnapshot // persistent; backing slices reused each tick
+	currentSnapshot    *simulation.StateSnapshot
+	tickDuration       time.Duration
 
 	// Held by UI for input routing (updated each frame by UserInterface)
-	spawnMutSlider  *components.Slider
-	spawnRandomBtn  *components.Button
-	genomeEditor    *GenomeEditor
+	spawnMutSlider    *components.Slider
+	spawnRandomBtn    *components.Button
+	genomeEditor      *GenomeEditor
 	savedGenomesPanel *SavedGenomesPanel
 }
 
@@ -87,6 +93,13 @@ func NewGame(sim SimulationState) *Game {
 	})
 	statFont := textv2.NewGoXFace(rawFace)
 
+	smallRawFace, _ := opentype.NewFace(tt, &opentype.FaceOptions{
+		Size:    12,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	smallFont := textv2.NewGoXFace(smallRawFace)
+
 	g := &Game{
 		sim:                sim,
 		selectedCreatureID: -1,
@@ -95,7 +108,7 @@ func NewGame(sim SimulationState) *Game {
 	}
 
 	g.world = NewWorldRenderer(sim)
-	g.ui = NewUserInterface(statFont, sim, g)
+	g.ui = NewUserInterface(statFont, smallFont, sim, g)
 
 	return g
 }
@@ -116,16 +129,16 @@ func (g *Game) Update() error {
 		} else {
 			cam := g.world.Camera()
 			cam.Zoom *= math.Pow(1.15, scrollY)
-			if cam.Zoom < 0.1 {
-				cam.Zoom = 0.1
-			} else if cam.Zoom > 10.0 {
-				cam.Zoom = 10.0
+			if cam.Zoom < 0.05 {
+				cam.Zoom = 0.05
+			} else if cam.Zoom > 20.0 {
+				cam.Zoom = 20.0
 			}
 		}
 	}
 
 	// Continuous input (camera drag, slider drag)
-	sliderDragging := g.spawnMutSlider != nil && g.spawnMutSlider.Dragging
+	sliderDragging := (g.spawnMutSlider != nil && g.spawnMutSlider.Dragging) || g.ui.AnySliderDragging()
 	if g.genomeEditor != nil && g.genomeEditor.visible {
 		mx, my := ebiten.CursorPosition()
 		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
@@ -197,10 +210,10 @@ func (g *Game) Update() error {
 			g.histCount++
 		}
 
-		snapshot := g.sim.GetSnapshot()
-		g.currentSnapshot = &snapshot
+		g.sim.FillSnapshot(&g.snapshot)
+		g.currentSnapshot = &g.snapshot
 
-		g.tickDuration = g.world.UpdateAnimations(&snapshot)
+		g.tickDuration = g.world.UpdateAnimations(&g.snapshot)
 	}
 
 	return nil

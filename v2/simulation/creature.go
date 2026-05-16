@@ -35,14 +35,14 @@ type Creature struct {
 	Loc            world.Position
 	BirthLoc       world.Position
 	Heading        float32 // radians; 0 = east, π/2 = south (screen-down)
-	Velocity       float32 // current speed along heading; updated each tick via ACCELERATE action
+	Speed       float32 // current speed along heading; updated each tick via ACCELERATE action
 	Genome         *Genome
 	SightDistance  float32
 	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
 	MaxMass        float32
 	Dopamine       float32
 	Stomach        float32 // current food mass in stomach; digested into energy each tick
-	LastAction     string
+	LastActionMask uint16
 	LastDopamine   float32
 	LastStomach    float32
 	LastLoc        world.Position

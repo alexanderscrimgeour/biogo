@@ -121,7 +121,7 @@ func TestGetFoodInRadius(t *testing.T) {
 func TestSpawnPlant(t *testing.T) {
 	w := world.NewWorld(200, 200, 0)
 	w.InitFountains(2)
-	w.SpawnPlant(10, 30.0, 10)
+	w.SpawnPlant(10, 30.0, 10, 0.05)
 	if w.PlantCount() != 10 {
 		t.Errorf("SpawnPlant(10) should place exactly 10 items, got %d", w.PlantCount())
 	}
@@ -130,7 +130,7 @@ func TestSpawnPlant(t *testing.T) {
 func TestSpawnPlantGaussianFallback(t *testing.T) {
 	// Without fountains initialised, SpawnPlant should fall back to random placement.
 	w := world.NewWorld(500, 500, 0)
-	w.SpawnPlant(50, 30.0, 10)
+	w.SpawnPlant(50, 30.0, 10, 0.05)
 	if w.PlantCount() != 50 {
 		t.Errorf("SpawnPlant(50) without fountains should place exactly 50 items, got %d", w.PlantCount())
 	}

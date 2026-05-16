@@ -150,7 +150,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		JuvenilePeriod:   c.JuvenilePeriod(),
 		CurrentMass:      float32(c.CurrentMass()),
 		AdultMass:        float64(c.MaxMass),
-		LastAction:       c.LastAction,
+		LastAction:       actionMaskToString(c.LastActionMask),
 		SightDistance:    float64(c.GetSightDistance()),
 		FieldOfView:      c.FieldOfView(),
 		Dopamine:         c.Dopamine,

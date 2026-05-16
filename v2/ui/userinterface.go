@@ -39,17 +39,17 @@ type UIDrawState struct {
 // UserInterface owns all HUD rendering: menu bar, left panel stack, stats,
 // modals, and the spawn cursor overlay.
 type UserInterface struct {
-	font *textv2.GoXFace
-	sim  SimulationState
+	font      *textv2.GoXFace
+	smallFont *textv2.GoXFace
+	sim       SimulationState
 
 	menuBar   *components.MenuBar
 	leftStack *LeftPanelStack
 	histGraph *HistoryGraph
 	histIdx   int
 
-	detailIdx  int
-	genomeIdx  int
-	nnIdx      int
+	detailIdx int
+	nnIdx     int
 
 	currentSaveBtn   *components.Button
 	currentEditBtn   *components.Button
@@ -63,6 +63,8 @@ type UserInterface struct {
 	saveCreatureName string
 	saveNameFocused  bool
 	saveCreatureID   int
+
+	foodDropdown *FoodDropdown
 
 	// references so buttons can trigger game-level actions
 	onSaveCreature func() error
@@ -79,11 +81,13 @@ type UserInterface struct {
 // NewUserInterface constructs the UI, wiring up all interactive elements.
 func NewUserInterface(
 	font *textv2.GoXFace,
+	smallFont *textv2.GoXFace,
 	sim SimulationState,
 	game *Game,
 ) *UserInterface {
 	ui := &UserInterface{
 		font:           font,
+		smallFont:      smallFont,
 		sim:            sim,
 		saveCreatureID: -1,
 	}
@@ -147,6 +151,8 @@ func NewUserInterface(
 		tierBtn.Label = game.world.CycleTierFilter()
 	}
 
+	foodBtn := &components.Button{W: 60, H: 24, Label: "Food", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+
 	mb := &components.MenuBar{
 		H:       menuBarH,
 		Padding: menuBarPad,
@@ -161,7 +167,11 @@ func NewUserInterface(
 	mb.AddButton(createGenomeBtn)
 	mb.AddButton(spawnSavedBtn)
 	mb.AddButton(tierBtn)
+	mb.AddButton(foodBtn)
 	ui.menuBar = mb
+
+	ui.foodDropdown = newFoodDropdown(font, foodBtn, sim)
+	foodBtn.OnClick = func() { ui.foodDropdown.Toggle() }
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
 	ui.leftStack = &LeftPanelStack{
@@ -180,7 +190,6 @@ func NewUserInterface(
 	ui.histGraph = histGraph
 	ui.histIdx = ui.leftStack.Register(histGraph)
 	ui.detailIdx = ui.leftStack.Register(nil)
-	ui.genomeIdx = ui.leftStack.Register(nil)
 	ui.nnIdx = ui.leftStack.Register(nil)
 
 	// ── Modals ────────────────────────────────────────────────────────────────
@@ -198,9 +207,17 @@ func NewUserInterface(
 	return ui
 }
 
+// AnySliderDragging reports whether any non-menubar slider is currently being dragged.
+func (ui *UserInterface) AnySliderDragging() bool {
+	return ui.foodDropdown != nil && ui.foodDropdown.AnySliderDragging()
+}
+
 // HandleClick processes a mouse-down event; returns true if consumed.
 func (ui *UserInterface) HandleClick(mx, my int) bool {
 	if ui.menuBar.HandleClick(mx, my) {
+		return true
+	}
+	if ui.foodDropdown != nil && ui.foodDropdown.HandleClick(mx, my) {
 		return true
 	}
 	// Save name input field
@@ -223,13 +240,19 @@ func (ui *UserInterface) HandleClick(mx, my int) bool {
 	return false
 }
 
-// HandleContinuousInput forwards drag events to the menu bar (slider drag).
+// HandleContinuousInput forwards drag events to the menu bar and dropdown sliders.
 func (ui *UserInterface) HandleContinuousInput() {
 	mx, _ := ebiten.CursorPosition()
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		ui.menuBar.HandleDrag(mx)
+		if ui.foodDropdown != nil {
+			ui.foodDropdown.HandleDrag(mx)
+		}
 	} else {
 		ui.menuBar.HandleRelease()
+		if ui.foodDropdown != nil {
+			ui.foodDropdown.HandleRelease()
+		}
 	}
 }
 
@@ -253,20 +276,19 @@ func (ui *UserInterface) HandleSaveNameKeyInput() {
 func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Game) {
 	sw, sh := screen.Bounds().Dx(), screen.Bounds().Dy()
 
-	// Update creature detail, genome, and NN slots
+	// Update creature detail and NN slots; build genome panel for side-by-side draw.
+	var genomePanel *components.Panel
 	if state.selectedID != -1 {
 		if detail, ok := ui.sim.CreatureDetail(state.selectedID); ok {
 			detailPanel := ui.buildDetailPanel(detail, state.selectedID, game)
 			ui.leftStack.Set(ui.detailIdx, detailPanel, true)
 
-			genomePanel := ui.buildGenomePanel(detail)
-			ui.leftStack.Set(ui.genomeIdx, genomePanel, true)
+			genomePanel = ui.buildGenomePanel(detail)
 
 			nnGraph := &NeuralNetGraph{Font: ui.font, Data: detail}
 			ui.leftStack.Set(ui.nnIdx, nnGraph, true)
 		} else {
 			ui.leftStack.Set(ui.detailIdx, nil, false)
-			ui.leftStack.Set(ui.genomeIdx, nil, false)
 			ui.leftStack.Set(ui.nnIdx, nil, false)
 			ui.currentSaveBtn = nil
 			ui.currentEditBtn = nil
@@ -274,7 +296,6 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 		}
 	} else {
 		ui.leftStack.Set(ui.detailIdx, nil, false)
-		ui.leftStack.Set(ui.genomeIdx, nil, false)
 		ui.leftStack.Set(ui.nnIdx, nil, false)
 		ui.currentSaveBtn = nil
 		ui.currentEditBtn = nil
@@ -282,7 +303,17 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	}
 
 	ui.menuBar.Draw(screen)
+	if ui.foodDropdown != nil {
+		ui.foodDropdown.Draw(screen, ui.font)
+	}
 	ui.leftStack.Draw(screen)
+
+	// Genome panel — drawn to the right of the detail panel.
+	if genomePanel != nil {
+		genomeX := leftStackX + detailPanelW + leftStackSpacing
+		genomeY := ui.leftStack.SlotY(ui.detailIdx)
+		genomePanel.Draw(screen, genomeX, genomeY)
+	}
 
 	// Spawn label update on button
 	if game.spawnRandomBtn != nil {
@@ -397,11 +428,15 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	})
 
 	// Efficiency
-	p.Add(&components.Label{
-		Text:  fmt.Sprintf("Food Eff: %.1f%%  Meat Eff: %.1f%%", d.FoodEfficiency*100, d.MeatEfficiency*100),
-		Font:  ui.font,
-		Color: color.White,
-	})
+	barW := (detailPanelW - detailPad*2 - detailSpacing) / 2
+	p.AddRow(
+		&components.Label{Text: fmt.Sprintf("Food: %.0f%%", d.FoodEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
+		&components.Label{Text: fmt.Sprintf("Meat: %.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
+	)
+	p.AddRow(
+		&components.EnergyBar{Value: d.FoodEfficiency, Max: 1, MaxColor: color.RGBA{55, 185, 55, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
+		&components.EnergyBar{Value: d.MeatEfficiency, Max: 1, MaxColor: color.RGBA{215, 60, 60, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
+	)
 
 	// Dopamine
 	p.Add(&components.Label{Text: fmt.Sprintf("Dopamine: %.02f", d.Dopamine), Font: ui.font, Color: color.White})
@@ -507,14 +542,18 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	return p
 }
 
-// buildGenomePanel constructs a Panel showing all raw genome trait bytes.
+// buildGenomePanel constructs a compact Panel showing all raw genome trait bytes.
+// Uses smallFont and tight spacing to keep it smaller than the detail panel.
 // It is rebuilt each frame so values stay current.
 func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *components.Panel {
-	innerW := detailPanelW - detailPad*2
+	const (
+		genomePad     = float32(5)
+		genomeSpacing = float32(2)
+	)
 	p := &components.Panel{
 		W:         detailPanelW,
-		Padding:   detailPad,
-		Spacing:   detailSpacing,
+		Padding:   genomePad,
+		Spacing:   genomeSpacing,
 		BaseColor: color.RGBA{8, 10, 22, 215},
 		Border:    color.RGBA{90, 90, 150, 255},
 	}
@@ -550,15 +589,8 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 	for _, t := range traits {
 		p.Add(&components.Label{
 			Text:  fmt.Sprintf("%s: %d", t.name, t.val),
-			Font:  ui.font,
+			Font:  ui.smallFont,
 			Color: color.White,
-		})
-		p.Add(&components.EnergyBar{
-			Value:    float32(t.val),
-			Max:      255,
-			MaxColor: color.RGBA{100, 180, 255, 255},
-			MinColor: color.RGBA{30, 80, 200, 255},
-			Width:    innerW,
 		})
 	}
 	return p

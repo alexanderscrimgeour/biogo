@@ -25,6 +25,7 @@ type Slider struct {
 	Dragging   bool
 	Font       *textv2.GoXFace
 	OnChange   func(float64)
+	FormatFunc func(float64) string // optional: overrides default label formatting
 	lastX      float32
 	lastY      float32
 }
@@ -48,13 +49,18 @@ func (s *Slider) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 
 	if s.Font != nil {
 		var lbl string
-		if s.Label != "" {
+		if s.FormatFunc != nil {
+			lbl = s.FormatFunc(s.Value)
+		} else if s.Label != "" {
 			lbl = fmt.Sprintf("%s: %.4f", s.Label, s.Value)
 		} else {
 			lbl = fmt.Sprintf("%.4f", s.Value)
 		}
+		m := s.Font.Metrics()
+		textH := m.HLineGap + m.HAscent + m.HDescent
+		ty := float64(y) + (float64(s.H)-textH)/2
 		op := &textv2.DrawOptions{}
-		op.GeoM.Translate(float64(x)+5, float64(y)+17)
+		op.GeoM.Translate(float64(x)+5, ty)
 		lc := s.LabelColor
 		if lc == nil {
 			lc = color.White

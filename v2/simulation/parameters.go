@@ -46,9 +46,10 @@ type Parameters struct {
 	FoodInteractionRadius float64
 
 	// Gaussian fountain spawning
-	FountainCount      int     // number of drifting spawn points (3–5)
+	FountainCount      int     // number of drifting spawn points
 	FountainDriftSpeed float64 // world units per tick each fountain moves
 	FountainRadius     float64 // Gaussian sigma for food placement around a fountain
+	FoodRandomFraction float64 // fraction of spawned food placed uniformly at random [0,1]
 
 	// Stomach / digestion
 	MinStomachSize float64 // stomach capacity at StomachSize gene = 0
@@ -60,7 +61,7 @@ type Parameters struct {
 	EnergyPerMassUnit      float32 // MaxEnergy = currentMass * EnergyPerMassUnit
 	MoveCost               float32
 	MaxSpeedPerStep        float64
-	VelocityDamping        float64 // fraction of velocity retained each tick (drag/friction coefficient)
+	SpeedDamping           float64 // fraction of speed retained each tick (drag/friction coefficient)
 	MaxRotationPerStep     float64
 	MaxGrowthRatePerTick   float32 // peak mass units gained per tick (von Bertalanffy)
 	GrowthEnergyCostFactor float32
@@ -132,18 +133,19 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     200000,
+		MaxFood:                     100000,
 		FoodSpawnInterval:           10,
-		FoodMass:                    5.0,
+		FoodMass:                    25.0,
 		FountainCount:               20,
 		FountainDriftSpeed:          10,
 		FountainRadius:              400.0,
+		FoodRandomFraction:          0.05,
 		DigestionRate:               0.2,
 		BaseBMR:                     0.05,
 		EnergyPerMassUnit:           1.0,
 		MoveCost:                    0.05,
 		MaxSpeedPerStep:             10.0,
-		VelocityDamping:             0.85,
+		SpeedDamping:                0.85,
 		MaxRotationPerStep:          math.Pi / 4,
 		MaxGrowthRatePerTick:        1.0,
 		GrowthEnergyCostFactor:      0.2,
@@ -159,7 +161,7 @@ func DefaultParams() *Parameters {
 		MaxNeuroplasticity:          0.001,
 		MinLearningThreshold:        0.05,
 		MaxLearningThreshold:        0.5,
-		ColdMetabolicMultiplier:     2.5,
+		ColdMetabolicMultiplier:     5,
 		WarmMetabolicMultiplier:     0.8,
 		ColdSpeedMultiplier:         0.4,
 		RadiationZoneWidth:          0.2,
@@ -168,8 +170,8 @@ func DefaultParams() *Parameters {
 		CollisionRepulsion:          0.5,
 		SavedGenomeProportion:       0.05,
 		Tier1Generation:             0,
-		Tier2Generation:             5,
-		Tier3Generation:             25,
+		Tier2Generation:             2,
+		Tier3Generation:             10,
 		Tier4Generation:             50,
 	}
 	if err := p.Validate(); err != nil {

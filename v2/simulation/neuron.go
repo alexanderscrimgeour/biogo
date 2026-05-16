@@ -28,7 +28,15 @@ type NeuralNet struct {
 	Weights          []float32
 	LastSensorValues [SENSOR_COUNT]float32
 	LastActionValues [ACTION_COUNT]float32
-	NeuronEdgeCount  int // number of leading Edges with SinkType==NEURON (all come before ACTION edges)
+	// Edges are sorted into four contiguous partitions at construction time so
+	// FeedForward can run branchless source-type loops:
+	//   [0, SensorNeuronEnd)            Sensor→Neuron
+	//   [SensorNeuronEnd, NeuronEdgeCount) Neuron→Neuron
+	//   [NeuronEdgeCount, SensorActionEnd) Sensor→Action
+	//   [SensorActionEnd, len(Edges))   Neuron→Action
+	NeuronEdgeCount int
+	SensorNeuronEnd int
+	SensorActionEnd int
 }
 
 type Node struct {
@@ -91,54 +99,75 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap, cognitiveBreadt
 	allowedSensorCount := getAllowedSensorCount(cognitiveBreadth)
 	allowedActionCount := getAllowedActionCount(cognitiveBreadth)
 
-	// Two-pass: neuron-sink edges first, then action-sink.
+	// Four-pass layout: [Sensor→Neuron | Neuron→Neuron | Sensor→Action | Neuron→Action]
+	// This lets FeedForward run four branchless loops with no SourceType check inside.
 	edgeIndex := 0
+
+	// Pass 1a: Sensor→Neuron
 	for _, gene := range g {
-		if gene.SinkType == NEURON {
-			// Skip pruned in nMap
-			node, ok := n[gene.SinkID]
-			if !ok {
-				continue
-			}
-			gene.SinkID = node.NewID
-
-			if gene.SourceType == NEURON {
-				if srcNode, srcOk := n[gene.SourceID]; srcOk {
-					gene.SourceID = srcNode.NewID
-				} else {
-					continue // Prune if driving neuron doesn't exist
-				}
-			} else {
-				// Clamp sensor access to currently allowed tier bounds
-				gene.SourceID %= allowedSensorCount
-			}
-
-			nnet.Edges = append(nnet.Edges, gene)
-			nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
-			edgeIndex++
+		if gene.SinkType != NEURON || gene.SourceType != SENSOR {
+			continue
 		}
+		node, ok := n[gene.SinkID]
+		if !ok {
+			continue
+		}
+		gene.SinkID = node.NewID
+		gene.SourceID %= allowedSensorCount
+		nnet.Edges = append(nnet.Edges, gene)
+		nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
+		edgeIndex++
+	}
+	nnet.SensorNeuronEnd = edgeIndex
+
+	// Pass 1b: Neuron→Neuron
+	for _, gene := range g {
+		if gene.SinkType != NEURON || gene.SourceType != NEURON {
+			continue
+		}
+		node, ok := n[gene.SinkID]
+		if !ok {
+			continue
+		}
+		gene.SinkID = node.NewID
+		srcNode, srcOk := n[gene.SourceID]
+		if !srcOk {
+			continue // prune if driving neuron doesn't exist
+		}
+		gene.SourceID = srcNode.NewID
+		nnet.Edges = append(nnet.Edges, gene)
+		nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
+		edgeIndex++
 	}
 	nnet.NeuronEdgeCount = edgeIndex
+
+	// Pass 2a: Sensor→Action
 	for _, gene := range g {
-		if gene.SinkType == ACTION {
-			// Clamp target actions to currently allowed tier bounds
-			gene.SinkID %= allowedActionCount
-
-			if gene.SourceType == NEURON {
-				if srcNode, srcOk := n[gene.SourceID]; srcOk {
-					gene.SourceID = srcNode.NewID
-				} else {
-					continue // Prune if driving neuron doesn't exist
-				}
-			} else {
-				// Clamp sensor access to currently allowed tier bounds
-				gene.SourceID %= allowedSensorCount
-			}
-
-			nnet.Edges = append(nnet.Edges, gene)
-			nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
-			edgeIndex++
+		if gene.SinkType != ACTION || gene.SourceType != SENSOR {
+			continue
 		}
+		gene.SinkID %= allowedActionCount
+		gene.SourceID %= allowedSensorCount
+		nnet.Edges = append(nnet.Edges, gene)
+		nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
+		edgeIndex++
+	}
+	nnet.SensorActionEnd = edgeIndex
+
+	// Pass 2b: Neuron→Action
+	for _, gene := range g {
+		if gene.SinkType != ACTION || gene.SourceType != NEURON {
+			continue
+		}
+		gene.SinkID %= allowedActionCount
+		srcNode, srcOk := n[gene.SourceID]
+		if !srcOk {
+			continue // prune if driving neuron doesn't exist
+		}
+		gene.SourceID = srcNode.NewID
+		nnet.Edges = append(nnet.Edges, gene)
+		nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
+		edgeIndex++
 	}
 	// Create the neurons. NewIDs are assigned 0..N-1 by setNodeNewIDValues, so the
 	// slice is fully packed and edge SourceID/SinkID values remain valid indices.

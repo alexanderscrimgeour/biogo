@@ -131,10 +131,10 @@ func (s *Simulation) processCollisions() {
 			s.World.MoveCreature(id, newCLoc)
 			s.World.MoveCreature(otherID, newOtherLoc)
 
-			// Kill the velocity that caused the tunnel so the creatures don't
+			// Kill the speed that caused the tunnel so the creatures don't
 			// immediately pass through each other again next tick.
-			c.Velocity = 0
-			other.Velocity = 0
+			c.Speed = 0
+			other.Speed = 0
 		}
 	}
 }

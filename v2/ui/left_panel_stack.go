@@ -52,6 +52,22 @@ func (s *LeftPanelStack) Hide(idx int) {
 	}
 }
 
+// SlotY returns the top Y coordinate where the item at idx would be drawn,
+// by summing heights of all visible slots before it.
+func (s *LeftPanelStack) SlotY(idx int) float32 {
+	y := s.StartY
+	for i, e := range s.entries {
+		if i == idx {
+			break
+		}
+		if e.visible && e.item != nil {
+			_, h := e.item.Size()
+			y += h + s.Spacing
+		}
+	}
+	return y
+}
+
 // Draw positions and draws all visible items top-to-bottom.
 func (s *LeftPanelStack) Draw(screen *ebiten.Image) {
 	y := s.StartY
