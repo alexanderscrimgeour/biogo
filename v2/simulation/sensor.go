@@ -18,6 +18,10 @@ const (
 	NEAREST_FOOD_ANGLE
 	// Distance to the nearest food item normalised by sight range [-1, 1]; 1 = nothing visible.
 	NEAREST_FOOD_DIST
+	// Angle to the nearest meat item relative to heading [-1, 1]; 0 = directly ahead.
+	NEAREST_MEAT_ANGLE
+	// Distance to the nearest meat item normalised by sight range [-1, 1]; 1 = nothing visible.
+	NEAREST_MEAT_DIST
 
 	// -- TIER 2 --
 
@@ -96,9 +100,9 @@ const (
 )
 
 const (
-	MaxTier1Sensor = 3
-	MaxTier2Sensor = 11
-	MaxTier3Sensor = 21
+	MaxTier1Sensor = 5
+	MaxTier2Sensor = 13
+	MaxTier3Sensor = 23
 )
 
 // Expected creature density
@@ -129,23 +133,29 @@ func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params
 		return
 	}
 
-	n := len(c.SightCreatureBuffer)
-	if cap(c.SightCreatureSimBuffer) < n {
-		c.SightCreatureSimBuffer = make([]float32, n)
-	}
-	c.SightCreatureSimBuffer = c.SightCreatureSimBuffer[:n]
-	for i, id := range c.SightCreatureBuffer {
-		if id != c.Id {
-			if other, ok := p.Creatures[id]; ok {
-				c.SightCreatureSimBuffer[i] = c.cachedSimilarity(id, other)
+	if c.Nnet.NeedsKinship {
+		n := len(c.SightCreatureBuffer)
+		if cap(c.SightCreatureSimBuffer) < n {
+			c.SightCreatureSimBuffer = make([]float32, n)
+		}
+		c.SightCreatureSimBuffer = c.SightCreatureSimBuffer[:n]
+		for i, id := range c.SightCreatureBuffer {
+			if id != c.Id {
+				if other, ok := p.Get(id); ok {
+					c.SightCreatureSimBuffer[i] = c.cachedSimilarity(id, other)
+				}
 			}
 		}
+		c.Sensors.SightCreatureSims = c.SightCreatureSimBuffer
+		// Same IDs → same similarities; copy to avoid a second GenomeSimilarity loop.
+		c.LocalCreatureSimBuffer = append(c.LocalCreatureSimBuffer[:0], c.SightCreatureSimBuffer...)
+		c.Sensors.LocalCreatureSims = c.LocalCreatureSimBuffer
+	} else {
+		c.SightCreatureSimBuffer = c.SightCreatureSimBuffer[:0]
+		c.LocalCreatureSimBuffer = c.LocalCreatureSimBuffer[:0]
+		c.Sensors.SightCreatureSims = c.SightCreatureSimBuffer
+		c.Sensors.LocalCreatureSims = c.LocalCreatureSimBuffer
 	}
-	c.Sensors.SightCreatureSims = c.SightCreatureSimBuffer
-
-	// Same IDs → same similarities; copy to avoid a second GenomeSimilarity loop.
-	c.LocalCreatureSimBuffer = append(c.LocalCreatureSimBuffer[:0], c.SightCreatureSimBuffer...)
-	c.Sensors.LocalCreatureSims = c.LocalCreatureSimBuffer
 }
 
 func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *SensorContext, simStep int, params *Parameters) float32 {
@@ -219,6 +229,12 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 
 	case NEAREST_FOOD_DIST:
 		output = calculateNearestFoodDistFov(c, w, ctx, params)
+
+	case NEAREST_MEAT_ANGLE:
+		output = calculateNearestMeatAngle(c, w, ctx)
+
+	case NEAREST_MEAT_DIST:
+		output = calculateNearestMeatDistFov(c, w, ctx, params)
 
 	case THREAT_FORWARD:
 		output = calculateNearestThreatDistFov(c, p, ctx, params)
@@ -348,7 +364,7 @@ func calculateSightPopCentroid(c Creature, w *world.World, p *Population, ctx *S
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive {
 			continue
 		}
@@ -429,7 +445,7 @@ func calcaulatePopulationDensityFov(c Creature, w *world.World, p *Population, c
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive {
 			continue
 		}
@@ -466,7 +482,7 @@ func calculateLocalPopulationDensity(c Creature, ctx *SensorContext, p *Populati
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive {
 			continue
 		}
@@ -500,7 +516,7 @@ func calculateLocalPopulationHeading(c Creature, ctx *SensorContext, p *Populati
 		if id == c.Id {
 			continue
 		}
-		neighbor, ok := p.Creatures[id]
+		neighbor, ok := p.Get(id)
 		if !ok || !neighbor.Alive {
 			continue
 		}
@@ -545,7 +561,7 @@ func getLocalPopulationCentreOfMass(c Creature, ctx *SensorContext, p *Populatio
 		if id == c.Id {
 			continue
 		}
-		neighbor, ok := p.Creatures[id]
+		neighbor, ok := p.Get(id)
 		if !ok || !neighbor.Alive {
 			continue
 		}
@@ -644,6 +660,64 @@ func calculateNearestFoodDistFov(c Creature, w *world.World, ctx *SensorContext,
 	return (normDist * 2.0) - 1.0
 }
 
+// calculateNearestMeatAngle returns the angle to the nearest meat item within
+// sight range, relative to the creature's heading, mapped to [-1, 1] where 0
+// means directly ahead. Returns 0 when no meat is visible.
+func calculateNearestMeatAngle(c Creature, w *world.World, ctx *SensorContext) float32 {
+	var bestDistSq float32 = math.MaxFloat32
+	var bestDx, bestDy float32
+	found := false
+
+	for _, id := range ctx.SightMeatIDs {
+		pos := w.GetFoodPos(id)
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+
+		if d2 < bestDistSq {
+			bestDistSq, bestDx, bestDy, found = d2, dx, dy, true
+		}
+	}
+
+	if !found {
+		return 0
+	}
+
+	angleToMeat := math.Atan2(float64(bestDy), float64(bestDx))
+	diff := angleToMeat - float64(c.Heading)
+
+	if diff > math.Pi {
+		diff -= 2 * math.Pi
+	} else if diff < -math.Pi {
+		diff += 2 * math.Pi
+	}
+
+	const invPi = 1.0 / math.Pi
+	return float32(diff * invPi)
+}
+
+func calculateNearestMeatDistFov(c Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
+	maxDist := c.GetSightDistance()
+	var bestDistSq float32 = math.MaxFloat32
+
+	for _, id := range ctx.SightMeatIDs {
+		pos := w.GetFoodPos(id)
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 < bestDistSq {
+			bestDistSq = d2
+		}
+	}
+
+	if bestDistSq == math.MaxFloat32 {
+		return 1.0
+	}
+
+	actualDist := float32(math.Sqrt(float64(bestDistSq)))
+	normDist := actualDist / maxDist
+
+	return (normDist * 2.0) - 1.0
+}
+
 // calculateNearestThreatDistFov returns a proximity-weighted signal [1,-1] for the nearest
 // creature heavier than self within the forward FOV cone. 0 = no threat.
 func calculateNearestThreatDistFov(c Creature, p *Population, ctx *SensorContext, params *Parameters) float32 {
@@ -661,7 +735,7 @@ func calculateNearestThreatDistFov(c Creature, p *Population, ctx *SensorContext
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive || other.Mass <= c.Mass {
 			continue
 		}
@@ -708,7 +782,7 @@ func calculateNearestPreyDistFov(c Creature, p *Population, ctx *SensorContext, 
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive || other.Mass >= c.Mass {
 			continue
 		}
@@ -758,7 +832,7 @@ func calculateDistanceToClosestKin(c Creature, p *Population, ctx *SensorContext
 			continue
 		}
 
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive {
 			continue
 		}
@@ -798,7 +872,7 @@ func calculateLocalKinship(c Creature, p *Population, ctx *SensorContext) float3
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive {
 			continue
 		}
@@ -829,7 +903,7 @@ func calculateNearestKinship(c Creature, p *Population, ctx *SensorContext) floa
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive {
 			continue
 		}
@@ -881,7 +955,7 @@ func calculateBlockedFwd(c Creature, w *world.World, p *Population, ctx *SensorC
 			if id == c.Id {
 				continue
 			}
-			other, ok := p.Creatures[id]
+			other, ok := p.Get(id)
 			if !ok || !other.Alive {
 				continue
 			}
@@ -921,7 +995,7 @@ func calculateNearestThreatAngle(c Creature, p *Population, ctx *SensorContext) 
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive || other.Mass <= c.Mass {
 			continue
 		}
@@ -952,7 +1026,7 @@ func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) fl
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive || other.Mass >= c.Mass {
 			continue
 		}
@@ -1035,7 +1109,7 @@ func calculateTouching(c Creature, p *Population, ctx *SensorContext) float32 {
 		if id == c.Id {
 			continue
 		}
-		other, ok := p.Creatures[id]
+		other, ok := p.Get(id)
 		if !ok || !other.Alive {
 			continue
 		}

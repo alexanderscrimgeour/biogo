@@ -28,9 +28,12 @@ func LerpByte(min, max, val byte) byte {
 }
 
 func LerpByteAsFloat32(min, max, val byte) float32 {
-	return ((float32(val) / math.MaxUint8) * float32(max-min)) + float32(min)
-}
+	fMin := float32(min)
+	fMax := float32(max)
+	fVal := float32(val)
 
+	return fMin + (fVal/math.MaxUint8)*(fMax-fMin)
+}
 func Min(a int, b int) int {
 	if b < a {
 		return b

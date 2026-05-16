@@ -22,11 +22,13 @@ type SimulationState interface {
 	WorldHeight() float64
 	PopulationCount() int
 	PlantCount() int
+	PlantEnergy() float64
+	MeatEnergy() float64
 	AverageAge() float64
 	AverageGeneration() float64
 	CreatureMinMass() byte
 	CreatureMaxMass() float64
-	SaveCreature(id int) error
+	SaveCreature(id int, name string) error
 	Reset()
 	TotalEnergy() float64
 	TargetEnergy() float64
@@ -34,7 +36,7 @@ type SimulationState interface {
 	SetSpawnMutationRate(rate float32)
 	SpawnAt(x, y float64) bool
 	SpawnClusterAt(x, y float64, count int) bool
-	SpawnGenome(g *simulation.Genome) bool
+	SpawnGenome(g *simulation.Genome, generation float32) bool
 	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
 	GetParams() *simulation.Parameters
 	GetSnapshot() simulation.StateSnapshot
@@ -44,7 +46,8 @@ const historyLen = 5000
 
 type histSample struct {
 	pop         int
-	food        int
+	plantEnergy float64
+	meatEnergy  float64
 	totalEnergy float64
 }
 
@@ -101,6 +104,8 @@ func (g *Game) Update() error {
 	// Modal input takes priority
 	if g.genomeEditor != nil && g.genomeEditor.visible {
 		g.genomeEditor.HandleKeyInput()
+	} else {
+		g.ui.HandleSaveNameKeyInput()
 	}
 
 	// Scroll wheel: zoom or saved-genome list scroll
@@ -183,7 +188,8 @@ func (g *Game) Update() error {
 
 		g.history[g.histHead] = histSample{
 			pop:         g.sim.PopulationCount(),
-			food:        g.sim.PlantCount(),
+			plantEnergy: g.sim.PlantEnergy(),
+			meatEnergy:  g.sim.MeatEnergy(),
 			totalEnergy: g.sim.TotalEnergy(),
 		}
 		g.histHead = (g.histHead + 1) % historyLen

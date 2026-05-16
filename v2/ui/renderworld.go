@@ -22,9 +22,9 @@ func NewRenderWorld(xPos, yPos float64, unitSize int) *RenderWorld {
 	}
 }
 
-func (g *RenderWorld) DrawBackground(image *ebiten.Image) {
+func (g *RenderWorld) DrawBackground(image *ebiten.Image, camGeoM ebiten.GeoM) {
 	for _, wall := range g.walls {
-		wall.Draw(image)
+		wall.Draw(image, camGeoM)
 	}
 }
 

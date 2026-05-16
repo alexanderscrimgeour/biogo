@@ -81,7 +81,7 @@ type CreatureDetailView struct {
 // CreatureDetail returns a detailed view of a living creature by ID.
 // The second return value is false if the creature is dead or not found.
 func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
-	c, ok := s.Population.Creatures[id]
+	c, ok := s.Population.Get(id)
 	if !ok || !c.Alive {
 		return CreatureDetailView{}, false
 	}
@@ -153,7 +153,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 func (s *Simulation) CreatureViews() []CreatureView {
 	views := make([]CreatureView, 0, len(s.Population.aliveIDs))
 	for _, id := range s.Population.aliveIDs {
-		c, ok := s.Population.Creatures[id]
+		c, ok := s.Population.Get(id)
 		if !ok {
 			continue
 		}

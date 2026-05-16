@@ -46,9 +46,9 @@ func TestAliveIDs(t *testing.T) {
 			t.Errorf("duplicate ID %d in AliveIDs", id)
 		}
 		seen[id] = true
-		c, ok := sim.Population.Creatures[id]
+		c, ok := sim.Population.Get(id)
 		if !ok {
-			t.Errorf("ID %d from AliveIDs not found in Creatures map", id)
+			t.Errorf("ID %d from AliveIDs not found in Creatures", id)
 		}
 		if !c.Alive {
 			t.Errorf("ID %d from AliveIDs is not alive", id)

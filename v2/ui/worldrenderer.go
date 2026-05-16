@@ -31,6 +31,8 @@ type WorldRenderer struct {
 	renderWorld  *RenderWorld
 	camera       Camera
 	worldLayer   *ebiten.Image
+	screenW      int
+	screenH      int
 	animByID     map[int]*creatureAnim
 	lookup       map[int]int
 	unitCircle       []struct{ x, y float32 }
@@ -95,11 +97,10 @@ func NewWorldRenderer(sim SimulationState) *WorldRenderer {
 	params := sim.GetParams()
 	maxPop := params.MaxPopulation
 	return &WorldRenderer{
-		sim:              sim,
-		renderWorld:      NewRenderWorld(0, 0, UnitSize),
-		camera:           Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0},
-		worldLayer:       ebiten.NewImage(worldW, worldH),
-		animByID:         make(map[int]*creatureAnim, maxPop),
+		sim:         sim,
+		renderWorld: NewRenderWorld(0, 0, UnitSize),
+		camera:      Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0},
+		animByID:    make(map[int]*creatureAnim, maxPop),
 		lookup:           make(map[int]int, maxPop),
 		whiteImage:       wImg,
 		unitCircle:       unitCircle,
@@ -294,6 +295,16 @@ func (wr *WorldRenderer) ResetAnimations() {
 func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSnapshot, selectedID int) {
 	sw, sh := screen.Bounds().Dx(), screen.Bounds().Dy()
 
+	if wr.worldLayer == nil || wr.screenW != sw || wr.screenH != sh {
+		wr.worldLayer = ebiten.NewImage(sw, sh)
+		wr.screenW = sw
+		wr.screenH = sh
+	}
+	wr.worldLayer.Clear()
+
+	camGeoM := wr.camera.GeoM(float64(sw), float64(sh))
+	zoom := float32(wr.camera.Zoom)
+
 	t := 1.0
 	if wr.tickDuration > 0 {
 		elapsed := time.Since(wr.lastTickTime)
@@ -303,8 +314,8 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 		}
 	}
 
-	wr.drawTemperatureBackground()
-	wr.renderWorld.DrawBackground(wr.worldLayer)
+	wr.drawTemperatureBackground(sw, sh, camGeoM)
+	wr.renderWorld.DrawBackground(wr.worldLayer, camGeoM)
 
 	bs := float64(UnitSize)
 	if snapshot != nil {
@@ -325,7 +336,9 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 			if len(wr.foodVs)+wr.vertsPerCircle > 60_000 {
 				flushFood()
 			}
-			cx, cy, r := float32(fv.X*bs), float32(fv.Y*bs), float32(fv.Radius*bs)
+			scx, scy := camGeoM.Apply(fv.X*bs, fv.Y*bs)
+			cx, cy := float32(scx), float32(scy)
+			r := float32(fv.Radius*bs) * zoom
 			var cr, cg, cb, ca float32
 			if fv.Type == world.FoodTypePlant {
 				cr, cg, cb, ca = pr, pg, pb, pa
@@ -351,7 +364,9 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 	for _, anim := range wr.animByID {
 		lerpX := anim.prevX + (anim.curX-anim.prevX)*t
 		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
-		cx, cy := float32(lerpX), float32(lerpY)
+		slx, sly := camGeoM.Apply(lerpX, lerpY)
+		cx, cy := float32(slx), float32(sly)
+		scaledRadius := anim.radius * zoom
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
 		if wr.tierFilter != -1 && int(anim.tier) != wr.tierFilter {
 			ca *= 0.2
@@ -360,9 +375,9 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 		if anim.sexual {
 			baseIdx := uint16(len(wr.sexualCreatureVs))
 			wr.sexualCreatureVs = append(wr.sexualCreatureVs,
-				ebiten.Vertex{DstX: cx + anim.radius*float32(math.Cos(anim.heading)), DstY: cy + anim.radius*float32(math.Sin(anim.heading)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
-				ebiten.Vertex{DstX: cx + anim.radius*float32(math.Cos(anim.heading+2.4)), DstY: cy + anim.radius*float32(math.Sin(anim.heading+2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
-				ebiten.Vertex{DstX: cx + anim.radius*float32(math.Cos(anim.heading-2.4)), DstY: cy + anim.radius*float32(math.Sin(anim.heading-2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
+				ebiten.Vertex{DstX: cx + scaledRadius*float32(math.Cos(anim.heading)), DstY: cy + scaledRadius*float32(math.Sin(anim.heading)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
+				ebiten.Vertex{DstX: cx + scaledRadius*float32(math.Cos(anim.heading+2.4)), DstY: cy + scaledRadius*float32(math.Sin(anim.heading+2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
+				ebiten.Vertex{DstX: cx + scaledRadius*float32(math.Cos(anim.heading-2.4)), DstY: cy + scaledRadius*float32(math.Sin(anim.heading-2.4)), ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca},
 			)
 			wr.sexualCreatureIs = append(wr.sexualCreatureIs, baseIdx, baseIdx+1, baseIdx+2)
 		} else {
@@ -375,7 +390,7 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 			wr.circleCreatureVs = wr.circleCreatureVs[:base+wr.vertsPerCircle]
 			wr.circleCreatureVs[base] = ebiten.Vertex{DstX: cx, DstY: cy, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca}
 			for j, unit := range wr.unitCircle {
-				wr.circleCreatureVs[base+1+j] = ebiten.Vertex{DstX: cx + anim.radius*unit.x, DstY: cy + anim.radius*unit.y, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca}
+				wr.circleCreatureVs[base+1+j] = ebiten.Vertex{DstX: cx + scaledRadius*unit.x, DstY: cy + scaledRadius*unit.y, ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca}
 			}
 			wr.nCreatureCircles++
 		}
@@ -384,7 +399,7 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 	if selectedID != -1 && snapshot != nil {
 		if idx, found := wr.lookup[selectedID]; found {
 			view := snapshot.Creatures[idx]
-			wr.drawFOVCones(wr.worldLayer, map[int]simulation.CreatureView{selectedID: view}, t)
+			wr.drawFOVCones(wr.worldLayer, map[int]simulation.CreatureView{selectedID: view}, t, camGeoM, zoom)
 		}
 	}
 	if wr.nCreatureCircles > 0 {
@@ -395,12 +410,10 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 	}
 
 	if selectedID != -1 {
-		wr.drawSelectionHighlight(wr.worldLayer, selectedID)
+		wr.drawSelectionHighlight(wr.worldLayer, selectedID, camGeoM, zoom)
 	}
 
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM = wr.camera.GeoM(float64(sw), float64(sh))
-	screen.DrawImage(wr.worldLayer, op)
+	screen.DrawImage(wr.worldLayer, nil)
 }
 
 // TrySelectCreature finds the closest creature to the screen click.
@@ -424,9 +437,8 @@ func (wr *WorldRenderer) TrySelectCreature(mx, my, sw, sh int, currentSelected i
 	return bestID
 }
 
-func (wr *WorldRenderer) drawTemperatureBackground() {
-	worldW := float32(int(wr.sim.WorldWidth()) * UnitSize)
-	worldH := float32(int(wr.sim.WorldHeight()) * UnitSize)
+func (wr *WorldRenderer) drawTemperatureBackground(sw, sh int, camGeoM ebiten.GeoM) {
+	totalWorldH := float64(int(wr.sim.WorldHeight()) * UnitSize)
 
 	var coldR, coldG, coldB, warmR, warmG, warmB uint8
 	if wr.isDark {
@@ -437,43 +449,64 @@ func (wr *WorldRenderer) drawTemperatureBackground() {
 		warmR, warmG, warmB = 210, 115, 55
 	}
 
-	params := wr.sim.GetParams()
-	radZoneW := float32(params.RadiationZoneWidth * float64(int(wr.sim.WorldWidth())*UnitSize))
-
 	const bandH = float32(4)
-	for y := float32(0); y < worldH; y += bandH {
-		normY := y / worldH
-		var t float32
+	for y := float32(0); y < float32(sh); y += bandH {
+		_, worldY := wr.camera.ScreenToWorld(0, float64(y+bandH/2), float64(sw), float64(sh))
+		normY := worldY / totalWorldH
+		if normY < 0 {
+			normY = 0
+		} else if normY > 1 {
+			normY = 1
+		}
+		var blend float32
 		switch {
 		case normY <= 0.2:
-			t = 0
+			blend = 0
 		case normY >= 0.8:
-			t = 1
+			blend = 1
 		default:
-			t = (normY - 0.2) / 0.6
+			blend = float32((normY - 0.2) / 0.6)
 		}
-		r := uint8(float32(coldR)*(1-t) + float32(warmR)*t)
-		gv := uint8(float32(coldG)*(1-t) + float32(warmG)*t)
-		b := uint8(float32(coldB)*(1-t) + float32(warmB)*t)
-		vector.FillRect(wr.worldLayer, 0, y, worldW, bandH, color.RGBA{r, gv, b, 255}, false)
+		r := uint8(float32(coldR)*(1-blend) + float32(warmR)*blend)
+		gv := uint8(float32(coldG)*(1-blend) + float32(warmG)*blend)
+		b := uint8(float32(coldB)*(1-blend) + float32(warmB)*blend)
+		vector.FillRect(wr.worldLayer, 0, y, float32(sw), bandH, color.RGBA{r, gv, b, 255}, false)
 	}
-	vector.FillRect(wr.worldLayer, 0, 0, radZoneW, worldH, color.RGBA{100, 130, 50, 40}, false)
-	vector.StrokeLine(wr.worldLayer, radZoneW, 0, radZoneW, worldH, 2, color.RGBA{100, 255, 70, 60}, false)
+
+	params := wr.sim.GetParams()
+	radZoneWorldX := params.RadiationZoneWidth * float64(int(wr.sim.WorldWidth())*UnitSize)
+	screenRadX, _ := camGeoM.Apply(radZoneWorldX, 0)
+	if screenRadX > 0 {
+		rw := float32(math.Min(screenRadX, float64(sw)))
+		vector.FillRect(wr.worldLayer, 0, 0, rw, float32(sh), color.RGBA{100, 130, 50, 40}, false)
+	}
+	if screenRadX > 0 && screenRadX < float64(sw) {
+		vector.StrokeLine(wr.worldLayer, float32(screenRadX), 0, float32(screenRadX), float32(sh), 2, color.RGBA{100, 255, 70, 60}, false)
+	}
+
+	worldW := float64(int(wr.sim.WorldWidth()) * UnitSize)
+	worldH := float64(int(wr.sim.WorldHeight()) * UnitSize)
+	bx0, by0 := camGeoM.Apply(0, 0)
+	bx1, by1 := camGeoM.Apply(worldW, worldH)
+	vector.StrokeRect(wr.worldLayer, float32(bx0), float32(by0), float32(bx1-bx0), float32(by1-by0), 2, color.RGBA{180, 180, 180, 100}, false)
 }
 
-func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulation.CreatureView, t float64) {
+func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulation.CreatureView, t float64, camGeoM ebiten.GeoM, zoom float32) {
 	bs := float64(UnitSize)
 	half := float32(UnitSize) / 2
 	for _, cv := range views {
 		if cv.SightDistance == 0 {
 			continue
 		}
-		cx, cy := float32(cv.X*bs)+half, float32(cv.Y*bs)+half
+		worldCX := float32(cv.X*bs) + half
+		worldCY := float32(cv.Y*bs) + half
 		if anim, ok := wr.animByID[cv.ID]; ok {
-			cx = float32(anim.prevX+(anim.curX-anim.prevX)*t) + half
-			cy = float32(anim.prevY+(anim.curY-anim.prevY)*t) + half
+			worldCX = float32(anim.prevX+(anim.curX-anim.prevX)*t) + half
+			worldCY = float32(anim.prevY+(anim.curY-anim.prevY)*t) + half
 		}
-		r := float32(cv.SightDistance) * float32(UnitSize)
+		scx, scy := camGeoM.Apply(float64(worldCX), float64(worldCY))
+		cx, cy := float32(scx), float32(scy)
+		r := float32(cv.SightDistance) * float32(UnitSize) * zoom
 		halfFOV := float64(cv.FieldOfView) / 2.0 * math.Pi / 180.0
 		var path vector.Path
 		path.MoveTo(cx, cy)
@@ -486,8 +519,10 @@ func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulatio
 	}
 }
 
-func (wr *WorldRenderer) drawSelectionHighlight(img *ebiten.Image, selectedID int) {
+func (wr *WorldRenderer) drawSelectionHighlight(img *ebiten.Image, selectedID int, camGeoM ebiten.GeoM, zoom float32) {
 	if anim, ok := wr.animByID[selectedID]; ok {
-		vector.StrokeCircle(img, float32(anim.curX), float32(anim.curY), float32(UnitSize)*(5+anim.radius), 1.5, color.RGBA{255, 240, 80, 210}, false)
+		sx, sy := camGeoM.Apply(anim.curX, anim.curY)
+		sr := float32(UnitSize)*(5+anim.radius) * zoom
+		vector.StrokeCircle(img, float32(sx), float32(sy), sr, 1.5, color.RGBA{255, 240, 80, 210}, false)
 	}
 }

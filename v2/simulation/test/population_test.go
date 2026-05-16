@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func countCreatures(pop *simulation.Population) int {
+	count := 0
+	for _, c := range pop.Creatures {
+		if c != nil {
+			count++
+		}
+	}
+	return count
+}
+
 func TestNewPopulation(t *testing.T) {
 	p := defaultParams()
 	pop := simulation.NewPopulation(p)
@@ -13,7 +23,7 @@ func TestNewPopulation(t *testing.T) {
 		t.Fatal("NewPopulation returned nil")
 	}
 	if pop.Creatures == nil {
-		t.Error("Creatures map should be initialized")
+		t.Error("Creatures should be initialized")
 	}
 	if len(pop.Creatures) != 0 {
 		t.Errorf("new population should have 0 creatures, got %d", len(pop.Creatures))
@@ -25,14 +35,14 @@ func TestProcessMoveQueue(t *testing.T) {
 	params.FoodInteractionRadius = 0.1
 
 	w := grid.NewWorld(20, 20, 0)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 
 	startPos := grid.Position{X: 5, Y: 5}
 	id := w.AddCreature(startPos)
 	creature := simulation.NewCreature(id, startPos, genome, params)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[id] = creature
+	pop.SetCreature(id, creature)
 
 	newPos := grid.Position{X: 6, Y: 5}
 	pop.QueueForMove(creature, newPos, 1.0)
@@ -52,7 +62,7 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	params.FoodInteractionRadius = 2.0
 
 	w := grid.NewWorld(20, 20, 0)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 100
 	genome.MinMass = 10
 
@@ -69,7 +79,7 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	w.AddPlant(foodPos, 10)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[id] = creature
+	pop.SetCreature(id, creature)
 	pop.QueueForMove(creature, destPos, 1.0)
 	pop.ProcessMoveQueue(w)
 
@@ -90,19 +100,19 @@ func TestProcessDeathQueue(t *testing.T) {
 	params := defaultParams()
 	w := grid.NewWorld(20, 20, 0)
 
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	loc := grid.Position{X: 3, Y: 3}
 	id := w.AddCreature(loc)
 	creature := simulation.NewCreature(id, loc, genome, params)
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[id] = creature
+	pop.SetCreature(id, creature)
 	pop.AddAlive(id)
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(w, params)
 
-	if len(pop.Creatures) != 0 {
-		t.Errorf("dead creature should be removed from population map, got %d creatures", len(pop.Creatures))
+	if _, ok := pop.Get(id); ok {
+		t.Error("dead creature should be removed from population")
 	}
 	if w.MeatCount() == 0 {
 		t.Error("meat should be spawned at death location")
@@ -114,7 +124,7 @@ func TestDeathSpawnsMeatMatchingMass(t *testing.T) {
 	params := defaultParams()
 	w := grid.NewWorld(20, 20, 0)
 
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 120
 	loc := grid.Position{X: 10, Y: 10}
 	id := w.AddCreature(loc)
@@ -122,7 +132,7 @@ func TestDeathSpawnsMeatMatchingMass(t *testing.T) {
 	deathMass := creature.Mass
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[id] = creature
+	pop.SetCreature(id, creature)
 	pop.AddAlive(id)
 	pop.QueueForDeath(creature)
 	pop.ProcessDeathQueue(w, params)
@@ -143,10 +153,10 @@ func TestOldestGenomeEmpty(t *testing.T) {
 func TestOldestGenomeDeadOnly(t *testing.T) {
 	params := defaultParams()
 	pop := simulation.NewPopulation(params)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	dead := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome, params)
 	dead.Alive = false
-	pop.Creatures[1] = dead
+	pop.SetCreature(1, dead)
 	if pop.OldestGenome() != nil {
 		t.Error("OldestGenome should return nil when all creatures are dead")
 	}
@@ -155,15 +165,15 @@ func TestOldestGenomeDeadOnly(t *testing.T) {
 func TestOldestGenomeReturnsOldest(t *testing.T) {
 	params := defaultParams()
 	pop := simulation.NewPopulation(params)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 
 	young := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome, params)
 	young.Age = 10
 	old := simulation.NewCreature(2, grid.Position{X: 2, Y: 2}, genome, params)
 	old.Age = 100
 
-	pop.Creatures[1] = young
-	pop.Creatures[2] = old
+	pop.SetCreature(1, young)
+	pop.SetCreature(2, old)
 	pop.AddAlive(1)
 	pop.AddAlive(2)
 
@@ -182,8 +192,8 @@ func TestGeneticDiversity(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		id := i + 1
-		genome := simulation.MakeRandomGenome(params)
-		pop.Creatures[id] = simulation.NewCreature(id, grid.Position{X: float32(i), Y: 0}, genome, params)
+		genome := simulation.MakeRandomGenome(params, 0)
+		pop.SetCreature(id, simulation.NewCreature(id, grid.Position{X: float32(i), Y: 0}, genome, params))
 	}
 
 	diversity := pop.GeneticDiversity()
@@ -197,7 +207,7 @@ func TestReproductionCreatesOffspring(t *testing.T) {
 	params.MaxPopulation = 100
 
 	w := grid.NewWorld(50, 50, 0)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 200
 	genome.MinMass = 10
 
@@ -208,13 +218,13 @@ func TestReproductionCreatesOffspring(t *testing.T) {
 	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[parentID] = parent
+	pop.SetCreature(parentID, parent)
 
 	pop.QueueForReproduction(parent)
 	pop.ProcessReproductionQueue(w, params)
 
-	if len(pop.Creatures) != 2 {
-		t.Fatalf("expected 2 creatures after reproduction, got %d", len(pop.Creatures))
+	if countCreatures(pop) != 2 {
+		t.Fatalf("expected 2 creatures after reproduction, got %d", countCreatures(pop))
 	}
 }
 
@@ -223,7 +233,7 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 	params.MaxPopulation = 100
 
 	w := grid.NewWorld(50, 50, 0)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 100
 	genome.MinMass = 10
 	genome.MassSplitRatio = 255 // maximum split → 50%
@@ -234,7 +244,7 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[parentID] = parent
+	pop.SetCreature(parentID, parent)
 
 	pop.QueueForReproduction(parent)
 	pop.ProcessReproductionQueue(w, params)
@@ -250,11 +260,11 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 	params.MaxPopulation = 100
 
 	w := grid.NewWorld(50, 50, 0)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 100
 	genome.MinMass = 10
-	genome.MutationRate = 0      // suppress mutations so child inherits same Mass
-	genome.MassSplitRatio = 255  // maximum split → 50%
+	genome.MutationRate = 0     // suppress mutations so child inherits same Mass
+	genome.MassSplitRatio = 255 // maximum split → 50%
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
@@ -262,20 +272,21 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[parentID] = parent
+	pop.SetCreature(parentID, parent)
 
 	pop.QueueForReproduction(parent)
 	pop.ProcessReproductionQueue(w, params)
 
-	if len(pop.Creatures) != 2 {
-		t.Fatalf("expected 2 creatures after reproduction, got %d", len(pop.Creatures))
+	if countCreatures(pop) != 2 {
+		t.Fatalf("expected 2 creatures after reproduction, got %d", countCreatures(pop))
 	}
 	var child *simulation.Creature
 	for _, c := range pop.Creatures {
-		if c != parent {
-			child = c
-			break
+		if c == nil || c == parent {
+			continue
 		}
+		child = c
+		break
 	}
 	wantMass := float32(genome.Mass) / 2
 	if child.Mass != wantMass {
@@ -288,7 +299,7 @@ func TestReproductionSkipsWhenEnergyBelowThreshold(t *testing.T) {
 	params.MaxPopulation = 100
 
 	w := grid.NewWorld(50, 50, 0)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 200
 	genome.MinMass = 10
 
@@ -299,13 +310,13 @@ func TestReproductionSkipsWhenEnergyBelowThreshold(t *testing.T) {
 	parent.Energy = params.ReproductionEnergyThreshold*float32(genome.Mass)*params.EnergyPerMassUnit - 1
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[parentID] = parent
+	pop.SetCreature(parentID, parent)
 
 	pop.QueueForReproduction(parent)
 	pop.ProcessReproductionQueue(w, params)
 
-	if len(pop.Creatures) != 1 {
-		t.Errorf("reproduction should be skipped below energy threshold, got %d creatures", len(pop.Creatures))
+	if countCreatures(pop) != 1 {
+		t.Errorf("reproduction should be skipped below energy threshold, got %d creatures", countCreatures(pop))
 	}
 }
 
@@ -314,7 +325,7 @@ func TestReproductionSkipsWhenMinMassConstraintViolated(t *testing.T) {
 	params.MaxPopulation = 100
 
 	w := grid.NewWorld(50, 50, 0)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 10
 	genome.MinMass = 6 // 6*2=12 >= 10: violates MinMass < Mass/2
 
@@ -324,21 +335,21 @@ func TestReproductionSkipsWhenMinMassConstraintViolated(t *testing.T) {
 	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
 
 	pop := simulation.NewPopulation(params)
-	pop.Creatures[parentID] = parent
+	pop.SetCreature(parentID, parent)
 
 	pop.QueueForReproduction(parent)
 	pop.ProcessReproductionQueue(w, params)
 
-	if len(pop.Creatures) != 1 {
-		t.Errorf("reproduction should be skipped when MinMass violates constraint, got %d creatures", len(pop.Creatures))
+	if countCreatures(pop) != 1 {
+		t.Errorf("reproduction should be skipped when MinMass violates constraint, got %d creatures", countCreatures(pop))
 	}
 }
 
 func TestGeneticDiversitySingleCreature(t *testing.T) {
 	params := defaultParams()
 	pop := simulation.NewPopulation(params)
-	genome := simulation.MakeRandomGenome(params)
-	pop.Creatures[1] = simulation.NewCreature(1, grid.Position{}, genome, params)
+	genome := simulation.MakeRandomGenome(params, 0)
+	pop.SetCreature(1, simulation.NewCreature(1, grid.Position{}, genome, params))
 
 	diversity := pop.GeneticDiversity()
 	if diversity != 0 {
@@ -349,14 +360,14 @@ func TestGeneticDiversitySingleCreature(t *testing.T) {
 func TestAliveCount(t *testing.T) {
 	params := defaultParams()
 	pop := simulation.NewPopulation(params)
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 
 	alive := simulation.NewCreature(1, grid.Position{X: 1, Y: 1}, genome, params)
 	dead := simulation.NewCreature(2, grid.Position{X: 2, Y: 2}, genome, params)
 	dead.Alive = false
 
-	pop.Creatures[1] = alive
-	pop.Creatures[2] = dead
+	pop.SetCreature(1, alive)
+	pop.SetCreature(2, dead)
 	pop.AddAlive(1)
 
 	if pop.AliveCount() != 1 {

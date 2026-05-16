@@ -25,7 +25,7 @@ type SavedGenomesPanel struct {
 	visible bool
 	genomes []simulation.NamedGenome
 	scroll  int // index of the first visible row
-	onSpawn func(*simulation.Genome)
+	onSpawn func(*simulation.Genome, float32)
 
 	// Geometry written during Draw, read during HandleInput
 	panX, panY float32
@@ -35,7 +35,7 @@ type SavedGenomesPanel struct {
 	downBtn    [4]float32
 }
 
-func newSavedGenomesPanel(onSpawn func(*simulation.Genome)) *SavedGenomesPanel {
+func newSavedGenomesPanel(onSpawn func(*simulation.Genome, float32)) *SavedGenomesPanel {
 	return &SavedGenomesPanel{onSpawn: onSpawn}
 }
 
@@ -94,7 +94,7 @@ func (p *SavedGenomesPanel) HandleInput(mx, my int) bool {
 		if inGeRect(fx, fy, b) {
 			idx := p.scroll + i
 			if idx < len(p.genomes) && p.onSpawn != nil {
-				p.onSpawn(p.genomes[idx].Genome)
+				p.onSpawn(p.genomes[idx].Genome, p.genomes[idx].Generation)
 			}
 			return true
 		}
@@ -195,8 +195,8 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 		// Name + trait summary
 		nameClr := color.RGBA{200, 210, 255, 255}
 		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+15, nameClr)
-		summary := fmt.Sprintf("Mass %d  Neurons %d  Genes %d",
-			ng.Genome.Mass, ng.Genome.CognitiveBreadth, len(ng.Genome.Brain))
+		summary := fmt.Sprintf("Mass %d  Neurons %d  Genes %d  Gen %.1f",
+			ng.Genome.Mass, ng.Genome.CognitiveBreadth, len(ng.Genome.Brain), ng.Generation)
 		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+28, color.RGBA{120, 130, 160, 200})
 
 		// Spawn button

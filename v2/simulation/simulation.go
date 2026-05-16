@@ -18,6 +18,7 @@ type Simulation struct {
 	displayCache []CreatureView
 	foodCache    []FoodView // combined plants and meat
 	cacheMu      sync.RWMutex
+	cacheDirty   bool
 }
 
 func New(params *Parameters) *Simulation {
@@ -68,20 +69,21 @@ func (s *Simulation) initializePopulation() {
 
 			id := s.World.AddCreature(loc)
 			c := NewAdultCreature(id, loc, genome, s.Params)
-			pop.Creatures[id] = c
+			pop.SetCreature(id, c)
 			pop.AddAlive(id)
 		}
 	}
 	s.Population = pop
 }
 
-// SaveCreature saves the genome of the creature with the given id to a unique file in data/creatures/.
-func (s *Simulation) SaveCreature(id int) error {
-	c, ok := s.Population.Creatures[id]
+// SaveCreature saves the genome and generation of the creature with the given id.
+// name is used as the filename (empty falls back to timestamp-based naming).
+func (s *Simulation) SaveCreature(id int, name string) error {
+	c, ok := s.Population.Get(id)
 	if !ok || !c.Alive {
 		return nil
 	}
-	return SaveCreatureToFile(c.Genome)
+	return SaveCreatureToFileNamed(c.Genome, c.Generation, name)
 }
 
 // Reset reinitialises the simulation from scratch.
@@ -95,8 +97,7 @@ func (s *Simulation) Reset() {
 func (s *Simulation) Update() {
 	s.step()
 	s.cacheMu.Lock()
-	s.updatePopulationCaches()
-	s.updateFoodCache()
+	s.cacheDirty = true
 	s.cacheMu.Unlock()
 }
 
@@ -241,7 +242,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 	}
 
-	if IsActionEnabled(SET_RESPONSIVENESS) {
+	if c.Nnet.ActiveActions[SET_RESPONSIVENESS] {
 		c.Responsiveness = tanhf(actionLevels[SET_RESPONSIVENESS])
 	}
 
@@ -327,7 +328,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 				if id == c.Id {
 					continue
 				}
-				other, ok := s.Population.Creatures[id]
+				other, ok := s.Population.Get(id)
 				if !ok || !other.Alive {
 					continue
 				}
@@ -495,7 +496,7 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 	// Initialise genomes at tier zero
 	genome := MakeRandomGenome(&spawnParams, 0)
 	c := NewAdultCreature(id, pos, genome, s.Params)
-	s.Population.Creatures[id] = c
+	s.Population.SetCreature(id, c)
 	s.Population.AddAlive(id)
 
 	return true
@@ -517,7 +518,7 @@ func (s *Simulation) SpawnClusterAt(x, y float64, count int) bool {
 		}
 		id := s.World.AddCreature(pos)
 		c := NewAdultCreature(id, pos, genome.Copy(), s.Params)
-		s.Population.Creatures[id] = c
+		s.Population.SetCreature(id, c)
 		s.Population.AddAlive(id)
 		spawned++
 	}
@@ -525,21 +526,26 @@ func (s *Simulation) SpawnClusterAt(x, y float64, count int) bool {
 }
 
 // SpawnGenome places a new adult creature with the given genome at a random empty location.
-func (s *Simulation) SpawnGenome(g *Genome) bool {
+// generation sets the creature's starting generation; pass 0 or 1 for a fresh spawn.
+func (s *Simulation) SpawnGenome(g *Genome, generation float32) bool {
 	loc, ok := s.World.FindEmptyLocation()
 	if !ok {
 		return false
 	}
 	id := s.World.AddCreature(loc)
 	c := NewAdultCreature(id, loc, g, s.Params)
-	s.Population.Creatures[id] = c
+	if generation > 1 {
+		c.Generation = generation
+		c.Tier = GetTierFromGeneration(c.Generation, s.Params)
+	}
+	s.Population.SetCreature(id, c)
 	s.Population.AddAlive(id)
 	return true
 }
 
 // CreatureGenomeCopy returns a deep copy of a living creature's genome by ID.
 func (s *Simulation) CreatureGenomeCopy(id int) (*Genome, bool) {
-	c, ok := s.Population.Creatures[id]
+	c, ok := s.Population.Get(id)
 	if !ok || !c.Alive {
 		return nil, false
 	}
@@ -555,6 +561,15 @@ func (s *Simulation) WorldHeight() float64 { return s.Params.WorldHeight }
 func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
 func (s *Simulation) PlantCount() int { return s.World.PlantCount() }
+func (s *Simulation) MeatCount() int  { return s.World.MeatCount() }
+
+func (s *Simulation) PlantEnergy() float64 {
+	return s.World.TotalPlantMass() * float64(s.Params.EnergyPerMassUnit)
+}
+
+func (s *Simulation) MeatEnergy() float64 {
+	return s.World.TotalMeatMass() * float64(s.Params.EnergyPerMassUnit)
+}
 
 // TotalEnergy returns the total liquid energy in the system: food, meat, and the
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
@@ -563,6 +578,9 @@ func (s *Simulation) TotalEnergy() float64 {
 	energy := s.World.TotalPlantMass() * epu
 	energy += s.World.TotalMeatMass() * epu
 	for _, c := range s.Population.Creatures {
+		if c == nil {
+			continue
+		}
 		energy += float64(c.Energy) + (float64(c.Mass)+float64(c.Stomach))*epu
 	}
 	return energy
@@ -579,7 +597,9 @@ func (s *Simulation) AverageAge() float64 {
 	}
 	total := 0
 	for _, id := range s.Population.aliveIDs {
-		total += s.Population.Creatures[id].Age
+		if c, ok := s.Population.Get(id); ok {
+			total += c.Age
+		}
 	}
 	return float64(total) / float64(count)
 }
@@ -591,7 +611,9 @@ func (s *Simulation) AverageGeneration() float64 {
 	}
 	total := float32(0.0)
 	for _, id := range s.Population.aliveIDs {
-		total += s.Population.Creatures[id].Generation
+		if c, ok := s.Population.Get(id); ok {
+			total += c.Generation
+		}
 	}
 	return float64(total) / float64(count)
 }
@@ -619,6 +641,9 @@ func (s *Simulation) updatePopulationCaches() {
 	s.displayCache = s.displayCache[:0]
 
 	for id, c := range s.Population.Creatures {
+		if c == nil {
+			continue
+		}
 		r, g, b, a := c.Color.RGBA()
 		s.displayCache = append(s.displayCache, CreatureView{
 			ID: id, X: float64(c.Loc.X), Y: float64(c.Loc.Y), Heading: float64(c.Heading),
@@ -648,13 +673,18 @@ type StateSnapshot struct {
 }
 
 func (s *Simulation) GetSnapshot() StateSnapshot {
-	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
-
-	return StateSnapshot{
+	s.cacheMu.Lock()
+	if s.cacheDirty {
+		s.updatePopulationCaches()
+		s.updateFoodCache()
+		s.cacheDirty = false
+	}
+	snap := StateSnapshot{
 		Creatures: append([]CreatureView(nil), s.displayCache...),
 		Food:      append([]FoodView(nil), s.foodCache...),
 	}
+	s.cacheMu.Unlock()
+	return snap
 }
 
 // Pre-cached response curve to save on math.Pow calls

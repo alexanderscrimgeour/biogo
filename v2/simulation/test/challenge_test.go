@@ -35,7 +35,7 @@ func TestPassedSurvivalCriteriaLeftSurvive(t *testing.T) {
 	p.MinPopulation = 0
 	sim := makeSimulation(p)
 
-	genome := simulation.MakeRandomGenome(p)
+	genome := simulation.MakeRandomGenome(p, 0)
 	leftCreature := simulation.NewCreature(1, grid.Position{X: 1, Y: 5}, genome, p)
 	rightCreature := simulation.NewCreature(2, grid.Position{X: 15, Y: 5}, genome, p)
 
@@ -56,7 +56,7 @@ func TestPassedSurvivalCriteriaRightSurvive(t *testing.T) {
 	p.MinPopulation = 0
 	sim := makeSimulation(p)
 
-	genome := simulation.MakeRandomGenome(p)
+	genome := simulation.MakeRandomGenome(p, 0)
 	leftCreature := simulation.NewCreature(1, grid.Position{X: 1, Y: 5}, genome, p)
 	rightCreature := simulation.NewCreature(2, grid.Position{X: 15, Y: 5}, genome, p)
 
@@ -77,7 +77,7 @@ func TestPassedSurvivalCriteriaCenter(t *testing.T) {
 	p.MinPopulation = 0
 	sim := makeSimulation(p)
 
-	genome := simulation.MakeRandomGenome(p)
+	genome := simulation.MakeRandomGenome(p, 0)
 	centerCreature := simulation.NewCreature(1, grid.Position{X: 100, Y: 100}, genome, p)
 	if !simulation.PassedSurvivalCriteria(centerCreature, sim, simulation.Center) {
 		t.Error("Center: creature at center should pass")

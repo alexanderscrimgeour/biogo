@@ -68,3 +68,8 @@ func (b *Button) IsClicked(mx, my int) bool {
 	return float32(mx) >= b.lastX && float32(mx) < b.lastX+b.W &&
 		float32(my) >= b.lastY && float32(my) < b.lastY+b.H
 }
+
+// Bounds returns the last drawn x, y, width, height.
+func (b *Button) Bounds() (float32, float32, float32, float32) {
+	return b.lastX, b.lastY, b.W, b.H
+}

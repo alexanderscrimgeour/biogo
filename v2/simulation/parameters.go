@@ -109,9 +109,9 @@ type Parameters struct {
 
 func DefaultParams() *Parameters {
 	p := &Parameters{
-		WorldWidth:                  8000,
-		WorldHeight:                 8000,
-		MaxPopulation:               25000,
+		WorldWidth:                  15000,
+		WorldHeight:                 15000,
+		MaxPopulation:               35000,
 		MinPopulation:               500,
 		StartingPopulation:          1000,
 		MinEnergy:                   2,
@@ -132,16 +132,16 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     50000,
+		MaxFood:                     200000,
 		FoodSpawnInterval:           10,
 		FoodMass:                    5.0,
 		FountainCount:               20,
 		FountainDriftSpeed:          10,
-		FountainRadius:              200.0,
+		FountainRadius:              400.0,
 		DigestionRate:               0.2,
 		BaseBMR:                     0.05,
 		EnergyPerMassUnit:           1.0,
-		MoveCost:                    0.01,
+		MoveCost:                    0.05,
 		MaxSpeedPerStep:             10.0,
 		VelocityDamping:             0.85,
 		MaxRotationPerStep:          math.Pi / 4,
@@ -168,9 +168,9 @@ func DefaultParams() *Parameters {
 		CollisionRepulsion:          0.5,
 		SavedGenomeProportion:       0.05,
 		Tier1Generation:             0,
-		Tier2Generation:             2,
-		Tier3Generation:             50,
-		Tier4Generation:             100,
+		Tier2Generation:             5,
+		Tier3Generation:             25,
+		Tier4Generation:             50,
 	}
 	if err := p.Validate(); err != nil {
 		panic(err)
