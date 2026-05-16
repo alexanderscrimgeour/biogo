@@ -242,7 +242,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 	}
 
-	if IsActionEnabled(SET_RESPONSIVENESS) {
+	if c.Nnet.ActiveActions[SET_RESPONSIVENESS] {
 		c.Responsiveness = tanhf(actionLevels[SET_RESPONSIVENESS])
 	}
 

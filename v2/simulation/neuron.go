@@ -23,6 +23,7 @@ type NeuralNet struct {
 	Edges            []Gene
 	HiddenNeurons    []Neuron           // packed slice, indexed 0..N-1 by NewID; iterate directly
 	ActiveSensors    [SENSOR_COUNT]bool // true for each sensor ID wired into at least one edge; set once at construction
+	ActiveActions    [ACTION_COUNT]bool // true for each action ID that is a sink in at least one edge; set once at construction
 	NeedsKinship     bool               // true if any kinship sensor (KINSHIP_LOCAL/NEAREST/NEAREST_DISTANCE) is wired in
 	Weights          []float32
 	LastSensorValues [SENSOR_COUNT]float32
@@ -150,13 +151,13 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap, cognitiveBreadt
 			Sensitivity:   1.0,
 		}
 	}
-	// Record which sensors are actually wired in so FeedForward can pre-compute
-	// them once rather than calling GetSensor once per edge.
+	// Record which sensors and actions are actually wired in.
 	for i := range nnet.Edges {
 		if nnet.Edges[i].SourceType == SENSOR {
-			// Because of the modulo guard rails above, this index is guaranteed
-			// to fall safely within fixed [SENSOR_COUNT]bool boundaries.
 			nnet.ActiveSensors[nnet.Edges[i].SourceID] = true
+		}
+		if nnet.Edges[i].SinkType == ACTION {
+			nnet.ActiveActions[nnet.Edges[i].SinkID] = true
 		}
 	}
 	nnet.NeedsKinship = nnet.ActiveSensors[KINSHIP_LOCAL] ||

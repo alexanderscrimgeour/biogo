@@ -72,16 +72,15 @@ type Creature struct {
 func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature {
 	g.recomputeBytes()
 	c := Creature{
-		Id:         id,
-		Generation: 1.0,
-		Age:        0,
-		Alive:      true,
-		Clock:      int(g.OscPeriod),
-		Nnet:       NeuralNet{},
-		Loc:        loc,
-		BirthLoc:   loc,
-		// Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
-		Responsiveness: 1.0,
+		Id:             id,
+		Generation:     1.0,
+		Age:            0,
+		Alive:          true,
+		Clock:          int(g.OscPeriod),
+		Nnet:           NeuralNet{},
+		Loc:            loc,
+		BirthLoc:       loc,
+		Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
 		Heading:        float32(rand.Float64()*2*math.Pi - math.Pi),
 		Genome:         g,
 	}
@@ -102,16 +101,15 @@ func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature
 func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature {
 	g.recomputeBytes()
 	c := Creature{
-		Id:         id,
-		Generation: 1.0,
-		Age:        0,
-		Alive:      true,
-		Clock:      int(g.OscPeriod),
-		Nnet:       NeuralNet{},
-		Loc:        loc,
-		BirthLoc:   loc,
-		// Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
-		Responsiveness: 1.0,
+		Id:             id,
+		Generation:     1.0,
+		Age:            0,
+		Alive:          true,
+		Clock:          int(g.OscPeriod),
+		Nnet:           NeuralNet{},
+		Loc:            loc,
+		BirthLoc:       loc,
+		Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
 		Heading:        float32(rand.Float64()*2*math.Pi - math.Pi),
 		Genome:         g,
 	}
