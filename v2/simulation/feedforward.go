@@ -116,7 +116,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 
 		if c.Energy > energyThreshold {
 			sinkOutput := actionLevels[gene.SinkID]
-			learningSignal := inputVal * sinkOutput * softsign(dopamineDelta)
+			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
 				c.Nnet.Weights[i] += neuroplasticity * learningSignal
 				c.Energy -= energyCostOfLearning

@@ -195,7 +195,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		c.Dopamine = 0
 	}
 	c.Age++
-	c.LastAction = ""
+	c.LastActionMask = 0
 	temp := s.World.TemperatureAt(c.Loc.Y)
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
 	if float64(c.Loc.X) < s.Params.RadiationZoneWidth*s.Params.WorldWidth {
@@ -238,7 +238,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			c.DrainEnergy(rate * float32(restingCostFactor))
 			c.IsResting = true
 
-			c.LastAction = appendActionString(c.LastAction, "Resting")
+			c.LastActionMask |= ActionResting
 		}
 	}
 
@@ -267,7 +267,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		level := math.Abs(float64(actionLevels[ATTACK]))
 		if level > 0.7 {
 			pending.attack = append(pending.attack, AttackInstruction{c, level})
-			c.LastAction = appendActionString(c.LastAction, "Attacking")
+			c.LastActionMask |= ActionAttacking
 		}
 	}
 
@@ -276,7 +276,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if level > 0 {
 			// Fast Softsign: level / (1 + level)
 			c.GainDopamine(float32(level / (1.0 + level)))
-			c.LastAction = appendActionString(c.LastAction, "Rewarding")
+			c.LastActionMask |= ActionRewarding
 		}
 	}
 
@@ -285,7 +285,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if level > 0 {
 			// Fast Softsign: level / (1 + level)
 			c.LoseDopamine(float32(level / (1.0 + level)))
-			c.LastAction = appendActionString(c.LastAction, "Punishing")
+			c.LastActionMask |= ActionPunishing
 		}
 	}
 
@@ -302,10 +302,10 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			if math.Abs(float64(level)) > 0.5 && isPhysicallyReady {
 				if c.Genome.ReproductionType == 0 {
 					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
-					c.LastAction = appendActionString(c.LastAction, "Reproducing (Intent)")
+					c.LastActionMask |= ActionReproducing
 				} else {
 					pending.mate = append(pending.mate, c)
-					c.LastAction = appendActionString(c.LastAction, "Seeking mate")
+					c.LastActionMask |= ActionSeekingMate
 				}
 			}
 		} else {
@@ -313,7 +313,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			if isPhysicallyReady {
 				// Force asexual division for lower tiers to scale population early on
 				pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
-				c.LastAction = appendActionString(c.LastAction, "Auto-Splitting")
+				c.LastActionMask |= ActionAutoSplitting
 			}
 		}
 	}
@@ -349,7 +349,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			}
 			if recipient != nil {
 				pending.feed = append(pending.feed, FeedInstruction{c, recipient, level})
-				c.LastAction = appendActionString(c.LastAction, "Feeding")
+				c.LastActionMask |= ActionFeeding
 			}
 		}
 	}
@@ -366,7 +366,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if rotateAmount != 0 {
 			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
 			c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(rotateAmount)) * 0.5 * float32(massCostMult))
-			c.LastAction = appendActionString(c.LastAction, "Rotating")
+			c.LastActionMask |= ActionRotating
 		}
 		c.Heading = float32(world.NormalizeAngle(float64(c.Heading) + rotateAmount))
 
@@ -410,7 +410,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 					massCostMult := 0.5 + massNorm*2.0
 					c.DrainEnergy(s.Params.MoveCost * float32(math.Abs(accelAmount)) * float32(massCostMult))
 				}
-				c.LastAction = appendActionString(c.LastAction, "Moving")
+				c.LastActionMask |= ActionMoving
 				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Velocity})
 			}
 		}
@@ -618,23 +618,76 @@ func (s *Simulation) AverageGeneration() float64 {
 	return float64(total) / float64(count)
 }
 
-// partitionIDs splits ids into n roughly equal batches using round-robin assignment.
+// partitionIDs splits ids into n contiguous sub-slices. Contiguous layout keeps
+// Creatures[id] accesses sequential in memory, improving L1 cache hit rates vs
+// the previous round-robin approach. Each sub-slice shares the backing array of
+// ids so no additional allocation occurs for the batch data.
 func partitionIDs(ids []int, n int) [][]int {
 	if n <= 0 {
 		n = 1
 	}
+	if n > len(ids) {
+		n = len(ids)
+	}
+	if n == 0 {
+		return nil
+	}
 	batches := make([][]int, n)
-	for i, id := range ids {
-		batches[i%n] = append(batches[i%n], id)
+	size := (len(ids) + n - 1) / n
+	for i := range batches {
+		start := i * size
+		end := start + size
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batches[i] = ids[start:end]
 	}
 	return batches
 }
 
-func appendActionString(base, new string) string {
-	if base == "" {
-		return new
+// LastAction bitmask constants — one bit per action verb.
+const (
+	ActionResting      uint16 = 1 << iota // 1
+	ActionAttacking                        // 2
+	ActionRewarding                        // 4
+	ActionPunishing                        // 8
+	ActionReproducing                      // 16
+	ActionSeekingMate                      // 32
+	ActionAutoSplitting                    // 64
+	ActionFeeding                          // 128
+	ActionRotating                         // 256
+	ActionMoving                           // 512
+)
+
+func actionMaskToString(mask uint16) string {
+	if mask == 0 {
+		return ""
 	}
-	return base + " | " + new
+	names := [...]struct {
+		bit  uint16
+		name string
+	}{
+		{ActionResting, "Resting"},
+		{ActionAttacking, "Attacking"},
+		{ActionRewarding, "Rewarding"},
+		{ActionPunishing, "Punishing"},
+		{ActionReproducing, "Reproducing (Intent)"},
+		{ActionSeekingMate, "Seeking mate"},
+		{ActionAutoSplitting, "Auto-Splitting"},
+		{ActionFeeding, "Feeding"},
+		{ActionRotating, "Rotating"},
+		{ActionMoving, "Moving"},
+	}
+	out := ""
+	for _, n := range names {
+		if mask&n.bit != 0 {
+			if out != "" {
+				out += " | "
+			}
+			out += n.name
+		}
+	}
+	return out
 }
 
 func (s *Simulation) updatePopulationCaches() {
@@ -685,6 +738,21 @@ func (s *Simulation) GetSnapshot() StateSnapshot {
 	}
 	s.cacheMu.Unlock()
 	return snap
+}
+
+// FillSnapshot writes the current display state into dst, reusing its backing
+// slices if they are large enough. After the first call the slices reach full
+// capacity and subsequent calls allocate nothing.
+func (s *Simulation) FillSnapshot(dst *StateSnapshot) {
+	s.cacheMu.Lock()
+	if s.cacheDirty {
+		s.updatePopulationCaches()
+		s.updateFoodCache()
+		s.cacheDirty = false
+	}
+	dst.Creatures = append(dst.Creatures[:0], s.displayCache...)
+	dst.Food = append(dst.Food[:0], s.foodCache...)
+	s.cacheMu.Unlock()
 }
 
 // Pre-cached response curve to save on math.Pow calls

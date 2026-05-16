@@ -11,11 +11,11 @@ import (
 // TextInputField is a single-line text input. Text and Focused are set each frame
 // before the panel is built; lastX/lastY track the drawn position for hit testing.
 type TextInputField struct {
-	W, H        float32
-	Text        string
-	Focused     bool
-	Placeholder string
-	Font        *textv2.GoXFace
+	W, H         float32
+	Text         string
+	Focused      bool
+	Placeholder  string
+	Font         *textv2.GoXFace
 	lastX, lastY float32
 }
 
@@ -37,9 +37,16 @@ func (t *TextInputField) Draw(screen *ebiten.Image, x, y float32) (float32, floa
 		display = t.Placeholder
 		textClr = color.RGBA{80, 80, 110, 200}
 	}
+
 	if t.Font != nil && display != "" {
+		metrics := t.Font.Metrics()
+		textHeight := float32(metrics.HAscent + metrics.HDescent)
+
+		tx := x + 6
+		ty := y + (t.H-textHeight)/2 + float32(metrics.HAscent)
+
 		op := &textv2.DrawOptions{}
-		op.GeoM.Translate(float64(int(x))+4, float64(int(y))+14)
+		op.GeoM.Translate(float64(int(tx)), float64(int(ty)))
 		op.ColorScale.ScaleWithColor(textClr)
 		textv2.Draw(screen, display, t.Font, op)
 	}

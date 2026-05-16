@@ -40,6 +40,7 @@ type SimulationState interface {
 	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
 	GetParams() *simulation.Parameters
 	GetSnapshot() simulation.StateSnapshot
+	FillSnapshot(dst *simulation.StateSnapshot)
 }
 
 const historyLen = 5000
@@ -67,6 +68,7 @@ type Game struct {
 	histHead        int
 	histCount       int
 	simStepsPerTick int
+	snapshot        simulation.StateSnapshot // persistent; backing slices reused each tick
 	currentSnapshot *simulation.StateSnapshot
 	tickDuration    time.Duration
 
@@ -87,6 +89,13 @@ func NewGame(sim SimulationState) *Game {
 	})
 	statFont := textv2.NewGoXFace(rawFace)
 
+	smallRawFace, _ := opentype.NewFace(tt, &opentype.FaceOptions{
+		Size:    12,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	smallFont := textv2.NewGoXFace(smallRawFace)
+
 	g := &Game{
 		sim:                sim,
 		selectedCreatureID: -1,
@@ -95,7 +104,7 @@ func NewGame(sim SimulationState) *Game {
 	}
 
 	g.world = NewWorldRenderer(sim)
-	g.ui = NewUserInterface(statFont, sim, g)
+	g.ui = NewUserInterface(statFont, smallFont, sim, g)
 
 	return g
 }
@@ -197,10 +206,10 @@ func (g *Game) Update() error {
 			g.histCount++
 		}
 
-		snapshot := g.sim.GetSnapshot()
-		g.currentSnapshot = &snapshot
+		g.sim.FillSnapshot(&g.snapshot)
+		g.currentSnapshot = &g.snapshot
 
-		g.tickDuration = g.world.UpdateAnimations(&snapshot)
+		g.tickDuration = g.world.UpdateAnimations(&g.snapshot)
 	}
 
 	return nil

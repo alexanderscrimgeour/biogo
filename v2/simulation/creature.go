@@ -42,7 +42,7 @@ type Creature struct {
 	MaxMass        float32
 	Dopamine       float32
 	Stomach        float32 // current food mass in stomach; digested into energy each tick
-	LastAction     string
+	LastActionMask uint16
 	LastDopamine   float32
 	LastStomach    float32
 	LastLoc        world.Position
