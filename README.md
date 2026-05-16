@@ -15,7 +15,7 @@ A genome may look something like this:
 ```
 where each section of bits represents a single characteristic:
 ```
-OscPeriod|Mass|SightDistance|Responsiveness|MutationRate|ReproductionType|CognitiveBreadth|SynapticDensity|...NeuralGenes
+OscPeriod|Mass|VisionRadius|Responsiveness|MutationRate|ReproductionType|CognitiveBreadth|SynapticDensity|...NeuralGenes
 ```
 with neural genes representing a neural pathway:
 ```

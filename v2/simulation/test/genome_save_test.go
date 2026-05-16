@@ -9,9 +9,9 @@ import (
 func TestSaveAndLoadGenomes(t *testing.T) {
 	p := defaultParams()
 	genomes := []*simulation.Genome{
-		simulation.MakeRandomGenome(p),
-		simulation.MakeRandomGenome(p),
-		simulation.MakeRandomGenome(p),
+		simulation.MakeRandomGenome(p, 0),
+		simulation.MakeRandomGenome(p, 0),
+		simulation.MakeRandomGenome(p, 0),
 	}
 
 	path := filepath.Join(t.TempDir(), "genomes.json")
@@ -53,7 +53,7 @@ func TestLoadGenomesFileNotExist(t *testing.T) {
 }
 
 func TestSelectBestGenomesEmptyPopulation(t *testing.T) {
-	result := simulation.SelectBestGenomes(map[int]*simulation.Creature{})
+	result := simulation.SelectBestGenomes([]*simulation.Creature{})
 	if result != nil {
 		t.Errorf("expected nil for empty population, got %v", result)
 	}
@@ -88,8 +88,8 @@ func TestSaveCreatureToFileAndLoadAll(t *testing.T) {
 	// calling the public functions directly with a temp file instead, mirroring
 	// what SaveCreatureToFile does internally.
 	p := defaultParams()
-	g1 := simulation.MakeRandomGenome(p)
-	g2 := simulation.MakeRandomGenome(p)
+	g1 := simulation.MakeRandomGenome(p, 0)
+	g2 := simulation.MakeRandomGenome(p, 0)
 
 	dir := t.TempDir()
 	save := func(g *simulation.Genome) {
@@ -130,7 +130,7 @@ func TestFromGenomeDataClampsZeroMass(t *testing.T) {
 	// A genome saved with mass=0 or min_mass=0 (e.g. from an older file format)
 	// must be clamped to at least 1 on load.
 	p := defaultParams()
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	g.Mass = 0
 	g.MinMass = 0
 
@@ -158,7 +158,7 @@ func TestFromGenomeDataClampsZeroMass(t *testing.T) {
 
 func TestSavedGenomesSurviveRoundTrip(t *testing.T) {
 	p := defaultParams()
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	path := filepath.Join(t.TempDir(), "rt.json")
 
 	if err := simulation.SaveGenomesToFile([]*simulation.Genome{g}, path); err != nil {

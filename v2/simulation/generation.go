@@ -4,11 +4,11 @@ package simulation
 func GetTierFromGeneration(generation float32, p *Parameters) byte {
 	currentGenProgress := int(generation)
 	switch {
-	case currentGenProgress >= p.Tier4Generation:
+	case currentGenProgress >= p.Evolution.Tier4Generation:
 		return 3
-	case currentGenProgress >= p.Tier3Generation:
+	case currentGenProgress >= p.Evolution.Tier3Generation:
 		return 2
-	case currentGenProgress >= p.Tier2Generation:
+	case currentGenProgress >= p.Evolution.Tier2Generation:
 		return 1
 	default:
 		return 0

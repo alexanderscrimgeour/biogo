@@ -14,7 +14,7 @@ type CreatureView struct {
 	X, Y             float64
 	R, G, B, A       uint8
 	Heading          float64 // radians
-	SightDistance    float64
+	VisionRadius     float64
 	FieldOfView      float64
 	Radius           float64
 	Mass             byte
@@ -52,7 +52,7 @@ type NeuralNetView struct {
 // GenomeSnapshot is a copy of the raw genome header bytes for the inspector panel.
 type GenomeSnapshot struct {
 	OscPeriod         byte
-	SightDistance     byte
+	VisionRadius      byte
 	FieldOfView       byte
 	Responsiveness    byte
 	MutationRate      byte
@@ -83,7 +83,7 @@ type CreatureDetailView struct {
 	CurrentMass      float32
 	AdultMass        float64
 	LastAction       string
-	SightDistance    float64
+	VisionRadius     float64
 	FieldOfView      float64
 	Dopamine         float32
 	MutationPct      float32 // actual per-gene mutation probability as a percentage
@@ -151,10 +151,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		CurrentMass:      float32(c.CurrentMass()),
 		AdultMass:        float64(c.MaxMass),
 		LastAction:       actionMaskToString(c.LastActionMask),
-		SightDistance:    float64(c.GetSightDistance()),
+		VisionRadius:     float64(c.GetVisionRadius()),
 		FieldOfView:      c.FieldOfView(),
 		Dopamine:         c.Dopamine,
-		MutationPct:      s.Params.BaseMutationRate * float32(c.Genome.MutationRate),
+		MutationPct:      s.Params.Neurology.BaseMutationRate * float32(c.Genome.MutationRate),
 		R:                uint8(r >> 8),
 		G:                uint8(g >> 8),
 		B:                uint8(b >> 8),
@@ -170,7 +170,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		NeuralNet:        nnView,
 		Genome: GenomeSnapshot{
 			OscPeriod:         c.Genome.OscPeriod,
-			SightDistance:     c.Genome.SightDistance,
+			VisionRadius:      c.Genome.VisionRadius,
 			FieldOfView:       c.Genome.FieldOfView,
 			Responsiveness:    c.Genome.Responsiveness,
 			MutationRate:      c.Genome.MutationRate,
@@ -209,7 +209,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			B:                uint8(b),
 			A:                uint8(a),
 			Heading:          float64(c.Heading),
-			SightDistance:    float64(c.GetSightDistance()),
+			VisionRadius:     float64(c.GetVisionRadius()),
 			FieldOfView:      c.FieldOfView(),
 			Radius:           float64(c.Radius),
 			Mass:             c.Genome.Mass,
@@ -222,4 +222,4 @@ func (s *Simulation) CreatureViews() []CreatureView {
 }
 
 func (s *Simulation) CreatureMinMass() byte    { return 1 }
-func (s *Simulation) CreatureMaxMass() float64 { return s.Params.MaxMass }
+func (s *Simulation) CreatureMaxMass() float64 { return s.Params.Creature.MaxMass }

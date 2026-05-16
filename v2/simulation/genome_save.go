@@ -29,7 +29,7 @@ type geneData struct {
 
 type genomeData struct {
 	OscPeriod        byte       `json:"osc_period"`
-	SightDistance    byte       `json:"sight_distance"`
+	VisionRadius    byte       `json:"sight_distance"`
 	FieldOfView      byte       `json:"field_of_view"`
 	Responsiveness   byte       `json:"responsiveness"`
 	MutationRate     byte       `json:"mutation_rate"`
@@ -61,7 +61,7 @@ func toGenomeData(g *Genome) genomeData {
 	}
 	return genomeData{
 		OscPeriod:        g.OscPeriod,
-		SightDistance:    g.SightDistance,
+		VisionRadius:    g.VisionRadius,
 		FieldOfView:      g.FieldOfView,
 		Responsiveness:   g.Responsiveness,
 		MutationRate:     g.MutationRate,
@@ -104,7 +104,7 @@ func fromGenomeData(gd genomeData) *Genome {
 	}
 	g := &Genome{
 		OscPeriod:         gd.OscPeriod,
-		SightDistance:     gd.SightDistance,
+		VisionRadius:     gd.VisionRadius,
 		FieldOfView:       gd.FieldOfView,
 		Responsiveness:    gd.Responsiveness,
 		MutationRate:      gd.MutationRate,
@@ -133,7 +133,7 @@ type genomeCluster struct {
 // SelectBestGenomes returns up to MaxSavedGenomes representative genomes from
 // the current population via greedy similarity clustering. Clusters with the
 // most members come first.
-func SelectBestGenomes(creatures map[int]*Creature) []*Genome {
+func SelectBestGenomes(creatures []*Creature) []*Genome {
 	alive := sampleAlive(creatures)
 	if len(alive) == 0 {
 		return nil
@@ -174,11 +174,11 @@ func SelectBestGenomes(creatures map[int]*Creature) []*Genome {
 
 // sampleAlive returns a random sample of alive creatures with non-empty brains,
 // capped at 200 to bound the clustering cost.
-func sampleAlive(creatures map[int]*Creature) []*Creature {
+func sampleAlive(creatures []*Creature) []*Creature {
 	const maxSample = 200
 	alive := make([]*Creature, 0, len(creatures))
 	for _, c := range creatures {
-		if c.Alive && len(c.Genome.Brain) > 0 {
+		if c != nil && c.Alive && len(c.Genome.Brain) > 0 {
 			alive = append(alive, c)
 		}
 	}

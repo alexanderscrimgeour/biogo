@@ -8,7 +8,7 @@ import (
 // processCollisions applies soft repulsive corrections between overlapping creatures
 // and resolves tunneling for fast-moving creatures using swept-sphere detection.
 func (s *Simulation) processCollisions() {
-	if s.Params.CollisionRepulsion <= 0 {
+	if s.Params.World.CollisionRepulsion <= 0 {
 		return
 	}
 
@@ -17,13 +17,8 @@ func (s *Simulation) processCollisions() {
 		return
 	}
 
-	maxRadius := float32(math.Sqrt(float64(s.Params.MaxMass) * math.Pi))
-	repulsion := float32(s.Params.CollisionRepulsion)
-
-	// Expand the search radius to cover the swept path of both creatures this tick.
-	// Each creature moves at most MaxSpeedPerStep per tick, so the worst case
-	// (two creatures tunneling toward each other) requires 2× that expansion.
-	sweptExpansion := float32(2 * s.Params.MaxSpeedPerStep)
+	maxRadius := float32(math.Sqrt(float64(s.Params.Creature.MaxMass) * math.Pi))
+	repulsion := float32(s.Params.World.CollisionRepulsion)
 
 	var buf []int
 	for _, id := range ids {
@@ -31,8 +26,12 @@ func (s *Simulation) processCollisions() {
 		if !ok || !c.Alive {
 			continue
 		}
-
-		buf = s.World.GetCreaturesInRadius(c.Loc, c.Radius+maxRadius+sweptExpansion, buf)
+		speed := c.Speed
+		if speed < 0 {
+			speed = -speed
+		}
+		localSweptExpansion := speed * 2.0
+		buf = s.World.GetCreaturesInRadius(c.Loc, c.Radius+maxRadius+localSweptExpansion, buf)
 
 		for _, otherID := range buf {
 			if otherID <= id {

@@ -58,8 +58,8 @@ type pendingInstructions struct {
 
 func NewPopulation(p *Parameters) *Population {
 	return &Population{
-		Creatures:         make([]*Creature, 0, p.StartingPopulation+1),
-		aliveIDs:          make([]int, 0, p.StartingPopulation),
+		Creatures:         make([]*Creature, 0, p.Population.Initial+1),
+		aliveIDs:          make([]int, 0, p.Population.Initial),
 		DeathQueue:        []DeathInstruction{},
 		MoveQueue:         []MoveInstruction{},
 		AttackQueue:       []AttackInstruction{},
@@ -246,7 +246,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params) * float32(instruction.Level)
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.SightDistance, c.SightCreatureBuffer)
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.VisionRadius, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		var closestPreyDistSq float32 = math.MaxFloat32
@@ -311,11 +311,11 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		c.Stomach += stomachGain
 		target.Mass -= eaten
 		target.UpdateSize(params)
-		target.DrainEnergy(eaten * params.EnergyPerMassUnit)
+		target.DrainEnergy(eaten * params.Metabolism.EnergyPerMassUnit)
 		if waste > 0.01 {
 			w.AddMeat(target.Loc, waste)
 		}
-		struggleCost := params.AttackEnergyCost
+		struggleCost := params.Predation.AttackEnergyCost
 		if sizeRatio < 1.0 {
 			// Gradually increases cost as target gets larger, maxing at 1.5x
 			struggleCost *= 1.0 + (1.0-sizeRatio)*0.5
@@ -414,7 +414,7 @@ func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 // totalling the creature's body mass, split into FoodMass-sized chunks.
 func spawnMeatFromCreature(w *world.World, c *Creature, params *Parameters) {
 	remaining := c.Mass
-	chunkMass := params.FoodMass
+	chunkMass := params.Food.BaseMass
 	for remaining > 0 {
 		m := chunkMass
 		if m > remaining {
@@ -434,14 +434,14 @@ func spawnMeatFromCreature(w *world.World, c *Creature, params *Parameters) {
 func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters) {
 	aliveCount := p.AliveCount()
 	for _, ri := range p.ReproductionQueue {
-		if aliveCount >= params.MaxPopulation {
+		if aliveCount >= params.Population.Max {
 			break
 		}
 		parent := ri.Creature
 		if !parent.Alive {
 			continue
 		}
-		if parent.Energy < params.ReproductionEnergyThreshold*parent.MaxEnergy(params) {
+		if parent.Energy < params.Reproduction.EnergyThreshold*parent.MaxEnergy(params) {
 			continue
 		}
 		if parent.Mass < parent.MaxMass*0.9 {
@@ -457,7 +457,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 			if !partner.Alive {
 				continue
 			}
-			if partner.Energy < params.ReproductionEnergyThreshold*partner.MaxEnergy(params) {
+			if partner.Energy < params.Reproduction.EnergyThreshold*partner.MaxEnergy(params) {
 				continue
 			}
 			if partner.Mass < partner.MaxMass*0.9 {
@@ -491,7 +491,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 			energyFromParent := parent.Energy * ratioA
 			energyFromPartner := partner.Energy * ratioB
 			energyToSplit := energyFromParent + energyFromPartner
-			energyTransferred := energyToSplit * params.ReproductionEfficiency
+			energyTransferred := energyToSplit * params.Reproduction.Efficiency
 
 			parent.Mass -= massFromParent
 			parent.DrainEnergy(energyFromParent)
@@ -520,7 +520,7 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		splitRatio := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
 		childMass := parent.Mass * splitRatio
 		energyToSplit := parent.Energy * splitRatio
-		energyTransferred := energyToSplit * params.ReproductionEfficiency
+		energyTransferred := energyToSplit * params.Reproduction.Efficiency
 		massRatio := parent.Mass / parent.MaxMass
 		if massRatio > 1.0 {
 			massRatio = 1.0
@@ -560,8 +560,8 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 // radiationMult returns the mutation multiplier for a creature at world x-coordinate x.
 // Returns RadiationMutationMultiplier when inside the radiation zone, 1.0 otherwise.
 func radiationMult(x float32, params *Parameters) float32 {
-	if float64(x) < params.RadiationZoneWidth*params.WorldWidth {
-		return params.RadiationMutationMultiplier
+	if float64(x) < params.Environment.Radiation.ZoneWidth*params.World.Width {
+		return params.Environment.Radiation.MutationMultiplier
 	}
 	return 1.0
 }

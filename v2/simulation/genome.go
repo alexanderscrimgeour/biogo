@@ -16,7 +16,7 @@ var genomeUIDSeq uint64
 
 const (
 	OSC_PERIOD = iota
-	SIGHT_DISTANCE
+	VISION_RADIUS
 	FIELD_OF_VIEW
 	RESPONSIVENESS
 	MUTATION_RATE
@@ -48,7 +48,7 @@ type Gene struct {
 // All data must be expressed via a byte
 type Genome struct {
 	OscPeriod         byte
-	SightDistance     byte
+	VisionRadius      byte
 	FieldOfView       byte
 	Responsiveness    byte
 	MutationRate      byte
@@ -86,7 +86,7 @@ func (g *Genome) recomputeBytes() {
 	}
 	b := g.bytes
 	b[0] = g.OscPeriod
-	b[1] = g.SightDistance
+	b[1] = g.VisionRadius
 	b[2] = g.FieldOfView
 	b[3] = g.Responsiveness
 	b[4] = g.MutationRate
@@ -118,7 +118,7 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
 	for _, gene := range g.Brain {
 		str += gene.String()
 	}
@@ -130,7 +130,7 @@ func (g Gene) BinaryString() string {
 }
 
 func (g Genome) BinaryString() string {
-	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
 	for _, gene := range g.Brain {
 		str += gene.BinaryString()
 	}
@@ -140,7 +140,7 @@ func (g Genome) BinaryString() string {
 func (g Genome) ToByteArray() []byte {
 	arr := make([]byte, 0, 17+len(g.Brain)*4)
 	arr = append(arr, g.OscPeriod)
-	arr = append(arr, g.SightDistance)
+	arr = append(arr, g.VisionRadius)
 	arr = append(arr, g.FieldOfView)
 	arr = append(arr, g.Responsiveness)
 	arr = append(arr, g.MutationRate)
@@ -170,7 +170,7 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.SightDistance, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
+	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
 	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
@@ -286,13 +286,13 @@ func MakeRandomGenome(p *Parameters, tier byte) *Genome {
 	maxBreadth := minBreadth + 63
 	cogBreadth := utils.LerpByte(minBreadth, maxBreadth, utils.MakeRandomByte())
 	// Scale SynapticDensity alongside tear
-	minDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, tier*64)
-	maxDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, (tier+1)*64-1)
+	minDensity := utils.LerpByte(p.Neurology.MinSynapticDensity, p.Neurology.MaxSynapticDensity, tier*64)
+	maxDensity := utils.LerpByte(p.Neurology.MinSynapticDensity, p.Neurology.MaxSynapticDensity, (tier+1)*64-1)
 	synDensity := utils.LerpByte(minDensity, maxDensity, utils.MakeRandomByte())
 
 	g := Genome{
 		OscPeriod:         utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		SightDistance:     utils.MakeRandomByte(),
+		VisionRadius:      utils.MakeRandomByte(),
 		FieldOfView:       utils.MakeRandomByte(),
 		Responsiveness:    utils.MakeRandomByte(),
 		MutationRate:      utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
@@ -357,10 +357,10 @@ func nudgeByte(val byte, strength int) byte {
 }
 
 // Mutate randomly mutates genes in the genome at a rate of p.BaseMutationRate * g.MutationRate * mutationMult.
-// Pass mutationMult=1.0 for normal reproduction; pass params.RadiationMutationMultiplier for irradiated parents.
+// Pass mutationMult=1.0 for normal reproduction; pass params.Environment.Radiation.MutationMultiplier for irradiated parents.
 func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, childGeneration float32) {
 	rateMultiplier := float32(g.MutationRate) / 128.0
-	mutationRate := p.BaseMutationRate * rateMultiplier * mutationMult
+	mutationRate := p.Neurology.BaseMutationRate * rateMultiplier * mutationMult
 
 	// Track parent dimentional limits so that we don't lose
 	// the pre-existing constructed brain on tier upgrades
@@ -377,7 +377,7 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, c
 
 	// Physical attribute mutation
 	mutateTarget(&g.OscPeriod, 0, 255, 15)
-	mutateTarget(&g.SightDistance, 0, 255, 10)
+	mutateTarget(&g.VisionRadius, 0, 255, 10)
 	mutateTarget(&g.FieldOfView, 0, 255, 10)
 	mutateTarget(&g.Responsiveness, 0, 255, 20)
 	mutateTarget(&g.MutationRate, 1, 255, 5)
@@ -411,8 +411,8 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, c
 	mutateTarget(&g.CognitiveBreadth, minTierBreadth, maxTierBreadth, 5)
 
 	// Force SynapticDensity bounds to slide up with the tier scaling
-	minDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, minTierBreadth)
-	maxDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, maxTierBreadth)
+	minDensity := utils.LerpByte(p.Neurology.MinSynapticDensity, p.Neurology.MaxSynapticDensity, minTierBreadth)
+	maxDensity := utils.LerpByte(p.Neurology.MinSynapticDensity, p.Neurology.MaxSynapticDensity, maxTierBreadth)
 	mutateTarget(&g.SynapticDensity, minDensity, maxDensity, 5)
 
 	allowedSensors := getAllowedSensorCount(g.CognitiveBreadth)
@@ -491,7 +491,7 @@ func pickGene(a, b Gene) Gene {
 func Crossover(g1, g2 *Genome, p *Parameters, mutationMult float32, childGeneration float32) *Genome {
 	child := &Genome{
 		OscPeriod:         pickByte(g1.OscPeriod, g2.OscPeriod),
-		SightDistance:     pickByte(g1.SightDistance, g2.SightDistance),
+		VisionRadius:      pickByte(g1.VisionRadius, g2.VisionRadius),
 		FieldOfView:       pickByte(g1.FieldOfView, g2.FieldOfView),
 		Responsiveness:    pickByte(g1.Responsiveness, g2.Responsiveness),
 		MutationRate:      pickByte(g1.MutationRate, g2.MutationRate),

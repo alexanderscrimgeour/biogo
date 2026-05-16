@@ -28,8 +28,8 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 		}
 	}
 
-	genomeNeuroplasticity := params.MinNeuroplasticity + float32(c.Genome.Neuroplasticity)/255.0*(params.MaxNeuroplasticity-params.MinNeuroplasticity)
-	learningThreshold := params.MinLearningThreshold + float32(c.Genome.LearningThreshold)/255.0*(params.MaxLearningThreshold-params.MinLearningThreshold)
+	genomeNeuroplasticity := params.Neurology.MinNeuroplasticity + float32(c.Genome.Neuroplasticity)/255.0*(params.Neurology.MaxNeuroplasticity-params.Neurology.MinNeuroplasticity)
+	learningThreshold := params.Neurology.MinLearningThreshold + float32(c.Genome.LearningThreshold)/255.0*(params.Neurology.MaxLearningThreshold-params.Neurology.MinLearningThreshold)
 
 	dopamineDelta := c.Dopamine - c.LastDopamine
 	surpriseFactor := float32(1.0) + absf32(dopamineDelta)

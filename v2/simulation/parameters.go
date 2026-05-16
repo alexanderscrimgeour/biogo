@@ -2,175 +2,201 @@ package simulation
 
 import (
 	"fmt"
-	"math"
 )
 
-type Parameters struct {
-	// World geometry
-	WorldWidth  float64
-	WorldHeight float64
+type WorldParameters struct {
+	Width              float64
+	Height             float64
+	CollisionRepulsion float64
+}
 
-	// Population
-	MaxPopulation      int
-	MinPopulation      int
-	StartingPopulation int
+type PopulationParameters struct {
+	Max     int
+	Min     int
+	Initial int
+}
 
-	// Genome constraints — byte ranges the genome is clamped to at birth and mutation
-	MinEnergy                byte // energy floor used in SATIATION sensor
-	MaxMass                  float64
-	MinSpawnCognitiveBreadth byte // brain gene count at birth
-	MaxSpawnCognitiveBreadth byte
-	MinCognitiveBreadth      byte // brain gene count bounds during mutation
-	MaxCognitiveBreadth      byte
-	MinSynapticDensity       byte
-	MaxSynapticDensity       byte
-	MinSightDistance         float64
-	MaxSightDistance         float64
-	MinFieldOfView           float64
-	MaxFieldOfView           float64
-	ResponseCurveKFactor     float32
+type SpawnParameters struct {
+	SavedGenomeProportion float64
+}
 
-	// Mutation
-	BaseMutationRate float32
+type FoodParameters struct {
+	Max                int
+	BaseMass           float32
+	SpawnInterval      int
+	FountainCount      int
+	FountainDriftSpeed float64
+	FountainRadius     float64
+	RandomFraction     float64
+}
 
-	// Age / lifecycle
-	BaseMaxAge        int
+type CreatureParameters struct {
+	BaseMaxAge        float64
+	BaseBiteSize      float64
+	BaseMaxForce      float64
 	MinJuvenilePeriod int
 	MaxJuvenilePeriod int
+	MinMass           float64
+	MaxMass           float64
+	MinVisionRadius   float64
+	MaxVisionRadius   float64
+	MinFieldOfView    float64
+	MaxFieldOfView    float64
+}
 
-	// Food system
-	MaxFood               int
-	FoodSpawnInterval     int
-	FoodMass              float32 // mass of each food item consumed
-	FoodInteractionRadius float64
-
-	// Gaussian fountain spawning
-	FountainCount      int     // number of drifting spawn points
-	FountainDriftSpeed float64 // world units per tick each fountain moves
-	FountainRadius     float64 // Gaussian sigma for food placement around a fountain
-	FoodRandomFraction float64 // fraction of spawned food placed uniformly at random [0,1]
-
-	// Stomach / digestion
-	MinStomachSize float64 // stomach capacity at StomachSize gene = 0
-	MaxStomachSize float64 // stomach capacity at StomachSize gene = 255
-	DigestionRate  float64 // stomach mass converted to energy per tick
-
-	// Energy / metabolism
-	BaseBMR                float32 // basal metabolic rate at MaxMass (Kleiber-scaled down for smaller mass)
-	EnergyPerMassUnit      float32 // MaxEnergy = currentMass * EnergyPerMassUnit
-	MoveCost               float32
-	MaxSpeedPerStep        float64
-	SpeedDamping           float64 // fraction of speed retained each tick (drag/friction coefficient)
-	MaxRotationPerStep     float64
-	MaxGrowthRatePerTick   float32 // peak mass units gained per tick (von Bertalanffy)
-	GrowthEnergyCostFactor float32
-
-	// Reproduction
-	ReproductionEnergyThreshold float32
-	ReproductionEfficiency      float32 // energy cost = offspringMass * EnergyPerMassUnit * Efficiency
-	MatingRadius                float64 // max distance between two creatures for sexual mating to occur
-	MinMatingSimilarity         float32 // minimum GenomeSimilarity [0,1] required for a pair to mate
-
-	// Predation
-	BaseBiteSize          float64 // mass consumed per eating interaction for a max-mass creature; scales linearly with body mass
-	CorpseDecayRate       float32
-	MinPredationMassRatio float32 // attacker must be >= this fraction of prey mass to initiate an attack
-	AttackEnergyCost      float32 // energy drained from attacker per successful bite on a live creature
-
+type NeurologyParameters struct {
+	MinEnergy            byte
+	MinCognitiveBreadth  byte
+	MaxCognitiveBreadth  byte
+	MinSynapticDensity   byte
+	MaxSynapticDensity   byte
+	BaseMutationRate     float32
+	ResponseCurveKFactor float32
 	// Learning
-	MinNeuroplasticity   float32 // learning rate at Neuroplasticity gene = 0
-	MaxNeuroplasticity   float32 // learning rate at Neuroplasticity gene = 255
-	MinLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 0
-	MaxLearningThreshold float32 // minimum dopamine-correlation signal at LearningThreshold gene = 255
+	MinNeuroplasticity   float32
+	MaxNeuroplasticity   float32
+	MinLearningThreshold float32
+	MaxLearningThreshold float32
+}
 
-	// Temperature effects
-	ColdMetabolicMultiplier float32 // metabolic cost multiplier at TempCold (10°C)
-	WarmMetabolicMultiplier float32 // metabolic cost multiplier at TempWarm (40°C)
-	ColdSpeedMultiplier     float32 // fraction of max move speed at TempCold (10°C); 1.0 at TempWarm
+type MetabolismParameters struct {
+	MinStomachSize         float64
+	MaxStomachSize         float64
+	DigestionRate          float64
+	BaseBMR                float32
+	EnergyPerMassUnit      float32
+	MoveCost               float32
+	SpeedDamping           float64
+	MaxGrowthRatePerTick   float32
+	GrowthEnergyCostFactor float32
+}
 
-	// Radiation zone (left strip of the world)
-	RadiationZoneWidth          float64 // fraction of world width that is radioactive [0, 1]
-	RadiationMutationMultiplier float32 // multiplier applied to offspring mutation rate when parent is in zone
-	RadiationDamagePerTick      float32 // base energy drained per tick (Kleiber-scaled) while in zone
+type ReproductionParameters struct {
+	EnergyThreshold float32
+	Efficiency      float32
+	MatingRadius    float64
+	MinSimilarity   float32
+}
 
-	// Collisions
-	CollisionRepulsion float64 // fraction of overlap resolved per tick [0, 1]; 0 = disabled
+type PredationParameters struct {
+	AttackEnergyCost float32
+}
 
-	// Generation tier thresholds
-	Tier1Generation int // generation at which tier 1 begins
-	Tier2Generation int // generation at which tier 2 begins
-	Tier3Generation int // generation at which tier 3 begins
-	Tier4Generation int // generation at which tier 4 begins
+type RadiationParameters struct {
+	ZoneWidth          float64
+	MutationMultiplier float32
+	DamagePerTick      float32
+}
 
-	// Misc
-	SavedGenomeProportion  float64
-	PopulationSensorRadius float64
+type EnvironmentParameters struct {
+	ColdMetabolicMultiplier float32
+	WarmMetabolicMultiplier float32
+	ColdSpeedMultiplier     float32
+	Radiation               RadiationParameters
+}
+
+type EvolutionParameters struct {
+	Tier2Generation int
+	Tier3Generation int
+	Tier4Generation int
+}
+
+type Parameters struct {
+	World        WorldParameters
+	Population   PopulationParameters
+	Food         FoodParameters
+	Creature     CreatureParameters
+	Neurology    NeurologyParameters
+	Metabolism   MetabolismParameters
+	Reproduction ReproductionParameters
+	Predation    PredationParameters
+	Environment  EnvironmentParameters
+	Evolution    EvolutionParameters
+	Spawn        SpawnParameters
 }
 
 func DefaultParams() *Parameters {
 	p := &Parameters{
-		WorldWidth:                  15000,
-		WorldHeight:                 15000,
-		MaxPopulation:               35000,
-		MinPopulation:               500,
-		StartingPopulation:          1000,
-		MinEnergy:                   2,
-		MaxMass:                     750,
-		MinSpawnCognitiveBreadth:    15,
-		MaxSpawnCognitiveBreadth:    70,
-		MinCognitiveBreadth:         0,
-		MaxCognitiveBreadth:         0,
-		MinSynapticDensity:          10,
-		MaxSynapticDensity:          100,
-		MinSightDistance:            50,
-		MaxSightDistance:            250,
-		MinFieldOfView:              10,
-		MaxFieldOfView:              180,
-		ResponseCurveKFactor:        2,
-		BaseMutationRate:            0.005,
-		BaseMaxAge:                  25000,
-		MinJuvenilePeriod:           300,
-		MaxJuvenilePeriod:           1000,
-		MaxFood:                     100000,
-		FoodSpawnInterval:           10,
-		FoodMass:                    25.0,
-		FountainCount:               20,
-		FountainDriftSpeed:          10,
-		FountainRadius:              400.0,
-		FoodRandomFraction:          0.05,
-		DigestionRate:               0.2,
-		BaseBMR:                     0.05,
-		EnergyPerMassUnit:           1.0,
-		MoveCost:                    0.05,
-		MaxSpeedPerStep:             10.0,
-		SpeedDamping:                0.85,
-		MaxRotationPerStep:          math.Pi / 4,
-		MaxGrowthRatePerTick:        1.0,
-		GrowthEnergyCostFactor:      0.2,
-		ReproductionEnergyThreshold: 0.85,
-		ReproductionEfficiency:      0.9,
-		MatingRadius:                16.0,
-		MinMatingSimilarity:         0.75,
-		BaseBiteSize:                100.0,
-		CorpseDecayRate:             0.05,
-		MinPredationMassRatio:       0.25,
-		AttackEnergyCost:            1.0,
-		MinNeuroplasticity:          0.0005,
-		MaxNeuroplasticity:          0.001,
-		MinLearningThreshold:        0.05,
-		MaxLearningThreshold:        0.5,
-		ColdMetabolicMultiplier:     5,
-		WarmMetabolicMultiplier:     0.8,
-		ColdSpeedMultiplier:         0.4,
-		RadiationZoneWidth:          0.2,
-		RadiationMutationMultiplier: 25.0,
-		RadiationDamagePerTick:      0.1,
-		CollisionRepulsion:          0.5,
-		SavedGenomeProportion:       0.05,
-		Tier1Generation:             0,
-		Tier2Generation:             2,
-		Tier3Generation:             10,
-		Tier4Generation:             50,
+		World: WorldParameters{
+			Width:              15000,
+			Height:             15000,
+			CollisionRepulsion: 0.5,
+		},
+		Population: PopulationParameters{
+			Max:     35000,
+			Min:     500,
+			Initial: 1000,
+		},
+		Food: FoodParameters{
+			Max:                100000,
+			BaseMass:           25.0,
+			SpawnInterval:      10,
+			FountainCount:      20,
+			FountainDriftSpeed: 10,
+			FountainRadius:     400.0,
+			RandomFraction:     0.05,
+		},
+		Creature: CreatureParameters{
+			BaseMaxForce:      2.5,
+			BaseMaxAge:        25000,
+			BaseBiteSize:      100.0,
+			MinJuvenilePeriod: 300,
+			MaxJuvenilePeriod: 1000,
+			MinMass:           3,
+			MaxMass:           750,
+			MinVisionRadius:   50,
+			MaxVisionRadius:   250,
+			MinFieldOfView:    10,
+			MaxFieldOfView:    180,
+		},
+		Neurology: NeurologyParameters{
+			MinCognitiveBreadth:  0,
+			MaxCognitiveBreadth:  0,
+			MinSynapticDensity:   10,
+			MaxSynapticDensity:   100,
+			BaseMutationRate:     0.005,
+			ResponseCurveKFactor: 2,
+			MinNeuroplasticity:   0.0005,
+			MaxNeuroplasticity:   0.001,
+			MinLearningThreshold: 0.05,
+			MaxLearningThreshold: 0.5,
+		},
+		Metabolism: MetabolismParameters{
+			DigestionRate:          0.2,
+			BaseBMR:                0.05,
+			EnergyPerMassUnit:      1.0,
+			MoveCost:               0.01,
+			SpeedDamping:           0.85,
+			MaxGrowthRatePerTick:   1.0,
+			GrowthEnergyCostFactor: 0.2,
+		},
+		Reproduction: ReproductionParameters{
+			EnergyThreshold: 0.85,
+			Efficiency:      0.9,
+			MatingRadius:    16.0,
+			MinSimilarity:   0.75,
+		},
+		Predation: PredationParameters{
+			AttackEnergyCost: 1.0,
+		},
+		Environment: EnvironmentParameters{
+			ColdMetabolicMultiplier: 0.8,
+			WarmMetabolicMultiplier: 4.0,
+			ColdSpeedMultiplier:     0.4,
+			Radiation: RadiationParameters{
+				ZoneWidth:          0.2,
+				MutationMultiplier: 25.0,
+				DamagePerTick:      0.1,
+			},
+		},
+		Evolution: EvolutionParameters{
+			Tier2Generation: 3,
+			Tier3Generation: 10,
+			Tier4Generation: 50,
+		},
+		Spawn: SpawnParameters{
+			SavedGenomeProportion: 0.05,
+		},
 	}
 	if err := p.Validate(); err != nil {
 		panic(err)
@@ -179,24 +205,24 @@ func DefaultParams() *Parameters {
 }
 
 func (p *Parameters) Validate() error {
-	if p.MinPopulation > p.StartingPopulation {
-		return fmt.Errorf("MinPopulation (%d) > StartingPopulation (%d)", p.MinPopulation, p.StartingPopulation)
+	if p.Population.Min > p.Population.Initial {
+		return fmt.Errorf("MinPopulation (%d) > StartingPopulation (%d)", p.Population.Min, p.Population.Initial)
 	}
-	if p.StartingPopulation > p.MaxPopulation {
-		return fmt.Errorf("StartingPopulation (%d) > MaxPopulation (%d)", p.StartingPopulation, p.MaxPopulation)
+	if p.Population.Initial > p.Population.Max {
+		return fmt.Errorf("StartingPopulation (%d) > MaxPopulation (%d)", p.Population.Initial, p.Population.Max)
 	}
-	if p.BaseBMR < 0 {
-		return fmt.Errorf("BaseBMR (%v) must be >= 0", p.BaseBMR)
+	if p.Metabolism.BaseBMR < 0 {
+		return fmt.Errorf("BaseBMR (%v) must be >= 0", p.Metabolism.BaseBMR)
 	}
-	if p.EnergyPerMassUnit <= 0 {
-		return fmt.Errorf("EnergyPerMassUnit (%v) must be > 0", p.EnergyPerMassUnit)
+	if p.Metabolism.EnergyPerMassUnit <= 0 {
+		return fmt.Errorf("EnergyPerMassUnit (%v) must be > 0", p.Metabolism.EnergyPerMassUnit)
 	}
 
-	if p.ReproductionEnergyThreshold <= 0 || p.ReproductionEnergyThreshold > 1 {
-		return fmt.Errorf("ReproductionEnergyThreshold (%v) must be in (0, 1]", p.ReproductionEnergyThreshold)
+	if p.Reproduction.EnergyThreshold <= 0 || p.Reproduction.EnergyThreshold > 1 {
+		return fmt.Errorf("ReproductionEnergyThreshold (%v) must be in (0, 1]", p.Reproduction.EnergyThreshold)
 	}
-	if p.ReproductionEfficiency <= 0 || p.ReproductionEfficiency > 2 {
-		return fmt.Errorf("ReproductionEfficiency (%v) must be in (0, 2]", p.ReproductionEfficiency)
+	if p.Reproduction.Efficiency <= 0 || p.Reproduction.Efficiency > 2 {
+		return fmt.Errorf("ReproductionEfficiency (%v) must be in (0, 2]", p.Reproduction.Efficiency)
 	}
 
 	type rangePair struct {
@@ -205,12 +231,11 @@ func (p *Parameters) Validate() error {
 	}
 
 	ranges := []rangePair{
-		{float64(p.MinJuvenilePeriod), float64(p.MaxJuvenilePeriod), "JuvenilePeriod"},
-		{p.MinSightDistance, p.MaxSightDistance, "SightDistance"},
-		{p.MinFieldOfView, p.MaxFieldOfView, "FieldOfView"},
-		{float64(p.MinSpawnCognitiveBreadth), float64(p.MaxSpawnCognitiveBreadth), "SpawnCognitiveBreadth"},
-		{float64(p.MinCognitiveBreadth), float64(p.MaxCognitiveBreadth), "CognitiveBreadth"},
-		{float64(p.MinSynapticDensity), float64(p.MaxSynapticDensity), "SynapticDensity"},
+		{float64(p.Creature.MinJuvenilePeriod), float64(p.Creature.MaxJuvenilePeriod), "JuvenilePeriod"},
+		{p.Creature.MinVisionRadius, p.Creature.MaxVisionRadius, "VisionRadius"},
+		{p.Creature.MinFieldOfView, p.Creature.MaxFieldOfView, "FieldOfView"},
+		{float64(p.Neurology.MinCognitiveBreadth), float64(p.Neurology.MaxCognitiveBreadth), "CognitiveBreadth"},
+		{float64(p.Neurology.MinSynapticDensity), float64(p.Neurology.MaxSynapticDensity), "SynapticDensity"},
 	}
 
 	for _, pair := range ranges {

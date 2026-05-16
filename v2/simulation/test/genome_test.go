@@ -10,7 +10,7 @@ func defaultParams() *simulation.Parameters {
 }
 
 func TestMakeRandomGene(t *testing.T) {
-	gene := simulation.MakeRandomGene()
+	gene := simulation.MakeRandomGene(simulation.SENSOR_COUNT, simulation.ACTION_COUNT, 10)
 	if gene.SourceType > 1 {
 		t.Errorf("SourceType must be 0 or 1, got %d", gene.SourceType)
 	}
@@ -22,7 +22,7 @@ func TestMakeRandomGene(t *testing.T) {
 
 func TestMakeRandomGenome(t *testing.T) {
 	p := defaultParams()
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	if g == nil {
 		t.Fatal("MakeRandomGenome returned nil")
 	}
@@ -36,7 +36,7 @@ func TestMakeRandomGenome(t *testing.T) {
 
 func TestGenomeCopy(t *testing.T) {
 	p := defaultParams()
-	original := simulation.MakeRandomGenome(p)
+	original := simulation.MakeRandomGenome(p, 0)
 	copy := original.Copy()
 
 	if copy == original {
@@ -51,7 +51,7 @@ func TestGenomeCopy(t *testing.T) {
 }
 
 func TestGeneCopy(t *testing.T) {
-	gene := simulation.MakeRandomGene()
+	gene := simulation.MakeRandomGene(simulation.SENSOR_COUNT, simulation.ACTION_COUNT, 10)
 	cp := gene.Copy()
 	if cp != gene {
 		t.Error("Gene.Copy should return an identical value")
@@ -64,9 +64,9 @@ func TestGeneCopy(t *testing.T) {
 func TestMutateChangesGenome(t *testing.T) {
 	p := defaultParams()
 	p.BaseMutationRate = 1.0 // force mutation on every gene
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	original := g.String()
-	simulation.Mutate(g, p, false, 1.0)
+	simulation.Mutate(g, p, false, 1.0, 0)
 	// With 100% mutation rate, genome string very likely changes
 	if g.String() == original {
 		t.Log("Mutate did not change the genome (probabilistic, rare)")
@@ -75,8 +75,8 @@ func TestMutateChangesGenome(t *testing.T) {
 
 func TestAsexualReproduction(t *testing.T) {
 	p := defaultParams()
-	parent := simulation.MakeRandomGenome(p)
-	child := simulation.AsexualReproduction(parent, p, 1.0)
+	parent := simulation.MakeRandomGenome(p, 0)
+	child := simulation.AsexualReproduction(parent, p, 1.0, 0)
 	if child == parent {
 		t.Error("AsexualReproduction should return a new genome pointer")
 	}
@@ -87,14 +87,14 @@ func TestAsexualReproduction(t *testing.T) {
 
 func TestGenomeSimilarity(t *testing.T) {
 	p := defaultParams()
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	identical := g.Copy()
 	sim := simulation.GenomeSimilarity(g, identical)
 	if sim < 0.99 {
 		t.Errorf("identical genomes similarity = %f, want ~1.0", sim)
 	}
 
-	other := simulation.MakeRandomGenome(p)
+	other := simulation.MakeRandomGenome(p, 0)
 	sim2 := simulation.GenomeSimilarity(g, other)
 	if sim2 < 0 || sim2 > 1 {
 		t.Errorf("GenomeSimilarity out of [0,1]: %f", sim2)
@@ -105,7 +105,7 @@ func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 	p := defaultParams()
 	p.MaxMass = 50
 	for i := 0; i < 100; i++ {
-		g := simulation.MakeRandomGenome(p)
+		g := simulation.MakeRandomGenome(p, 0)
 		if g.Mass < 3 || float64(g.Mass) > p.MaxMass {
 			t.Errorf("Mass %d outside [3, %g]", g.Mass, p.MaxMass)
 		}
@@ -122,8 +122,8 @@ func TestMutatePreservesMinMassConstraint(t *testing.T) {
 	p := defaultParams()
 	p.BaseMutationRate = 1.0 // force mutations on every gene
 	for i := 0; i < 200; i++ {
-		g := simulation.MakeRandomGenome(p)
-		simulation.Mutate(g, p, false, 1.0)
+		g := simulation.MakeRandomGenome(p, 0)
+		simulation.Mutate(g, p, false, 1.0, 0)
 		if float32(g.MinMass)*2 >= float32(g.Mass) {
 			t.Fatalf("Mutate violated MinMass constraint: MinMass=%d, Mass=%d", g.MinMass, g.Mass)
 		}
@@ -132,7 +132,7 @@ func TestMutatePreservesMinMassConstraint(t *testing.T) {
 
 func TestGenomeToByteArray(t *testing.T) {
 	p := defaultParams()
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	arr := g.ToByteArray()
 	if len(arr) == 0 {
 		t.Error("ToByteArray should not be empty")
@@ -141,7 +141,7 @@ func TestGenomeToByteArray(t *testing.T) {
 
 func TestGenomeString(t *testing.T) {
 	p := defaultParams()
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	s := g.String()
 	if len(s) == 0 {
 		t.Error("Genome.String() should not be empty")
@@ -151,7 +151,7 @@ func TestGenomeString(t *testing.T) {
 func TestMakeRandomGenomeMutationRateNonZero(t *testing.T) {
 	p := defaultParams()
 	for i := 0; i < 1000; i++ {
-		g := simulation.MakeRandomGenome(p)
+		g := simulation.MakeRandomGenome(p, 0)
 		if g.MutationRate == 0 {
 			t.Fatalf("MakeRandomGenome produced MutationRate=0 on iteration %d", i)
 		}
@@ -162,8 +162,8 @@ func TestMutateNeverZeroMutationRate(t *testing.T) {
 	p := defaultParams()
 	p.BaseMutationRate = 1.0
 	for i := 0; i < 1000; i++ {
-		g := simulation.MakeRandomGenome(p)
-		simulation.Mutate(g, p, false, 1.0)
+		g := simulation.MakeRandomGenome(p, 0)
+		simulation.Mutate(g, p, false, 1.0, 0)
 		if g.MutationRate == 0 {
 			t.Fatalf("Mutate produced MutationRate=0 on iteration %d", i)
 		}

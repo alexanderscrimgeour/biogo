@@ -8,7 +8,7 @@ import (
 
 func TestCreateNeuralNetworkFromGenome(t *testing.T) {
 	p := defaultParams()
-	genome := simulation.MakeRandomGenome(p)
+	genome := simulation.MakeRandomGenome(p, 0)
 	nnet := simulation.CreateNeuralNetworkFromGenome(genome.Brain, genome.CognitiveBreadth)
 	if nnet == nil {
 		t.Fatal("CreateNeuralNetworkFromGenome returned nil")
@@ -17,7 +17,7 @@ func TestCreateNeuralNetworkFromGenome(t *testing.T) {
 
 func TestNeuralNetworkEdgesAreValid(t *testing.T) {
 	p := defaultParams()
-	genome := simulation.MakeRandomGenome(p)
+	genome := simulation.MakeRandomGenome(p, 0)
 	nnet := simulation.CreateNeuralNetworkFromGenome(genome.Brain, genome.CognitiveBreadth)
 
 	for _, edge := range nnet.Edges {
@@ -39,7 +39,7 @@ func TestCreateInitialNeuronOutput(t *testing.T) {
 
 func TestNewCreature(t *testing.T) {
 	p := defaultParams()
-	genome := simulation.MakeRandomGenome(p)
+	genome := simulation.MakeRandomGenome(p, 0)
 	loc := grid.Position{X: 5, Y: 5}
 	c := simulation.NewCreature(1, loc, genome, p)
 	if c == nil {
