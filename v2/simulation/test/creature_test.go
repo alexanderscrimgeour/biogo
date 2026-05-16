@@ -3,33 +3,34 @@ package test
 import (
 	grid "biogo/v2/world"
 	"biogo/v2/simulation"
+	"math"
 	"testing"
 )
 
 func TestCurrentMassAtBirth(t *testing.T) {
 	params := defaultParams()
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 200
 	genome.MinMass = 10
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 	got := c.CurrentMass()
-	want := float64(genome.MinMass)
-	if got != want {
+	want := simulation.MapGeneToRange(genome.MinMass, 3, params.MaxMass)
+	if math.Abs(got-want) > 0.001 {
 		t.Errorf("CurrentMass at age 0: got %f, want %f", got, want)
 	}
 }
 
 func TestCurrentMassAtAdulthood(t *testing.T) {
 	params := defaultParams()
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 200
 
 	c := simulation.NewAdultCreature(1, grid.Position{}, genome, params)
 
 	got := c.CurrentMass()
-	want := float64(genome.Mass)
-	if got != want {
+	want := simulation.MapGeneToRange(genome.Mass, 3, params.MaxMass)
+	if math.Abs(got-want) > 0.001 {
 		t.Errorf("CurrentMass at adulthood: got %f, want %f", got, want)
 	}
 }
@@ -39,7 +40,7 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 	params.MinJuvenilePeriod = 100
 	params.MaxJuvenilePeriod = 100
 
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.Mass = 100
 	genome.MinMass = 10
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
@@ -51,20 +52,21 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 		c.GrowMass(params)
 	}
 
+	adultMass := simulation.MapGeneToRange(genome.Mass, 3, params.MaxMass)
 	midMass := c.CurrentMass()
 	if midMass <= startMass {
 		t.Errorf("mass should grow after 50 ticks: start=%f mid=%f", startMass, midMass)
 	}
-	if midMass >= float64(genome.Mass) {
-		t.Errorf("should not reach adult mass in 50 ticks: mass=%f adult=%d", midMass, genome.Mass)
+	if midMass >= adultMass {
+		t.Errorf("should not reach adult mass in 50 ticks: mass=%f adult=%f", midMass, adultMass)
 	}
 
 	for i := 0; i < 5000; i++ {
 		c.GrowMass(params)
 	}
 	finalMass := c.CurrentMass()
-	if finalMass > float64(genome.Mass) {
-		t.Errorf("mass should never exceed genome.Mass: got %f, max %d", finalMass, genome.Mass)
+	if finalMass > adultMass {
+		t.Errorf("mass should never exceed mapped adult mass: got %f, max %f", finalMass, adultMass)
 	}
 }
 
@@ -73,7 +75,7 @@ func TestIsJuvenileBlocksBeforeAdulthood(t *testing.T) {
 	params.MinJuvenilePeriod = 100
 	params.MaxJuvenilePeriod = 100
 
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
@@ -93,7 +95,7 @@ func TestIsJuvenileZeroPeriod(t *testing.T) {
 	params.MinJuvenilePeriod = 0
 	params.MaxJuvenilePeriod = 0
 
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 
 	c.Age = 0
@@ -107,7 +109,7 @@ func TestMetabolicRateScalesWithMass(t *testing.T) {
 	params := defaultParams()
 	params.BaseBMR = 1.0
 
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 	genome.MetabolicRate = 127
 
 	small := simulation.NewCreature(1, grid.Position{}, genome, params)
@@ -126,16 +128,18 @@ func TestMetabolicRateScalesWithMass(t *testing.T) {
 
 func TestCurrentMassNeverExceedsGenomeMass(t *testing.T) {
 	params := defaultParams()
-	genome := simulation.MakeRandomGenome(params)
+	genome := simulation.MakeRandomGenome(params, 0)
 
+	maxMass := simulation.MapGeneToRange(genome.Mass, 3, params.MaxMass)
+	minMass := simulation.MapGeneToRange(genome.MinMass, 3, params.MaxMass)
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 	for tick := 0; tick <= params.MaxJuvenilePeriod+10; tick++ {
 		s := c.CurrentMass()
-		if s > float64(genome.Mass) {
-			t.Errorf("CurrentMass %f exceeds genome.Mass %d at tick %d", s, genome.Mass, tick)
+		if s > maxMass+0.001 {
+			t.Errorf("CurrentMass %f exceeds max mass %f at tick %d", s, maxMass, tick)
 		}
-		if s < float64(genome.MinMass) {
-			t.Errorf("CurrentMass %f below genome.MinMass %d at tick %d", s, genome.MinMass, tick)
+		if s < minMass-0.001 {
+			t.Errorf("CurrentMass %f below min mass %f at tick %d", s, minMass, tick)
 		}
 		c.GrowMass(params)
 	}

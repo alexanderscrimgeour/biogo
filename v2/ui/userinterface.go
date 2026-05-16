@@ -64,7 +64,8 @@ type UserInterface struct {
 	saveNameFocused  bool
 	saveCreatureID   int
 
-	foodDropdown *FoodDropdown
+	foodDropdown    *Dropdown
+	climateDropdown *Dropdown
 
 	// references so buttons can trigger game-level actions
 	onSaveCreature func() error
@@ -137,6 +138,7 @@ func NewUserInterface(
 	}
 
 	foodBtn := &components.Button{W: 60, H: 24, Label: "Food", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	climateBtn := &components.Button{W: 80, H: 24, Label: "Climate", Color: components.ColorDefault, LabelColor: color.White, Font: font}
 
 	mb := &components.MenuBar{
 		H:       menuBarH,
@@ -152,10 +154,14 @@ func NewUserInterface(
 	mb.AddButton(spawnSavedBtn)
 	mb.AddButton(tierBtn)
 	mb.AddButton(foodBtn)
+	mb.AddButton(climateBtn)
 	ui.menuBar = mb
 
 	ui.foodDropdown = newFoodDropdown(font, foodBtn, sim)
 	foodBtn.OnClick = func() { ui.foodDropdown.Toggle() }
+
+	ui.climateDropdown = newClimateDropdown(font, climateBtn, sim)
+	climateBtn.OnClick = func() { ui.climateDropdown.Toggle() }
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
 	ui.leftStack = &LeftPanelStack{
@@ -193,7 +199,8 @@ func NewUserInterface(
 
 // AnySliderDragging reports whether any non-menubar slider is currently being dragged.
 func (ui *UserInterface) AnySliderDragging() bool {
-	return ui.foodDropdown != nil && ui.foodDropdown.AnySliderDragging()
+	return (ui.foodDropdown != nil && ui.foodDropdown.AnyDragging()) ||
+		(ui.climateDropdown != nil && ui.climateDropdown.AnyDragging())
 }
 
 // HandleClick processes a mouse-down event; returns true if consumed.
@@ -202,6 +209,9 @@ func (ui *UserInterface) HandleClick(mx, my int) bool {
 		return true
 	}
 	if ui.foodDropdown != nil && ui.foodDropdown.HandleClick(mx, my) {
+		return true
+	}
+	if ui.climateDropdown != nil && ui.climateDropdown.HandleClick(mx, my) {
 		return true
 	}
 	// Save name input field
@@ -232,10 +242,16 @@ func (ui *UserInterface) HandleContinuousInput() {
 		if ui.foodDropdown != nil {
 			ui.foodDropdown.HandleDrag(mx)
 		}
+		if ui.climateDropdown != nil {
+			ui.climateDropdown.HandleDrag(mx)
+		}
 	} else {
 		ui.menuBar.HandleRelease()
 		if ui.foodDropdown != nil {
 			ui.foodDropdown.HandleRelease()
+		}
+		if ui.climateDropdown != nil {
+			ui.climateDropdown.HandleRelease()
 		}
 	}
 }
@@ -288,7 +304,10 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 
 	ui.menuBar.Draw(screen)
 	if ui.foodDropdown != nil {
-		ui.foodDropdown.Draw(screen, ui.font)
+		ui.foodDropdown.Draw(screen)
+	}
+	if ui.climateDropdown != nil {
+		ui.climateDropdown.Draw(screen)
 	}
 	ui.leftStack.Draw(screen)
 
@@ -446,7 +465,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 
 	// Sight
 	p.Add(&components.Label{
-		Text:  fmt.Sprintf("Sight: %.f  FOV: %.f°", d.SightDistance, d.FieldOfView),
+		Text:  fmt.Sprintf("Sight: %.f  FOV: %.f°", d.VisionRadius, d.FieldOfView),
 		Font:  ui.font,
 		Color: color.White,
 	})
@@ -553,7 +572,7 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 	}
 	traits := []trait{
 		{"OscPeriod", g.OscPeriod},
-		{"SightDistance", g.SightDistance},
+		{"VisionRadius", g.VisionRadius},
 		{"FieldOfView", g.FieldOfView},
 		{"Responsiveness", g.Responsiveness},
 		{"MutationRate", g.MutationRate},

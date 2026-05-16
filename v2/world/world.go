@@ -56,7 +56,7 @@ type World struct {
 	fountainAngles []float64
 }
 
-func NewWorld(width, height float64, _ int) *World {
+func NewWorld(width, height float64, wallType int) *World {
 	const initialCapacity = 25000
 	const creatureCapacity = 20000
 	const cellSize = 150.0
@@ -73,6 +73,14 @@ func NewWorld(width, height float64, _ int) *World {
 		foodType:        make([]uint8, 0, initialCapacity),
 		freeFoodIDs:     make([]int, 0, 100),
 		foodHash:        newSpatialHash(width, height, cellSize),
+	}
+	if wallType == 1 {
+		const thickness = 10.0
+		cx, cy := width/2-thickness/2, height/2-thickness/2
+		w.Walls = []Wall{
+			{X: 0, Y: cy, W: width, H: thickness},
+			{X: cx, Y: 0, W: thickness, H: height},
+		}
 	}
 	return w
 }

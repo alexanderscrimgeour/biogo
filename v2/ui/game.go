@@ -38,6 +38,8 @@ type SimulationState interface {
 	SetMaxFood(n int)
 	SetFountainDriftSpeed(v float64)
 	SetFountainRadius(v float64)
+	SetColdMetabolicMultiplier(v float32)
+	SetWarmMetabolicMultiplier(v float32)
 	SpawnAt(x, y float64) bool
 	SpawnClusterAt(x, y float64, count int) bool
 	SpawnGenome(g *simulation.Genome, generation float32) bool

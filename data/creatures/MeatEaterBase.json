@@ -1,0 +1,112 @@
+{
+  "osc_period": 4,
+  "sight_distance": 204,
+  "field_of_view": 203,
+  "responsiveness": 60,
+  "mutation_rate": 233,
+  "mass": 127,
+  "min_mass": 9,
+  "reproduction_type": 1,
+  "neuron_count": 64,
+  "brain_length": 13,
+  "juvenile_period": 178,
+  "metabolic_rate": 46,
+  "stomach_size": 220,
+  "learning_rate": 72,
+  "learning_threshold": 149,
+  "mass_split_ratio": 55,
+  "brain": [
+    {
+      "source_type": 1,
+      "source_id": 3,
+      "sink_type": 0,
+      "sink_id": 20,
+      "weight": 254
+    },
+    {
+      "source_type": 0,
+      "source_id": 26,
+      "sink_type": 0,
+      "sink_id": 20,
+      "weight": 211
+    },
+    {
+      "source_type": 0,
+      "source_id": 1,
+      "sink_type": 0,
+      "sink_id": 28,
+      "weight": 151
+    },
+    {
+      "source_type": 1,
+      "source_id": 1,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 88
+    },
+    {
+      "source_type": 1,
+      "source_id": 2,
+      "sink_type": 0,
+      "sink_id": 2,
+      "weight": 217
+    },
+    {
+      "source_type": 1,
+      "source_id": 0,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 147
+    },
+    {
+      "source_type": 1,
+      "source_id": 2,
+      "sink_type": 0,
+      "sink_id": 11,
+      "weight": 190
+    },
+    {
+      "source_type": 0,
+      "source_id": 15,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 66
+    },
+    {
+      "source_type": 1,
+      "source_id": 4,
+      "sink_type": 2,
+      "sink_id": 1,
+      "weight": 206
+    },
+    {
+      "source_type": 0,
+      "source_id": 34,
+      "sink_type": 0,
+      "sink_id": 2,
+      "weight": 16
+    },
+    {
+      "source_type": 1,
+      "source_id": 0,
+      "sink_type": 0,
+      "sink_id": 35,
+      "weight": 125
+    },
+    {
+      "source_type": 1,
+      "source_id": 4,
+      "sink_type": 0,
+      "sink_id": 7,
+      "weight": 12
+    },
+    {
+      "source_type": 1,
+      "source_id": 1,
+      "sink_type": 0,
+      "sink_id": 20,
+      "weight": 206
+    }
+  ],
+  "generation": 1.677494
+}

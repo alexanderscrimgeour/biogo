@@ -62,8 +62,8 @@ func makeTraitDefs() []traitDef {
 		},
 		{
 			label: "Sight Dist",
-			get:   func(g *simulation.Genome) byte { return g.SightDistance },
-			set:   func(g *simulation.Genome, v byte) { g.SightDistance = v },
+			get:   func(g *simulation.Genome) byte { return g.VisionRadius },
+			set:   func(g *simulation.Genome, v byte) { g.VisionRadius = v },
 			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return 0 },
 			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return 255 },
 		},
@@ -129,15 +129,13 @@ func makeTraitDefs() []traitDef {
 			label: "Neuron Count",
 			get:   func(g *simulation.Genome) byte { return g.CognitiveBreadth },
 			set:   func(g *simulation.Genome, v byte) { g.CognitiveBreadth = v },
-			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinSpawnCognitiveBreadth },
-			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxSpawnCognitiveBreadth },
 		},
 		{
 			label: "Brain Length",
 			get:   func(g *simulation.Genome) byte { return g.SynapticDensity },
 			set:   func(g *simulation.Genome, v byte) { g.SynapticDensity = v },
-			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MinSynapticDensity },
-			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.MaxSynapticDensity },
+			minB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.Neurology.MinSynapticDensity },
+			maxB:  func(_ *simulation.Genome, p *simulation.Parameters) byte { return p.Neurology.MaxSynapticDensity },
 		},
 		{
 			label: "Juvenile",
@@ -286,7 +284,7 @@ func (e *GenomeEditor) Open(g *simulation.Genome, p *simulation.Parameters) {
 
 			// Mid-range defaults for all other traits (0-255 scale)
 			MetabolicRate:     127,
-			SightDistance:     127,
+			VisionRadius:     127,
 			FieldOfView:       127,
 			OscPeriod:         127,
 			JuvenilePeriod:    127,
@@ -340,7 +338,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 
 	// Add neuron
 	if e.addNeuronBtn.IsClicked(mx, my) {
-		if e.genome.CognitiveBreadth < e.params.MaxSynapticDensity {
+		if e.genome.CognitiveBreadth < e.params.Neurology.MaxSynapticDensity {
 			e.genome.CognitiveBreadth++
 		}
 		return true
@@ -348,7 +346,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 
 	// Remove last neuron and all genes referencing it
 	if e.remNeuronBtn.IsClicked(mx, my) {
-		if e.genome.CognitiveBreadth > e.params.MinSynapticDensity {
+		if e.genome.CognitiveBreadth > e.params.Neurology.MinSynapticDensity {
 			lastID := e.genome.CognitiveBreadth - 1
 			nc := e.genome.CognitiveBreadth
 			var nb []simulation.Gene
@@ -867,7 +865,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	e.addNeuronBtn.Draw(screen, bnx, bny)
 	e.remNeuronBtn.Draw(screen, bnx+36, bny)
 
-	drawText(screen, fmt.Sprintf("Neurons: %d/%d", e.genome.CognitiveBreadth, e.params.MaxSynapticDensity),
+	drawText(screen, fmt.Sprintf("Neurons: %d/%d", e.genome.CognitiveBreadth, e.params.Neurology.MaxSynapticDensity),
 		fnt, int(bnx)+74, int(bny)+16, color.RGBA{155, 175, 195, 220})
 
 	// Delete-edge button (only visible when edge is selected)

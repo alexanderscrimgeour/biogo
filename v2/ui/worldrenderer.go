@@ -27,14 +27,14 @@ type creatureAnim struct {
 // WorldRenderer handles all world-space rendering: temperature gradient,
 // food, meat, creatures, FOV cones, selection highlight, and camera transform.
 type WorldRenderer struct {
-	sim          SimulationState
-	renderWorld  *RenderWorld
-	camera       Camera
-	worldLayer   *ebiten.Image
-	screenW      int
-	screenH      int
-	animByID     map[int]*creatureAnim
-	lookup       map[int]int
+	sim              SimulationState
+	renderWorld      *RenderWorld
+	camera           Camera
+	worldLayer       *ebiten.Image
+	screenW          int
+	screenH          int
+	animByID         map[int]*creatureAnim
+	lookup           map[int]int
 	unitCircle       []struct{ x, y float32 }
 	circleIsTemplate []uint16 // pre-baked; shared by food and circle creatures
 	vertsPerCircle   int
@@ -78,9 +78,9 @@ func NewWorldRenderer(sim SimulationState) *WorldRenderer {
 		})
 	}
 
-	vertsPerCircle := 1 + len(unitCircle)           // 14
-	indicesPerCircle := (len(unitCircle) - 1) * 3   // 36
-	maxCircles := 60_000 / vertsPerCircle            // 4285
+	vertsPerCircle := 1 + len(unitCircle)         // 14
+	indicesPerCircle := (len(unitCircle) - 1) * 3 // 36
+	maxCircles := 60_000 / vertsPerCircle         // 4285
 
 	circleIsTemplate := make([]uint16, maxCircles*indicesPerCircle)
 	for k := 0; k < maxCircles; k++ {
@@ -95,12 +95,12 @@ func NewWorldRenderer(sim SimulationState) *WorldRenderer {
 	}
 
 	params := sim.GetParams()
-	maxPop := params.MaxPopulation
+	maxPop := params.Population.Max
 	return &WorldRenderer{
-		sim:         sim,
-		renderWorld: NewRenderWorld(0, 0, UnitSize),
-		camera:      Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0},
-		animByID:    make(map[int]*creatureAnim, maxPop),
+		sim:              sim,
+		renderWorld:      NewRenderWorld(0, 0, UnitSize),
+		camera:           Camera{X: float64(worldW) / 2, Y: float64(worldH) / 2, Zoom: 1.0},
+		animByID:         make(map[int]*creatureAnim, maxPop),
 		lookup:           make(map[int]int, maxPop),
 		whiteImage:       wImg,
 		unitCircle:       unitCircle,
@@ -474,7 +474,7 @@ func (wr *WorldRenderer) drawTemperatureBackground(sw, sh int, camGeoM ebiten.Ge
 	}
 
 	params := wr.sim.GetParams()
-	radZoneWorldX := params.RadiationZoneWidth * float64(int(wr.sim.WorldWidth())*UnitSize)
+	radZoneWorldX := params.Environment.Radiation.ZoneWidth * float64(int(wr.sim.WorldWidth())*UnitSize)
 	screenRadX, _ := camGeoM.Apply(radZoneWorldX, 0)
 	if screenRadX > 0 {
 		rw := float32(math.Min(screenRadX, float64(sw)))
@@ -495,7 +495,7 @@ func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulatio
 	bs := float64(UnitSize)
 	half := float32(UnitSize) / 2
 	for _, cv := range views {
-		if cv.SightDistance == 0 {
+		if cv.VisionRadius == 0 {
 			continue
 		}
 		worldCX := float32(cv.X*bs) + half
@@ -506,7 +506,7 @@ func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulatio
 		}
 		scx, scy := camGeoM.Apply(float64(worldCX), float64(worldCY))
 		cx, cy := float32(scx), float32(scy)
-		r := float32(cv.SightDistance) * float32(UnitSize) * zoom
+		r := float32(cv.VisionRadius) * float32(UnitSize) * zoom
 		halfFOV := float64(cv.FieldOfView) / 2.0 * math.Pi / 180.0
 		var path vector.Path
 		path.MoveTo(cx, cy)
@@ -522,7 +522,7 @@ func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulatio
 func (wr *WorldRenderer) drawSelectionHighlight(img *ebiten.Image, selectedID int, camGeoM ebiten.GeoM, zoom float32) {
 	if anim, ok := wr.animByID[selectedID]; ok {
 		sx, sy := camGeoM.Apply(anim.curX, anim.curY)
-		sr := float32(UnitSize)*(5+anim.radius) * zoom
+		sr := float32(UnitSize) * (5 + anim.radius) * zoom
 		vector.StrokeCircle(img, float32(sx), float32(sy), sr, 1.5, color.RGBA{255, 240, 80, 210}, false)
 	}
 }

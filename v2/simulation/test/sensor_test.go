@@ -10,7 +10,7 @@ import (
 // makeCreatureAt creates a minimal creature registered in w at pos facing east (heading = 0).
 func makeCreatureAt(w *grid.World, pos grid.Position, sightDist, fov byte) *simulation.Creature {
 	p := defaultParams()
-	g := simulation.MakeRandomGenome(p)
+	g := simulation.MakeRandomGenome(p, 0)
 	g.SightDistance = sightDist
 	g.FieldOfView = fov
 	id := w.AddCreature(pos)
