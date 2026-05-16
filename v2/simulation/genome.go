@@ -191,28 +191,65 @@ func makeRandomBool() byte {
 }
 
 // MakeRandomGene creates a random gene
-func MakeRandomGene() Gene {
+func MakeRandomGene(allowedSensors, allowedActions, cognitiveBreadth byte) Gene {
+	sourceType := byte(SENSOR)
+	var sourceID byte
+
+	// Single random byte for both structural type flags
+	typeFlags := utils.MakeRandomByte()
+
+	if cognitiveBreadth > 0 && (typeFlags&1) == 1 {
+		sourceType = NEURON
+		sourceID = utils.MakeRandomByte() % cognitiveBreadth
+	} else {
+		sourceID = utils.MakeRandomByte() % allowedSensors
+	}
+
+	sinkType := byte(ACTION)
+	var sinkID byte
+	if cognitiveBreadth > 0 && ((typeFlags>>1)&1) == 1 {
+		sinkType = NEURON
+		sinkID = utils.MakeRandomByte() % cognitiveBreadth
+	} else {
+		sinkID = utils.MakeRandomByte() % allowedActions
+	}
 	return Gene{
-		SourceType: utils.MakeRandomByte() & 1,
-		SourceID:   utils.MakeRandomByte(),
-		SinkType:   byte(rand.Intn(2) * 2),
-		SinkID:     utils.MakeRandomByte(),
+		SourceType: sourceType,
+		SourceID:   sourceID,
+		SinkType:   sinkType,
+		SinkID:     sinkID,
 		Weight:     utils.MakeRandomByte(),
 	}
 }
 
-func MakeRandomGenome(p *Parameters) *Genome {
+func MakeRandomGenome(p *Parameters, tier byte) *Genome {
 	// Mass must be >= 3 to guarantee a valid MinMass (MinMass < Mass/2 requires Mass > 2).
+	massByte := utils.MakeRandomByte()
+	if massByte < 3 {
+		massByte = 3
+	}
+
+	// Generation
+	// 1. Calculate Tier-Constrained Cognitive Breadth (Split 0-255 into 4 parts)
+	// Tier 0: 0-63, Tier 1: 64-127, Tier 2: 128-191, Tier 3: 192-255
+	minBreadth := tier * 64
+	maxBreadth := minBreadth + 63
+	cogBreadth := utils.LerpByte(minBreadth, maxBreadth, utils.MakeRandomByte())
+	// Scale SynapticDensity alongside tear
+	minDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, tier*64)
+	maxDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, (tier+1)*64-1)
+	synDensity := utils.LerpByte(minDensity, maxDensity, utils.MakeRandomByte())
+
 	g := Genome{
-		OscPeriod:        utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		SightDistance:    utils.MakeRandomByte(),
-		FieldOfView:      utils.MakeRandomByte(),
-		Responsiveness:   utils.MakeRandomByte(),
-		MutationRate:     utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		Mass:             utils.MakeRandomByte(),
-		ReproductionType: makeRandomBool(),
-		CognitiveBreadth:  utils.LerpByte(p.MinCognitiveBreadth, p.MaxCognitiveBreadth, utils.MakeRandomByte()),
-		SynapticDensity:   utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, utils.MakeRandomByte()),
+		OscPeriod:         utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		SightDistance:     utils.MakeRandomByte(),
+		FieldOfView:       utils.MakeRandomByte(),
+		Responsiveness:    utils.MakeRandomByte(),
+		MutationRate:      utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		Mass:              massByte,
+		ReproductionType:  makeRandomBool(),
+		CognitiveBreadth:  cogBreadth,
+		SynapticDensity:   synDensity,
 		JuvenilePeriod:    utils.MakeRandomByte(),
 		MetabolicRate:     utils.MakeRandomByte(),
 		StomachSize:       utils.MakeRandomByte(),
@@ -226,8 +263,15 @@ func MakeRandomGenome(p *Parameters) *Genome {
 		maxMinMass = 1
 	}
 	g.MinMass = utils.LerpByte(1, maxMinMass, utils.MakeRandomByte())
+
+	// Allocate
+	g.Brain = make([]Gene, 0, g.SynapticDensity)
+
+	allowedSensors := getAllowedSensorCount(g.CognitiveBreadth)
+	allowedActions := getAllowedActionCount(g.CognitiveBreadth)
+
 	for i := byte(0); i < g.SynapticDensity; i++ {
-		gene := MakeRandomGene()
+		gene := MakeRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth)
 		g.Brain = append(g.Brain, gene)
 	}
 	g.recomputeBytes()
@@ -264,7 +308,7 @@ func nudgeByte(val byte, strength int) byte {
 
 // Mutate randomly mutates genes in the genome at a rate of p.BaseMutationRate * g.MutationRate * radiationMult.
 // Pass radiationMult=1.0 for normal reproduction; pass params.RadiationMutationMultiplier for irradiated parents.
-func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) {
+func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32, childGeneration float32) {
 	rateMultiplier := float32(g.MutationRate) / 128.0
 	mutationRate := p.BaseMutationRate * rateMultiplier * radiationMult
 
@@ -297,8 +341,13 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) 
 		g.ReproductionType ^= 1
 	}
 
-	mutateTarget(&g.CognitiveBreadth, p.MinCognitiveBreadth, p.MaxCognitiveBreadth, 5)
-	mutateTarget(&g.SynapticDensity, p.MinSynapticDensity, p.MaxSynapticDensity, 5)
+	minTierBreadth, maxTierBreadth := getTierBoundaries(childGeneration, p)
+	mutateTarget(&g.CognitiveBreadth, minTierBreadth, maxTierBreadth, 5)
+	// Force SynapticDensity bounds to slide up with the tier scaling
+	minDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, minTierBreadth)
+	maxDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, maxTierBreadth)
+	mutateTarget(&g.SynapticDensity, minDensity, maxDensity, 5)
+
 	mutateTarget(&g.JuvenilePeriod, 0, 255, 15)
 	mutateTarget(&g.MetabolicRate, 0, 255, 15)
 	mutateTarget(&g.StomachSize, 0, 255, 15)
@@ -306,6 +355,9 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) 
 	mutateTarget(&g.LearningThreshold, 0, 255, 10)
 	mutateTarget(&g.MassSplitRatio, 0, 255, 15)
 	mutateTarget(&g.DigestionType, 0, 255, 15)
+
+	allowedSensors := getAllowedSensorCount(g.CognitiveBreadth)
+	allowedActions := getAllowedActionCount(g.CognitiveBreadth)
 
 	for j := 0; j < len(g.Brain); j++ {
 		if rand.Float32() < mutationRate {
@@ -320,29 +372,45 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, radiationMult float32) 
 					g.Brain[j].SinkType = 2
 				}
 			case chance < 0.15:
-				g.Brain[j].SourceID = utils.MakeRandomByte()
+				if g.Brain[j].SourceType == 1 && g.CognitiveBreadth > 0 { // NEURON
+					g.Brain[j].SourceID = utils.MakeRandomByte() % g.CognitiveBreadth
+				} else { // SENSOR
+					g.Brain[j].SourceID = utils.MakeRandomByte() % allowedSensors
+				}
 			case chance < 0.20:
-				g.Brain[j].SinkID = utils.MakeRandomByte()
+				if g.Brain[j].SinkType == 1 && g.CognitiveBreadth > 0 { // NEURON
+					g.Brain[j].SinkID = utils.MakeRandomByte() % g.CognitiveBreadth
+				} else { // ACTION
+					g.Brain[j].SinkID = utils.MakeRandomByte() % allowedActions
+				}
 			default:
 				g.Brain[j].Weight = nudgeByte(g.Brain[j].Weight, 25)
 			}
 		}
 	}
+	// Brain expansion padding loop: fills vacant structural space when SynapticDensity scales upwards.
 	diff := int(g.SynapticDensity) - len(g.Brain)
 	if diff > 0 {
 		for i := 0; i < diff; i++ {
 			if len(g.Brain) > 0 && rand.Float32() < 0.8 {
-				// Pick a random existing gene and nudge it slightly.
 				newGene := g.Brain[rand.Intn(len(g.Brain))]
 				if rand.Float32() < 0.5 {
-					newGene.SourceID = utils.MakeRandomByte()
+					if newGene.SourceType == 1 && g.CognitiveBreadth > 0 {
+						newGene.SourceID = utils.MakeRandomByte() % g.CognitiveBreadth
+					} else {
+						newGene.SourceID = utils.MakeRandomByte() % allowedSensors
+					}
 				} else {
-					newGene.SinkID = utils.MakeRandomByte()
+					if newGene.SinkType == 1 && g.CognitiveBreadth > 0 {
+						newGene.SinkID = utils.MakeRandomByte() % g.CognitiveBreadth
+					} else {
+						newGene.SinkID = utils.MakeRandomByte() % allowedActions
+					}
 				}
 				newGene.Weight = nudgeByte(newGene.Weight, 40)
 				g.Brain = append(g.Brain, newGene)
 			} else {
-				g.Brain = append(g.Brain, MakeRandomGene())
+				g.Brain = append(g.Brain, MakeRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth))
 			}
 		}
 	}
@@ -368,7 +436,7 @@ func pickGene(a, b Gene) Gene {
 // genes in the overlapping range are drawn from either parent; excess genes from
 // the longer parent survive with 50% probability.
 // radiationMult amplifies the mutation rate; pass 1.0 for normal conditions.
-func Crossover(g1, g2 *Genome, p *Parameters, radiationMult float32) *Genome {
+func Crossover(g1, g2 *Genome, p *Parameters, radiationMult float32, childGeneration float32) *Genome {
 	child := &Genome{
 		OscPeriod:         pickByte(g1.OscPeriod, g2.OscPeriod),
 		SightDistance:     pickByte(g1.SightDistance, g2.SightDistance),
@@ -384,6 +452,14 @@ func Crossover(g1, g2 *Genome, p *Parameters, radiationMult float32) *Genome {
 		LearningThreshold: pickByte(g1.LearningThreshold, g2.LearningThreshold),
 		MassSplitRatio:    pickByte(g1.MassSplitRatio, g2.MassSplitRatio),
 		DigestionType:     pickByte(g1.DigestionType, g2.DigestionType),
+	}
+
+	// If parents from different tiers cross over, force child into its generation tier bounds
+	minTierBreadth, maxTierBreadth := getTierBoundaries(childGeneration, p)
+	if child.CognitiveBreadth < minTierBreadth {
+		child.CognitiveBreadth = minTierBreadth
+	} else if child.CognitiveBreadth > maxTierBreadth {
+		child.CognitiveBreadth = maxTierBreadth
 	}
 
 	// --- GROUPED TRAITS ---
@@ -434,23 +510,20 @@ func Crossover(g1, g2 *Genome, p *Parameters, radiationMult float32) *Genome {
 	child.SynapticDensity = byte(targetLen)
 	mutationChance := 0.01 * radiationMult
 	if rand.Float32() < mutationChance {
-		Mutate(child, p, false, radiationMult)
+		Mutate(child, p, false, radiationMult, childGeneration)
 	}
 	return child
 }
 
 // AsexualReproduction creates a deep copy of the parent genome then mutates it.
 // radiationMult amplifies the mutation rate; pass 1.0 for normal conditions.
-func AsexualReproduction(parent *Genome, p *Parameters, radiationMult float32) *Genome {
+func AsexualReproduction(parent *Genome, p *Parameters, radiationMult float32, childGeneration float32) *Genome {
 	child := parent.Copy()
-	Mutate(child, p, false, radiationMult)
-	return child
-}
-
-// ArtificialReproduction creates a deep copy of the parent genome then mutates it by the spawn mutation rate.
-func ArtificialReproduction(parent *Genome, p *Parameters) *Genome {
-	child := parent.Copy()
-	Mutate(child, p, true, 1.0)
+	minTierBreadth, _ := getTierBoundaries(childGeneration, p)
+	if child.CognitiveBreadth < minTierBreadth {
+		child.CognitiveBreadth = minTierBreadth // Push up to the new tier minimum
+	}
+	Mutate(child, p, false, radiationMult, childGeneration)
 	return child
 }
 
@@ -501,4 +574,34 @@ func MapGeneToRange(gene byte, minRange, maxRange float64) float64 {
 
 	// 2. Map that percentage to the [min, max] range
 	return minRange + (percentage * (maxRange - minRange))
+}
+
+func IsSensorAllowed(sensorID byte, breadth byte) bool {
+	// Tier 1 always allowed (Breadth >= 0)
+	if sensorID <= MaxTier1Sensor {
+		return true
+	}
+	// Tier 2 requires ~25% cognitive breadth
+	if sensorID <= MaxTier2Sensor && breadth >= 64 {
+		return true
+	}
+	// Tier 3 requires ~50% cognitive breadth
+	if sensorID <= MaxTier3Sensor && breadth >= 128 {
+		return true
+	}
+	// Tier 4 requires ~75% cognitive breadth
+	return breadth >= 192
+}
+
+func IsActionAllowed(actionID byte, breadth byte) bool {
+	if actionID <= MaxTier1Action {
+		return true
+	}
+	if actionID <= MaxTier2Action && breadth >= 64 {
+		return true
+	}
+	if actionID <= MaxTier3Action && breadth >= 128 {
+		return true
+	}
+	return breadth >= 192
 }

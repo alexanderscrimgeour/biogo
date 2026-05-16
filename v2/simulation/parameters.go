@@ -96,6 +96,12 @@ type Parameters struct {
 	// Collisions
 	CollisionRepulsion float64 // fraction of overlap resolved per tick [0, 1]; 0 = disabled
 
+	// Generation tier thresholds
+	Tier1Generation int // generation at which tier 1 begins
+	Tier2Generation int // generation at which tier 2 begins
+	Tier3Generation int // generation at which tier 3 begins
+	Tier4Generation int // generation at which tier 4 begins
+
 	// Misc
 	SavedGenomeProportion  float64
 	PopulationSensorRadius float64
@@ -112,8 +118,8 @@ func DefaultParams() *Parameters {
 		MaxMass:                     750,
 		MinSpawnCognitiveBreadth:    15,
 		MaxSpawnCognitiveBreadth:    70,
-		MinCognitiveBreadth:         10,
-		MaxCognitiveBreadth:         75,
+		MinCognitiveBreadth:         0,
+		MaxCognitiveBreadth:         0,
 		MinSynapticDensity:          10,
 		MaxSynapticDensity:          100,
 		MinSightDistance:            50,
@@ -126,9 +132,9 @@ func DefaultParams() *Parameters {
 		BaseMaxAge:                  25000,
 		MinJuvenilePeriod:           300,
 		MaxJuvenilePeriod:           1000,
-		MaxFood:                     150000,
+		MaxFood:                     50000,
 		FoodSpawnInterval:           10,
-		FoodMass:                    10.0,
+		FoodMass:                    5.0,
 		FountainCount:               20,
 		FountainDriftSpeed:          10,
 		FountainRadius:              200.0,
@@ -161,6 +167,10 @@ func DefaultParams() *Parameters {
 		RadiationDamagePerTick:      0.1,
 		CollisionRepulsion:          0.5,
 		SavedGenomeProportion:       0.05,
+		Tier1Generation:             0,
+		Tier2Generation:             2,
+		Tier3Generation:             50,
+		Tier4Generation:             100,
 	}
 	if err := p.Validate(); err != nil {
 		panic(err)

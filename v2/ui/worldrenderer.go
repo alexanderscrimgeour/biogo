@@ -3,8 +3,10 @@ package ui
 import (
 	"biogo/v2/simulation"
 	"biogo/v2/world"
+	"fmt"
 	"image/color"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -19,6 +21,7 @@ type creatureAnim struct {
 	mass         float64
 	radius       float32
 	sexual       bool
+	tier         byte
 }
 
 // WorldRenderer handles all world-space rendering: temperature gradient,
@@ -44,6 +47,8 @@ type WorldRenderer struct {
 	isDark           bool
 	lastTickTime     time.Time
 	tickDuration     time.Duration
+
+	tierFilter int // -1 = show all; 0-3 = dim creatures not in this tier
 
 	camDragging   bool
 	camDragMoved  bool
@@ -102,6 +107,7 @@ func NewWorldRenderer(sim SimulationState) *WorldRenderer {
 		vertsPerCircle:   vertsPerCircle,
 		indicesPerCircle: indicesPerCircle,
 		isDark:           true,
+		tierFilter:       -1,
 		circleCreatureVs: make([]ebiten.Vertex, 0, maxPop*vertsPerCircle),
 		sexualCreatureVs: make([]ebiten.Vertex, 0, maxPop*3),
 		sexualCreatureIs: make([]uint16, 0, maxPop*3),
@@ -111,6 +117,40 @@ func NewWorldRenderer(sim SimulationState) *WorldRenderer {
 
 // ToggleDark flips the world background theme.
 func (wr *WorldRenderer) ToggleDark() { wr.isDark = !wr.isDark }
+
+// CycleTierFilter steps through the tiers present in the current population:
+// All → Tier 0 → Tier 1 → ... → All. Returns the new button label.
+func (wr *WorldRenderer) CycleTierFilter() string {
+	tierSet := make(map[int]struct{})
+	for _, anim := range wr.animByID {
+		tierSet[int(anim.tier)] = struct{}{}
+	}
+	tiers := make([]int, 0, len(tierSet))
+	for t := range tierSet {
+		tiers = append(tiers, t)
+	}
+	sort.Ints(tiers)
+
+	if wr.tierFilter == -1 {
+		if len(tiers) > 0 {
+			wr.tierFilter = tiers[0]
+		}
+	} else {
+		next := -1
+		for _, t := range tiers {
+			if t > wr.tierFilter {
+				next = t
+				break
+			}
+		}
+		wr.tierFilter = next
+	}
+
+	if wr.tierFilter == -1 {
+		return "Tier: All"
+	}
+	return fmt.Sprintf("Tier: %d", wr.tierFilter)
+}
 
 // Camera returns a pointer to the camera for external queries (e.g. ScreenToWorld).
 func (wr *WorldRenderer) Camera() *Camera { return &wr.camera }
@@ -216,6 +256,7 @@ func (wr *WorldRenderer) UpdateAnimations(snapshot *simulation.StateSnapshot) ti
 			anim.mass = cv.CurrentMass
 			anim.radius = float32(cv.Radius * bs)
 			anim.sexual = cv.ReproductionType == 1
+			anim.tier = cv.Tier
 		} else {
 			wr.animByID[cv.ID] = &creatureAnim{
 				prevX: screenX, prevY: screenY,
@@ -225,6 +266,7 @@ func (wr *WorldRenderer) UpdateAnimations(snapshot *simulation.StateSnapshot) ti
 				mass:    cv.CurrentMass,
 				radius:  float32(cv.Radius * bs),
 				sexual:  cv.ReproductionType == 1,
+				tier:    cv.Tier,
 			}
 		}
 	}
@@ -311,6 +353,9 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 		lerpY := anim.prevY + (anim.curY-anim.prevY)*t
 		cx, cy := float32(lerpX), float32(lerpY)
 		cr, cg, cb, ca := float32(anim.r)/255, float32(anim.g)/255, float32(anim.b)/255, float32(anim.a)/255
+		if wr.tierFilter != -1 && int(anim.tier) != wr.tierFilter {
+			ca *= 0.2
+		}
 
 		if anim.sexual {
 			baseIdx := uint16(len(wr.sexualCreatureVs))

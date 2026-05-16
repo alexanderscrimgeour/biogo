@@ -72,28 +72,45 @@ func (n NodeMap) String() string {
 
 func CreateInitialNeuronOutput() float32 { return 0.5 }
 
-func CreateNeuralNetworkFromGenome(genes []Gene, CognitiveBreadth byte) *NeuralNet {
-	neuralGenes := convertGenesToNeuronIDs(genes, CognitiveBreadth)
+func CreateNeuralNetworkFromGenome(genes []Gene, cognitiveBreadth byte) *NeuralNet {
+	neuralGenes := convertGenesToNeuronIDs(genes, cognitiveBreadth)
 	nodeMap := createNodeMap(neuralGenes)
 	finalGenes := removeUselessGenes(neuralGenes, nodeMap)
 	// The remaining nodes in nodeMap will need to be re-indexed
 	setNodeNewIDValues(nodeMap)
-	neuralNet := createNeuralNetworkFromGenesAndNodeMap(finalGenes, nodeMap)
+	neuralNet := createNeuralNetworkFromGenesAndNodeMap(finalGenes, nodeMap, cognitiveBreadth)
 	return neuralNet
 }
 
-func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
+func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap, cognitiveBreadth byte) *NeuralNet {
 	nnet := NeuralNet{}
 	nnet.Weights = make([]float32, len(g))
+
+	allowedSensorCount := getAllowedSensorCount(cognitiveBreadth)
+	allowedActionCount := getAllowedActionCount(cognitiveBreadth)
 
 	// Two-pass: neuron-sink edges first, then action-sink.
 	edgeIndex := 0
 	for _, gene := range g {
 		if gene.SinkType == NEURON {
-			gene.SinkID = n[gene.SinkID].NewID
-			if gene.SourceType == NEURON {
-				gene.SourceID = n[gene.SourceID].NewID
+			// Skip pruned in nMap
+			node, ok := n[gene.SinkID]
+			if !ok {
+				continue
 			}
+			gene.SinkID = node.NewID
+
+			if gene.SourceType == NEURON {
+				if srcNode, srcOk := n[gene.SourceID]; srcOk {
+					gene.SourceID = srcNode.NewID
+				} else {
+					continue // Prune if driving neuron doesn't exist
+				}
+			} else {
+				// Clamp sensor access to currently allowed tier bounds
+				gene.SourceID %= allowedSensorCount
+			}
+
 			nnet.Edges = append(nnet.Edges, gene)
 			nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
 			edgeIndex++
@@ -102,9 +119,20 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 	nnet.NeuronEdgeCount = edgeIndex
 	for _, gene := range g {
 		if gene.SinkType == ACTION {
+			// Clamp target actions to currently allowed tier bounds
+			gene.SinkID %= allowedActionCount
+
 			if gene.SourceType == NEURON {
-				gene.SourceID = n[gene.SourceID].NewID
+				if srcNode, srcOk := n[gene.SourceID]; srcOk {
+					gene.SourceID = srcNode.NewID
+				} else {
+					continue // Prune if driving neuron doesn't exist
+				}
+			} else {
+				// Clamp sensor access to currently allowed tier bounds
+				gene.SourceID %= allowedSensorCount
 			}
+
 			nnet.Edges = append(nnet.Edges, gene)
 			nnet.Weights[edgeIndex] = gene.WeightAsFloat32()
 			edgeIndex++
@@ -115,20 +143,21 @@ func createNeuralNetworkFromGenesAndNodeMap(g []Gene, n NodeMap) *NeuralNet {
 	nnet.HiddenNeurons = make([]Neuron, len(n))
 	for _, node := range n {
 		nnet.HiddenNeurons[node.NewID] = Neuron{
-			Output:      CreateInitialNeuronOutput(),
-			Driven:      node.InputCount != 0,
-			Sensitivity: 1.0,
+			Output:        CreateInitialNeuronOutput(),
+			Driven:        node.InputCount != 0,
+			AverageOutput: CreateInitialNeuronOutput(), // Matches your updated struct
+			Sensitivity:   1.0,
 		}
 	}
-
 	// Record which sensors are actually wired in so FeedForward can pre-compute
 	// them once rather than calling GetSensor once per edge.
 	for i := range nnet.Edges {
 		if nnet.Edges[i].SourceType == SENSOR {
+			// Because of the modulo guard rails above, this index is guaranteed
+			// to fall safely within fixed [SENSOR_COUNT]bool boundaries.
 			nnet.ActiveSensors[nnet.Edges[i].SourceID] = true
 		}
 	}
-
 	return &nnet
 }
 
@@ -149,6 +178,8 @@ func setNodeNewIDValues(n NodeMap) {
 		node.NewID = byte(i)
 	}
 }
+
+// removeUselessGenes iteratively purges non-functional neurons and dead connections from the network.
 func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 	if len(n) == 0 {
 		return g
@@ -159,7 +190,7 @@ func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 	for !done {
 		done = true
 
-		// 1. Extract and sort keys to ensure deterministic pruning
+		// Extract and sort keys to ensure deterministic pruning
 		keys := make([]byte, 0, len(n))
 		for k := range n {
 			keys = append(keys, k)
@@ -168,7 +199,6 @@ func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 			return keys[i] < keys[j]
 		})
 
-		// 2. Iterate through sorted keys
 		for _, key := range keys {
 			node, exists := n[key]
 			if !exists {
@@ -191,6 +221,8 @@ func removeUselessGenes(g []Gene, n NodeMap) []Gene {
 	return final
 }
 
+// removeConnectionsToGene removes all edges that sink (target) into the specified neuron key.
+// It simultaneously updates the OutputCount metrics of any upstream hidden neurons that were driving it.
 func removeConnectionsToGene(genes []Gene, n NodeMap, key byte) []Gene {
 	newGenes := genes[:0]
 
@@ -199,33 +231,38 @@ func removeConnectionsToGene(genes []Gene, n NodeMap, key byte) []Gene {
 		if gene.SinkType == NEURON && gene.SinkID == key {
 			// ...then the source of this gene just lost an output.
 			if gene.SourceType == NEURON {
-				if sourceNode, exists := n[gene.SourceID]; exists {
-					if sourceNode.OutputCount > 0 {
-						sourceNode.OutputCount--
-					}
+				if gene.SourceID != key {
 					// Handle self-loop decrement if the neuron is pruning itself
-					if gene.SourceID == key && sourceNode.SelfLoopCount > 0 {
-						sourceNode.SelfLoopCount--
+					if sourceNode, exists := n[gene.SourceID]; exists {
+						if sourceNode.OutputCount > 0 {
+							sourceNode.OutputCount--
+						}
 					}
 				}
 			}
 			// Do NOT append this gene; it is now deleted.
 			continue
 		}
-
 		// Keep genes that don't point to the deleted neuron.
 		newGenes = append(newGenes, gene)
 	}
 	return newGenes
 }
 
+// removeOutgoingConnections removes all edges that source (originate) from the specified neuron key.
+// It simultaneously updates the InputCount metrics of any downstream hidden neurons receiving its signal.
 func removeOutgoingConnections(genes []Gene, n NodeMap, key byte) []Gene {
 	newGenes := genes[:0]
+
 	for _, gene := range genes {
 		if gene.SourceType == NEURON && gene.SourceID == key {
 			if gene.SinkType == NEURON {
-				if sinkNode, exists := n[gene.SinkID]; exists && sinkNode.InputCount > 0 {
-					sinkNode.InputCount--
+				if gene.SinkID != key {
+					if sinkNode, exists := n[gene.SinkID]; exists {
+						if sinkNode.InputCount > 0 {
+							sinkNode.InputCount--
+						}
+					}
 				}
 			}
 			continue
@@ -244,7 +281,16 @@ func TestRemoveList(g []Gene) []Gene {
 	return g
 }
 
-// createNodeMap takes in
+// createNodeMap analyzes the topology of the neural network by scanning all connections (edges).
+// It constructs a map tracking the structural characteristics of every unique hidden neuron found.
+//
+// This analysis is a prerequisite for network optimization:
+//  1. It identifies non-functional "dead-end" neurons (e.g., hidden neurons that receive sensor
+//     inputs but never output to anything, or neurons that output to actions but have no inputs).
+//  2. It separates true independent inputs from internal self-recurrent loops, allowing
+//     the system to track if a neuron is actively "driven" by external signals.
+//  3. It collects the raw structural layout needed to compact the surviving neuron IDs
+//     into a packed, contiguous memory space (0..N-1) for fast execution lookups.
 func createNodeMap(neuralGenes []Gene) NodeMap {
 	nMap := NodeMap{}
 	ensureNode := func(id byte) {
@@ -279,22 +325,65 @@ func createNodeMap(neuralGenes []Gene) NodeMap {
 	return nMap
 }
 
-func convertGenesToNeuronIDs(genes []Gene, CognitiveBreadth byte) []Gene {
+func convertGenesToNeuronIDs(genes []Gene, cognitiveBreadth byte) []Gene {
 	newGenes := make([]Gene, len(genes))
+
+	allowedSensorCount := getAllowedSensorCount(cognitiveBreadth)
+	allowedActionCount := getAllowedActionCount(cognitiveBreadth)
+
 	for i, g := range genes {
-		if g.SourceType == NEURON && CognitiveBreadth > 0 {
-			g.SourceID %= CognitiveBreadth
+		if g.SourceType == NEURON {
+			if cognitiveBreadth > 0 {
+				g.SourceID %= cognitiveBreadth
+			} else {
+				// Creature has no capacity for hidden neurons.
+				// Set ID to 0; createNodeMap will naturally prune this useless edge out.
+				g.SourceID = 0
+			}
 		} else {
-			g.SourceType = SENSOR
-			g.SourceID %= SENSOR_COUNT
+			// SENSOR
+			g.SourceID %= allowedSensorCount
 		}
-		if g.SinkType == NEURON && CognitiveBreadth > 0 {
-			g.SinkID %= CognitiveBreadth
+
+		if g.SinkType == NEURON {
+			if cognitiveBreadth > 0 {
+				g.SinkID %= cognitiveBreadth
+			} else {
+				// No hidden neuron capacity.
+				g.SinkID = 0
+			}
 		} else {
-			g.SinkType = ACTION
-			g.SinkID %= ACTION_COUNT
+			// ACTION
+			g.SinkID %= allowedActionCount
 		}
+
 		newGenes[i] = g
 	}
 	return newGenes
+}
+
+func getAllowedSensorCount(breadth byte) byte {
+	if breadth < 64 {
+		return MaxTier1Sensor + 1
+	}
+	if breadth < 128 {
+		return MaxTier2Sensor + 1
+	}
+	if breadth < 192 {
+		return MaxTier3Sensor + 1
+	}
+	return SENSOR_COUNT
+}
+
+func getAllowedActionCount(breadth byte) byte {
+	if breadth < 64 {
+		return MaxTier1Action + 1
+	}
+	if breadth < 128 {
+		return MaxTier2Action + 1
+	}
+	if breadth < 192 {
+		return MaxTier3Action + 1
+	}
+	return ACTION_COUNT
 }

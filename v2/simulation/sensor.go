@@ -14,15 +14,15 @@ const (
 	BIAS byte = iota
 	// Current energy relative to maximum: -1 = empty, 0 = half full, 1 = full.
 	ENERGY
-	// Age mapped to [-1, 1]: -1 at birth, 0 at maturity (end of juvenile period), 1 at max age.
-	AGE
 	// Angle to the nearest food item relative to heading [-1, 1]; 0 = directly ahead.
 	NEAREST_FOOD_ANGLE
 	// Distance to the nearest food item normalised by sight range [-1, 1]; 1 = nothing visible.
 	NEAREST_FOOD_DIST
 
 	// -- TIER 2 --
-	
+
+	// Age mapped to [-1, 1]: -1 at birth, 0 at maturity (end of juvenile period), 1 at max age.
+	AGE
 	// Horizontal world position: -1 = left border, 0 = centre, 1 = right border.
 	LOC_X
 	// Vertical world position: -1 = top border, 0 = centre, 1 = bottom border.
@@ -48,10 +48,10 @@ const (
 	PREY_FORWARD
 	// Angle to the nearest lighter creature relative to heading [-1, 1].
 	NEAREST_PREY_ANGLE
-	// Angle to the nearest heavier creature relative to heading [-1, 1].
-	NEAREST_THREAT_ANGLE
 	// Proximity of the nearest heavier creature in the forward FOV; 1 = none visible [-1, 1].
 	THREAT_FORWARD
+	// Angle to the nearest heavier creature relative to heading [-1, 1].
+	NEAREST_THREAT_ANGLE
 	// Current mass as a fraction of genome target mass [0, 1].
 	MASS_FRACTION
 	// 1 if still growing to adult mass, -1 if fully grown.
@@ -60,9 +60,9 @@ const (
 	SATIATION
 	// Rate of stomach content change per digestion tick; positive = absorbing faster than baseline.
 	STOMACH_RATE
-	
+
 	// -- TIER 4 --
-	
+
 	// Bearing to the centre of mass of nearby creatures relative to own heading [-1, 1].
 	POPULATION_LOCAL_CENTRE_OF_MASS
 	// Proximity-weighted density of creatures within sight radius [-1, 1].
@@ -93,6 +93,12 @@ const (
 	LOCAL_FOOD_PER_CAPITA
 
 	SENSOR_COUNT
+)
+
+const (
+	MaxTier1Sensor = 3
+	MaxTier2Sensor = 11
+	MaxTier3Sensor = 21
 )
 
 // Expected creature density

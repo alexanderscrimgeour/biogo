@@ -20,6 +20,7 @@ type CreatureView struct {
 	Mass             byte
 	CurrentMass      float64
 	ReproductionType byte // 0 = asexual, 1 = sexual
+	Tier             byte
 }
 
 // FoodView is a read-only snapshot of a food item (plant or meat) for rendering.
@@ -51,7 +52,8 @@ type NeuralNetView struct {
 // CreatureDetailView is a rich snapshot of a single creature for the inspector panel.
 type CreatureDetailView struct {
 	ID               int
-	Generation       int
+	Generation       float32
+	Tier             byte
 	Energy           float32
 	MaxEnergy        float32
 	Age              int
@@ -72,6 +74,7 @@ type CreatureDetailView struct {
 	FoodEfficiency   float32 // fraction of food mass absorbed per bite [0, 1]
 	MeatEfficiency   float32 // fraction of meat mass absorbed per bite [0, 1]
 	ReproductionType byte    // 0 = asexual, 1 = sexual
+	Responsiveness   float32 // current responsiveness multiplier [-1, 1]
 	NeuralNet        NeuralNetView
 }
 
@@ -117,6 +120,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	return CreatureDetailView{
 		ID:               c.Id,
 		Generation:       c.Generation,
+		Tier:             c.Tier,
 		Energy:           c.Energy,
 		MaxEnergy:        c.MaxEnergy(s.Params),
 		Age:              c.Age,
@@ -140,6 +144,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		FoodEfficiency:   foodEff,
 		MeatEfficiency:   meatEff,
 		ReproductionType: c.Genome.ReproductionType,
+		Responsiveness:   c.Responsiveness,
 		NeuralNet:        nnView,
 	}, true
 }
@@ -169,6 +174,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			Mass:             c.Genome.Mass,
 			CurrentMass:      float64(c.Mass),
 			ReproductionType: c.Genome.ReproductionType,
+			Tier:             c.Tier,
 		})
 	}
 	return views

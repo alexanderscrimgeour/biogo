@@ -385,14 +385,16 @@ func nnEdgeColor(w float32) color.RGBA {
 
 func nnSensorName(id byte) string {
 	names := [...]string{
-		"Bias", "Age", "Energy", "Loc X", "Loc Y", "Osc",
-		"LocalDensity", "LocalHeading", "LocalCOM",
-		"PopFwd", "PopCentroid", "FoodFwd", "MeatFwd",
-		"Random", "Satiety", "Heading", "Velocity", "Food Ang",
-		"Food Dist", "Threat", "KinshipLcl", "KinshipFwd", "KinshipNearest",
-		"Mass %", "Blocked", "Prey", "Threat Ang",
-		"Prey Ang", "Wall Prox", "Digest", "Food/Cap",
-		"Juvenile", "EnergyDelta", "Temp", "TempDelta", "Touch",
+		"Bias", "Energy", "NearFoodAngle",
+		"NearFoodDist", "Age", "LocX", "LocY",
+		"Heading", "Velocity", "Osc1", "BlockedFwd",
+		"WallProx", "PlantFwd", "MeatFwd", "PreyFwd",
+		"NearPreyAngle", "ThreatFwd", "NearThreatAngle",
+		"Mass %", "Juvenile", "Satiation", "StomachRate",
+		"LocalCOM", "LocalDensity", "LocalHeading",
+		"PopFwd", "PopDensityFwd", "Touching", "Temp",
+		"TempDelta", "EnergyDelta", "Random", "KinshipLocal",
+		"KinshipNearDist", "KinshipNear", "LocalFoodPerCapita",
 	}
 	if int(id) < len(names) {
 		return names[id]
@@ -402,8 +404,10 @@ func nnSensorName(id byte) string {
 
 func nnActionName(id byte) string {
 	names := [...]string{
-		"Accelerate", "Rotate", "SetOsc", "SetResp",
-		"SetLearn", "Rest", "Attack", "Reward", "Punish", "Mate", "Feed",
+		"Accelerate", "Rotate", "SetOsc",
+		"Rest", "Attack", "Reproduce",
+		"Feed", "SetResp",
+		"SetLearn", "Reward", "Punish",
 	}
 	if int(id) < len(names) {
 		return names[id]

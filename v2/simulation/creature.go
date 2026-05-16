@@ -23,7 +23,7 @@ type simCacheEntry struct {
 
 type Creature struct {
 	Id             int
-	Generation     int
+	Generation     float32
 	Energy         float32
 	LastTickEnergy float32
 	Responsiveness float32
@@ -49,6 +49,7 @@ type Creature struct {
 	IsResting      bool
 	Color          color.RGBA
 	Radius         float32
+	Tier           byte
 
 	// Genome-derived constants cached at construction to avoid recomputing each tick.
 	halfFOVCos           float32 // math.Cos(FieldOfView/2 in radians)
@@ -71,15 +72,16 @@ type Creature struct {
 func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature {
 	g.recomputeBytes()
 	c := Creature{
-		Id:             id,
-		Generation:     1,
-		Age:            0,
-		Alive:          true,
-		Clock:          int(g.OscPeriod),
-		Nnet:           NeuralNet{},
-		Loc:            loc,
-		BirthLoc:       loc,
-		Responsiveness: float32(utils.LerpByteAsFloat32(0, 1, g.Responsiveness)) / 2,
+		Id:         id,
+		Generation: 1.0,
+		Age:        0,
+		Alive:      true,
+		Clock:      int(g.OscPeriod),
+		Nnet:       NeuralNet{},
+		Loc:        loc,
+		BirthLoc:   loc,
+		// Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
+		Responsiveness: 1.0,
 		Heading:        float32(rand.Float64()*2*math.Pi - math.Pi),
 		Genome:         g,
 	}
@@ -93,21 +95,23 @@ func NewCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature
 	c.CreateNeuralNet()
 	c.Color = c.CalculateColor(p)
 	c.UpdateSize(p)
+	c.Tier = GetTierFromGeneration(c.Generation, p)
 	return &c
 }
 
 func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature {
 	g.recomputeBytes()
 	c := Creature{
-		Id:             id,
-		Generation:     1,
-		Age:            0,
-		Alive:          true,
-		Clock:          int(g.OscPeriod),
-		Nnet:           NeuralNet{},
-		Loc:            loc,
-		BirthLoc:       loc,
-		Responsiveness: float32(utils.LerpByteAsFloat32(0, 1, g.Responsiveness)) / 2,
+		Id:         id,
+		Generation: 1.0,
+		Age:        0,
+		Alive:      true,
+		Clock:      int(g.OscPeriod),
+		Nnet:       NeuralNet{},
+		Loc:        loc,
+		BirthLoc:   loc,
+		// Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
+		Responsiveness: 1.0,
 		Heading:        float32(rand.Float64()*2*math.Pi - math.Pi),
 		Genome:         g,
 	}
@@ -121,6 +125,7 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 	c.Age = c.cachedJuvenilePeriod
 	c.Color = c.CalculateColor(p)
 	c.UpdateSize(p)
+	c.Tier = GetTierFromGeneration(c.Generation, p)
 	return &c
 }
 
@@ -285,6 +290,7 @@ func (c *Creature) GrowMass(params *Parameters) {
 		energyFactor = (energyRatio - 0.2) / 0.8
 	}
 	massRatio := float64(c.Mass) / float64(maxMass)
+
 	// von Bertalanffy rate: peaks at massRatio ≈ 0.33, zero at 0 and 1.
 	growthRate := float64(params.MaxGrowthRatePerTick) * math.Sqrt(massRatio) * (1.0 - massRatio)
 	actualGrowth := growthRate * energyFactor
@@ -363,6 +369,29 @@ func (c Creature) MaxAge(params *Parameters) int {
 	metabolicGeneNorm := float32(c.Genome.MetabolicRate) / 255.0
 	metabolicPenalty := 0.75 + metabolicGeneNorm // [0.75, 1.75]
 	return int((baseLife * sizeMult) / metabolicPenalty)
+}
+
+func (c *Creature) CalculateGenerationBonus(params *Parameters) float32 {
+	massRatio := c.Mass / c.MaxMass
+	if massRatio > 1.0 {
+		massRatio = 1.0
+	}
+
+	// High-performance squared growth factor
+	growthFactor := massRatio * massRatio
+	maxAge := float32(c.MaxAge(params))
+	// Longevity factor scales up if they lived past their juvenile threshold
+	longevityFactor := float32(1.0)
+	if maxAge > 0 {
+		longevityFactor = float32(c.Age) / maxAge
+	}
+
+	deltaGen := growthFactor * longevityFactor
+	if deltaGen > 2.0 {
+		deltaGen = 2.0
+	}
+
+	return deltaGen
 }
 
 func calculateFunctionalIntelligence(nn *NeuralNet, g *Genome) float32 {

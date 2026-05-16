@@ -17,8 +17,8 @@ const (
 	menuBarPad     = float32(10)
 	menuBarSpacing = float32(8)
 
-	detailPanelW = float32(210)
-	detailPad    = float32(8)
+	detailPanelW  = float32(210)
+	detailPad     = float32(8)
 	detailSpacing = float32(4)
 
 	leftStackX       = float32(10)
@@ -41,10 +41,10 @@ type UserInterface struct {
 	font *textv2.GoXFace
 	sim  SimulationState
 
-	menuBar    *components.MenuBar
-	leftStack  *LeftPanelStack
-	histGraph  *HistoryGraph
-	histIdx    int
+	menuBar   *components.MenuBar
+	leftStack *LeftPanelStack
+	histGraph *HistoryGraph
+	histIdx   int
 
 	detailIdx int
 	nnIdx     int
@@ -59,15 +59,15 @@ type UserInterface struct {
 	saveFeedbackAt time.Time
 
 	// references so buttons can trigger game-level actions
-	onSaveCreature    func() error
-	onEditCreature    func()
-	onSpawnAtWorld    func(wx, wy float64)
-	onPause           func()
-	onRestart         func()
-	onToggleTheme     func()
-	onCreateGenome    func()
-	onSpawnSaved      func()
-	onToggleSpawn     func()
+	onSaveCreature func() error
+	onEditCreature func()
+	onSpawnAtWorld func(wx, wy float64)
+	onPause        func()
+	onRestart      func()
+	onToggleTheme  func()
+	onCreateGenome func()
+	onSpawnSaved   func()
+	onToggleSpawn  func()
 }
 
 // NewUserInterface constructs the UI, wiring up all interactive elements.
@@ -88,7 +88,7 @@ func NewUserInterface(
 		Label:      "Mut",
 		Font:       font,
 		LabelColor: color.White,
-		Min: 0.0001, Max: 0.2,
+		Min:        0.0001, Max: 0.2,
 		Value: 0.01,
 		OnChange: func(v float64) {
 			sim.SetSpawnMutationRate(float32(v))
@@ -135,6 +135,11 @@ func NewUserInterface(
 		game.savedGenomesPanel.Open()
 	}
 
+	tierBtn := &components.Button{W: 90, H: 24, Label: "Tier: All", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	tierBtn.OnClick = func() {
+		tierBtn.Label = game.world.CycleTierFilter()
+	}
+
 	mb := &components.MenuBar{
 		H:       menuBarH,
 		Padding: menuBarPad,
@@ -148,6 +153,7 @@ func NewUserInterface(
 	mb.AddButton(spawnRandomBtn)
 	mb.AddButton(createGenomeBtn)
 	mb.AddButton(spawnSavedBtn)
+	mb.AddButton(tierBtn)
 	ui.menuBar = mb
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
@@ -321,7 +327,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	})
 
 	// Generation / Age
-	p.Add(&components.Label{Text: fmt.Sprintf("Generation: %d", d.Generation), Font: ui.font, Color: color.RGBA{180, 220, 255, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Generation: %.2f (Tier: %d)", d.Generation, d.Tier), Font: ui.font, Color: color.RGBA{180, 220, 255, 255}})
 	juvenileStr := "Adult"
 	if d.IsJuvenile {
 		juvenileStr = fmt.Sprintf("Juvenile(%d)", d.JuvenilePeriod-d.Age)
@@ -362,6 +368,17 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 		Max:      float32(1.2),
 		MaxColor: color.RGBA{216, 27, 96, 255},
 		MinColor: color.RGBA{48, 63, 159, 255},
+		Width:    innerW,
+		Centered: true,
+	})
+
+	// Responsiveness
+	p.Add(&components.Label{Text: fmt.Sprintf("Responsiveness: %.02f", d.Responsiveness), Font: ui.font, Color: color.White})
+	p.Add(&components.EnergyBar{
+		Value:    d.Responsiveness,
+		Max:      float32(1),
+		MaxColor: color.RGBA{255, 180, 40, 255},
+		MinColor: color.RGBA{60, 60, 200, 255},
 		Width:    innerW,
 		Centered: true,
 	})
