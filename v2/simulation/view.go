@@ -49,6 +49,27 @@ type NeuralNetView struct {
 	ActionValues    map[byte]float32
 }
 
+// GenomeSnapshot is a copy of the raw genome header bytes for the inspector panel.
+type GenomeSnapshot struct {
+	OscPeriod         byte
+	SightDistance     byte
+	FieldOfView       byte
+	Responsiveness    byte
+	MutationRate      byte
+	Mass              byte
+	MinMass           byte
+	ReproductionType  byte
+	CognitiveBreadth  byte
+	SynapticDensity   byte
+	JuvenilePeriod    byte
+	MetabolicRate     byte
+	StomachSize       byte
+	Neuroplasticity   byte
+	LearningThreshold byte
+	MassSplitRatio    byte
+	DigestionType     byte
+}
+
 // CreatureDetailView is a rich snapshot of a single creature for the inspector panel.
 type CreatureDetailView struct {
 	ID               int
@@ -76,6 +97,7 @@ type CreatureDetailView struct {
 	ReproductionType byte    // 0 = asexual, 1 = sexual
 	Responsiveness   float32 // current responsiveness multiplier [-1, 1]
 	NeuralNet        NeuralNetView
+	Genome           GenomeSnapshot
 }
 
 // CreatureDetail returns a detailed view of a living creature by ID.
@@ -146,6 +168,25 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		ReproductionType: c.Genome.ReproductionType,
 		Responsiveness:   c.Responsiveness,
 		NeuralNet:        nnView,
+		Genome: GenomeSnapshot{
+			OscPeriod:         c.Genome.OscPeriod,
+			SightDistance:     c.Genome.SightDistance,
+			FieldOfView:       c.Genome.FieldOfView,
+			Responsiveness:    c.Genome.Responsiveness,
+			MutationRate:      c.Genome.MutationRate,
+			Mass:              c.Genome.Mass,
+			MinMass:           c.Genome.MinMass,
+			ReproductionType:  c.Genome.ReproductionType,
+			CognitiveBreadth:  c.Genome.CognitiveBreadth,
+			SynapticDensity:   c.Genome.SynapticDensity,
+			JuvenilePeriod:    c.Genome.JuvenilePeriod,
+			MetabolicRate:     c.Genome.MetabolicRate,
+			StomachSize:       c.Genome.StomachSize,
+			Neuroplasticity:   c.Genome.Neuroplasticity,
+			LearningThreshold: c.Genome.LearningThreshold,
+			MassSplitRatio:    c.Genome.MassSplitRatio,
+			DigestionType:     c.Genome.DigestionType,
+		},
 	}, true
 }
 
