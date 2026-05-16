@@ -190,6 +190,56 @@ func makeRandomBool() byte {
 	return byte(rand.Uint32() >> 31)
 }
 
+// generateTierExpansionGene creates a new connection that targets the newly unlocked space
+// between the parent's constraints and the child's expanded actions/sensors/ hidden neurons.
+func (g *Genome) generateTierExpansionGene(pBreadth, cBreadth, pSensors, cSensors, pActions, cActions byte) Gene {
+	var gene Gene
+	gene.Weight = utils.MakeRandomByte()
+
+	// Source
+	if rand.Float32() < 0.5 && cBreadth > pBreadth {
+		gene.SourceType = 1
+
+		// Start at the parent's boundary, then add a random value
+		// bounded strictly by the size of the new expansion tier.
+		delta := cBreadth - pBreadth
+		gene.SourceID = pBreadth + (utils.MakeRandomByte() % delta)
+	} else {
+		// Target a Sensor
+		gene.SourceType = 0
+
+		if cSensors > pSensors {
+			// A new sensor was unlocked! Force the connection to read from it.
+			delta := cSensors - pSensors
+			gene.SourceID = pSensors + (utils.MakeRandomByte() % delta)
+		} else {
+			// No new sensors unlocked; fall back to sampling the existing ones uniformly.
+			gene.SourceID = utils.MakeRandomByte() % cSensors
+		}
+	}
+
+	if rand.Float32() < 0.5 && cBreadth > pBreadth {
+		gene.SinkType = 1
+
+		// Offset the index into the new hidden neuron real estate.
+		delta := cBreadth - pBreadth
+		gene.SinkID = pBreadth + (utils.MakeRandomByte() % delta)
+	} else {
+		gene.SinkType = 2
+
+		if cActions > pActions {
+			// A new action was unlocked! Force the connection to drive it.
+			delta := cActions - pActions
+			gene.SinkID = pActions + (utils.MakeRandomByte() % delta)
+		} else {
+			// No new actions unlocked; fall back to sampling the existing ones uniformly.
+			gene.SinkID = utils.MakeRandomByte() % cActions
+		}
+	}
+
+	return gene
+}
+
 // MakeRandomGene creates a random gene
 func MakeRandomGene(allowedSensors, allowedActions, cognitiveBreadth byte) Gene {
 	sourceType := byte(SENSOR)
@@ -312,18 +362,33 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, c
 	rateMultiplier := float32(g.MutationRate) / 128.0
 	mutationRate := p.BaseMutationRate * rateMultiplier * mutationMult
 
+	// Track parent dimentional limits so that we don't lose
+	// the pre-existing constructed brain on tier upgrades
+	parentBreadth := g.CognitiveBreadth
+	parentSensors := getAllowedSensorCount(parentBreadth)
+	parentActions := getAllowedActionCount(parentBreadth)
+
+	// Helper function to "mutate" - i.e. nudge byte in a direction
 	mutateTarget := func(val *byte, min, max byte, strength int) {
 		if rand.Float32() < mutationRate {
 			*val = utils.LerpByte(min, max, nudgeByte(*val, strength))
 		}
 	}
 
+	// Physical attribute mutation
 	mutateTarget(&g.OscPeriod, 0, 255, 15)
 	mutateTarget(&g.SightDistance, 0, 255, 10)
 	mutateTarget(&g.FieldOfView, 0, 255, 10)
 	mutateTarget(&g.Responsiveness, 0, 255, 20)
 	mutateTarget(&g.MutationRate, 1, 255, 5)
 	mutateTarget(&g.Mass, 3, math.MaxUint8, 12)
+	mutateTarget(&g.JuvenilePeriod, 0, 255, 15)
+	mutateTarget(&g.MetabolicRate, 0, 255, 15)
+	mutateTarget(&g.StomachSize, 0, 255, 15)
+	mutateTarget(&g.Neuroplasticity, 0, 255, 10)
+	mutateTarget(&g.LearningThreshold, 0, 255, 10)
+	mutateTarget(&g.MassSplitRatio, 0, 255, 15)
+	mutateTarget(&g.DigestionType, 0, 255, 15)
 
 	maxMinMass := (g.Mass - 1) / 2
 	if maxMinMass < 1 {
@@ -334,24 +399,21 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, c
 	}
 	mutateTarget(&g.MinMass, 1, maxMinMass, 8)
 
+	// Chance to flip reproduction type
+	// TODO(): Need to consider this, because becoming the only sexual
+	// creature in your species is probably a sad and frustrating existence.
 	if rand.Float32() < mutationRate {
 		g.ReproductionType ^= 1
 	}
 
+	// New tier constraints and cognitive breadth
 	minTierBreadth, maxTierBreadth := getTierBoundaries(childGeneration, p)
 	mutateTarget(&g.CognitiveBreadth, minTierBreadth, maxTierBreadth, 5)
+
 	// Force SynapticDensity bounds to slide up with the tier scaling
 	minDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, minTierBreadth)
 	maxDensity := utils.LerpByte(p.MinSynapticDensity, p.MaxSynapticDensity, maxTierBreadth)
 	mutateTarget(&g.SynapticDensity, minDensity, maxDensity, 5)
-
-	mutateTarget(&g.JuvenilePeriod, 0, 255, 15)
-	mutateTarget(&g.MetabolicRate, 0, 255, 15)
-	mutateTarget(&g.StomachSize, 0, 255, 15)
-	mutateTarget(&g.Neuroplasticity, 0, 255, 10)
-	mutateTarget(&g.LearningThreshold, 0, 255, 10)
-	mutateTarget(&g.MassSplitRatio, 0, 255, 15)
-	mutateTarget(&g.DigestionType, 0, 255, 15)
 
 	allowedSensors := getAllowedSensorCount(g.CognitiveBreadth)
 	allowedActions := getAllowedActionCount(g.CognitiveBreadth)
@@ -369,46 +431,39 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, c
 					g.Brain[j].SinkType = 2
 				}
 			case chance < 0.15:
-				if g.Brain[j].SourceType == 1 && g.CognitiveBreadth > 0 { // NEURON
-					g.Brain[j].SourceID = utils.MakeRandomByte() % g.CognitiveBreadth
-				} else { // SENSOR
-					g.Brain[j].SourceID = utils.MakeRandomByte() % allowedSensors
+				// Protected mapping using parent boundaries
+				if g.Brain[j].SourceType == 1 && parentBreadth > 0 {
+					g.Brain[j].SourceID = utils.MakeRandomByte() % parentBreadth
+				} else {
+					g.Brain[j].SourceID = utils.MakeRandomByte() % parentSensors
 				}
 			case chance < 0.20:
-				if g.Brain[j].SinkType == 1 && g.CognitiveBreadth > 0 { // NEURON
-					g.Brain[j].SinkID = utils.MakeRandomByte() % g.CognitiveBreadth
-				} else { // ACTION
-					g.Brain[j].SinkID = utils.MakeRandomByte() % allowedActions
+				if g.Brain[j].SinkType == 1 && parentBreadth > 0 {
+					g.Brain[j].SinkID = utils.MakeRandomByte() % parentBreadth
+				} else {
+					g.Brain[j].SinkID = utils.MakeRandomByte() % parentActions
 				}
 			default:
 				g.Brain[j].Weight = nudgeByte(g.Brain[j].Weight, 25)
 			}
 		}
 	}
+
 	// Brain expansion padding loop: fills vacant structural space when SynapticDensity scales upwards.
 	diff := int(g.SynapticDensity) - len(g.Brain)
 	if diff > 0 {
 		for i := 0; i < diff; i++ {
-			if len(g.Brain) > 0 && rand.Float32() < 0.8 {
-				newGene := g.Brain[rand.Intn(len(g.Brain))]
-				if rand.Float32() < 0.5 {
-					if newGene.SourceType == 1 && g.CognitiveBreadth > 0 {
-						newGene.SourceID = utils.MakeRandomByte() % g.CognitiveBreadth
-					} else {
-						newGene.SourceID = utils.MakeRandomByte() % allowedSensors
-					}
-				} else {
-					if newGene.SinkType == 1 && g.CognitiveBreadth > 0 {
-						newGene.SinkID = utils.MakeRandomByte() % g.CognitiveBreadth
-					} else {
-						newGene.SinkID = utils.MakeRandomByte() % allowedActions
-					}
-				}
-				newGene.Weight = nudgeByte(newGene.Weight, 40)
-				g.Brain = append(g.Brain, newGene)
+			var newGene Gene
+
+			// Allocate 75% of new connections directly to newly discovered tier capabilities
+			if (g.CognitiveBreadth > parentBreadth || allowedSensors > parentSensors || allowedActions > parentActions) && rand.Float32() < 0.75 {
+				newGene = g.generateTierExpansionGene(parentBreadth, g.CognitiveBreadth, parentSensors, allowedSensors, parentActions, allowedActions)
 			} else {
-				g.Brain = append(g.Brain, MakeRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth))
+				// 25% is random connection
+				newGene = MakeRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth)
 			}
+
+			g.Brain = append(g.Brain, newGene)
 		}
 	}
 	g.recomputeBytes()

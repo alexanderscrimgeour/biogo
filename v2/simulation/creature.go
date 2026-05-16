@@ -35,7 +35,7 @@ type Creature struct {
 	Loc            world.Position
 	BirthLoc       world.Position
 	Heading        float32 // radians; 0 = east, π/2 = south (screen-down)
-	Speed       float32 // current speed along heading; updated each tick via ACCELERATE action
+	Speed          float32 // current speed along heading; updated each tick via ACCELERATE action
 	Genome         *Genome
 	SightDistance  float32
 	Mass           float32 // tracked body mass; grows toward Genome.Mass each tick via GrowMass
@@ -196,27 +196,27 @@ func (c *Creature) Digest(params *Parameters) {
 		return
 	}
 
+	massNorm := float64(c.Mass) / params.MaxMass
+	// Efficient M^0.75
+	massEffect := math.Sqrt(massNorm * math.Sqrt(massNorm))
+
 	currentCap := c.StomachCapacity(params)
 	var sizeFactor float64
 	if currentCap > 0 {
 		standardCap := float64(params.MaxMass) * 0.2
-		ratio := standardCap / float64(currentCap)
-		// x^0.75 = sqrt(ratio * sqrt(ratio))
+		ratio := float64(currentCap) / standardCap
 		sizeFactor = math.Sqrt(ratio * math.Sqrt(ratio))
 	} else {
-		sizeFactor = 1.0 // Fallback
+		sizeFactor = 1.0
 	}
 
-	massNorm := float64(c.Mass) / params.MaxMass
-	// Efficient M^0.75
-	massEffect := math.Sqrt(massNorm * math.Sqrt(massNorm))
 	digestionRate := params.DigestionRate * massEffect * sizeFactor
 
-	massRatio := c.Mass / float32(params.MaxMass)
-	// Higher mass = lower efficiency.
-	efficiency := 0.95 - (massRatio * 0.25)
+	// Small creatures at 70% baseline, large creatures 95% efficient
+	efficiency := float32(0.75 + (massNorm * 0.20))
 	if c.IsResting {
-		restingBoost := 1.5 + (2.0 * float64(massNorm))
+		// Resting remains a massive booster, especially rewarding for giant temp-regulation
+		restingBoost := 1.5 + (1.5 * massNorm)
 		digestionRate *= restingBoost
 	}
 

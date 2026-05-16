@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	fdPanelW   = float32(300)
-	fdPad      = float32(8)
-	fdTitleH   = float32(20)
-	fdSliderH  = float32(24)
+	fdPanelW    = float32(300)
+	fdPad       = float32(8)
+	fdTitleH    = float32(20)
+	fdSliderH   = float32(24)
 	fdSliderGap = float32(6)
 )
 
@@ -34,6 +34,17 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 	trackW := sw - trackOff
 
 	sliders := []*components.Slider{
+		{
+			W: sw, H: fdSliderH,
+			TrackOffX: trackOff, TrackW: trackW,
+			Font: font, LabelColor: color.White,
+			Min: 0, Max: 200000,
+			Value: float64(p.MaxFood),
+			FormatFunc: func(v float64) string {
+				return fmt.Sprintf("Max Food: %d", int(math.Round(v)))
+			},
+			OnChange: func(v float64) { sim.SetMaxFood(int(math.Round(v))) },
+		},
 		{
 			W: sw, H: fdSliderH,
 			TrackOffX: trackOff, TrackW: trackW,

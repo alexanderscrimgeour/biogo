@@ -35,6 +35,7 @@ type SimulationState interface {
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetFoodRandomFraction(v float64)
 	SetFountainCount(n int)
+	SetMaxFood(n int)
 	SetFountainDriftSpeed(v float64)
 	SetFountainRadius(v float64)
 	SpawnAt(x, y float64) bool
