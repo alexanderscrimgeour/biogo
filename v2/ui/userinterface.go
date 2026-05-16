@@ -47,20 +47,21 @@ type UserInterface struct {
 	histGraph *HistoryGraph
 	histIdx   int
 
-	detailIdx int
-	nnIdx     int
+	detailIdx  int
+	genomeIdx  int
+	nnIdx      int
 
-	currentSaveBtn *components.Button
-	currentEditBtn *components.Button
+	currentSaveBtn   *components.Button
+	currentEditBtn   *components.Button
+	currentSaveInput *components.TextInputField
 
 	genomeEditor      *GenomeEditor
 	savedGenomesPanel *SavedGenomesPanel
 
-	saveFeedback    string
-	saveFeedbackAt  time.Time
+	saveFeedback     string
+	saveFeedbackAt   time.Time
 	saveCreatureName string
 	saveNameFocused  bool
-	saveNameBounds   [4]float32
 	saveCreatureID   int
 
 	// references so buttons can trigger game-level actions
@@ -179,6 +180,7 @@ func NewUserInterface(
 	ui.histGraph = histGraph
 	ui.histIdx = ui.leftStack.Register(histGraph)
 	ui.detailIdx = ui.leftStack.Register(nil)
+	ui.genomeIdx = ui.leftStack.Register(nil)
 	ui.nnIdx = ui.leftStack.Register(nil)
 
 	// ── Modals ────────────────────────────────────────────────────────────────
@@ -202,13 +204,9 @@ func (ui *UserInterface) HandleClick(mx, my int) bool {
 		return true
 	}
 	// Save name input field
-	if ui.saveNameBounds[2] > 0 {
-		fx, fy := float32(mx), float32(my)
-		b := ui.saveNameBounds
-		if fx >= b[0] && fx <= b[0]+b[2] && fy >= b[1] && fy <= b[1]+b[3] {
-			ui.saveNameFocused = true
-			return true
-		}
+	if ui.currentSaveInput != nil && ui.currentSaveInput.Contains(float32(mx), float32(my)) {
+		ui.saveNameFocused = true
+		return true
 	}
 	if ui.currentSaveBtn != nil && ui.currentSaveBtn.IsClicked(mx, my) {
 		if ui.currentSaveBtn.OnClick != nil {
@@ -255,58 +253,36 @@ func (ui *UserInterface) HandleSaveNameKeyInput() {
 func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Game) {
 	sw, sh := screen.Bounds().Dx(), screen.Bounds().Dy()
 
-	// Update creature detail and NN slots
+	// Update creature detail, genome, and NN slots
 	if state.selectedID != -1 {
 		if detail, ok := ui.sim.CreatureDetail(state.selectedID); ok {
 			detailPanel := ui.buildDetailPanel(detail, state.selectedID, game)
 			ui.leftStack.Set(ui.detailIdx, detailPanel, true)
 
+			genomePanel := ui.buildGenomePanel(detail)
+			ui.leftStack.Set(ui.genomeIdx, genomePanel, true)
+
 			nnGraph := &NeuralNetGraph{Font: ui.font, Data: detail}
 			ui.leftStack.Set(ui.nnIdx, nnGraph, true)
 		} else {
 			ui.leftStack.Set(ui.detailIdx, nil, false)
+			ui.leftStack.Set(ui.genomeIdx, nil, false)
 			ui.leftStack.Set(ui.nnIdx, nil, false)
 			ui.currentSaveBtn = nil
 			ui.currentEditBtn = nil
+			ui.currentSaveInput = nil
 		}
 	} else {
 		ui.leftStack.Set(ui.detailIdx, nil, false)
+		ui.leftStack.Set(ui.genomeIdx, nil, false)
 		ui.leftStack.Set(ui.nnIdx, nil, false)
 		ui.currentSaveBtn = nil
 		ui.currentEditBtn = nil
+		ui.currentSaveInput = nil
 	}
 
 	ui.menuBar.Draw(screen)
 	ui.leftStack.Draw(screen)
-
-	// Save name input — drawn below the edit button when a creature is selected
-	if ui.currentEditBtn != nil {
-		bx, by, bw, bh := ui.currentEditBtn.Bounds()
-		inputY := by + bh + 4
-		inputW := bw
-		inputH := float32(22)
-		ui.saveNameBounds = [4]float32{bx, inputY, inputW, inputH}
-
-		vector.FillRect(screen, bx-detailPad, inputY-2, inputW+detailPad*2, inputH+4, color.RGBA{8, 10, 22, 215}, false)
-		borderClr := color.RGBA{55, 55, 90, 200}
-		if ui.saveNameFocused {
-			borderClr = color.RGBA{100, 110, 210, 255}
-		}
-		vector.FillRect(screen, bx, inputY, inputW, inputH, color.RGBA{14, 14, 32, 230}, false)
-		vector.StrokeRect(screen, bx, inputY, inputW, inputH, 1, borderClr, false)
-
-		display := ui.saveCreatureName
-		var nameClr color.Color = color.White
-		if ui.saveNameFocused {
-			display += "|"
-		} else if ui.saveCreatureName == "" {
-			display = "(save name...)"
-			nameClr = color.RGBA{80, 80, 110, 200}
-		}
-		drawText(screen, display, ui.font, int(bx)+4, int(inputY)+15, nameClr)
-	} else {
-		ui.saveNameBounds = [4]float32{}
-	}
 
 	// Spawn label update on button
 	if game.spawnRandomBtn != nil {
@@ -479,6 +455,18 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	// Phenotype chart
 	p.Add(&PhenotypeChart{Font: ui.font, Data: d})
 
+	// Save name input
+	saveInput := &components.TextInputField{
+		W:           innerW,
+		H:           22,
+		Text:        ui.saveCreatureName,
+		Focused:     ui.saveNameFocused,
+		Placeholder: "(save name...)",
+		Font:        ui.font,
+	}
+	p.Add(saveInput)
+	ui.currentSaveInput = saveInput
+
 	// Save button
 	saveBtn := &components.Button{
 		W: innerW, H: 22,
@@ -516,5 +504,62 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(editBtn)
 	ui.currentEditBtn = editBtn
 
+	return p
+}
+
+// buildGenomePanel constructs a Panel showing all raw genome trait bytes.
+// It is rebuilt each frame so values stay current.
+func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *components.Panel {
+	innerW := detailPanelW - detailPad*2
+	p := &components.Panel{
+		W:         detailPanelW,
+		Padding:   detailPad,
+		Spacing:   detailSpacing,
+		BaseColor: color.RGBA{8, 10, 22, 215},
+		Border:    color.RGBA{90, 90, 150, 255},
+	}
+	p.Add(&components.Label{
+		Text:  "Genome",
+		Font:  ui.font,
+		Color: color.RGBA{255, 220, 80, 255},
+	})
+	g := d.Genome
+	type trait struct {
+		name string
+		val  byte
+	}
+	traits := []trait{
+		{"OscPeriod", g.OscPeriod},
+		{"SightDistance", g.SightDistance},
+		{"FieldOfView", g.FieldOfView},
+		{"Responsiveness", g.Responsiveness},
+		{"MutationRate", g.MutationRate},
+		{"Mass", g.Mass},
+		{"MinMass", g.MinMass},
+		{"ReproductionType", g.ReproductionType},
+		{"CognitiveBreadth", g.CognitiveBreadth},
+		{"SynapticDensity", g.SynapticDensity},
+		{"JuvenilePeriod", g.JuvenilePeriod},
+		{"MetabolicRate", g.MetabolicRate},
+		{"StomachSize", g.StomachSize},
+		{"Neuroplasticity", g.Neuroplasticity},
+		{"LearningThreshold", g.LearningThreshold},
+		{"MassSplitRatio", g.MassSplitRatio},
+		{"DigestionType", g.DigestionType},
+	}
+	for _, t := range traits {
+		p.Add(&components.Label{
+			Text:  fmt.Sprintf("%s: %d", t.name, t.val),
+			Font:  ui.font,
+			Color: color.White,
+		})
+		p.Add(&components.EnergyBar{
+			Value:    float32(t.val),
+			Max:      255,
+			MaxColor: color.RGBA{100, 180, 255, 255},
+			MinColor: color.RGBA{30, 80, 200, 255},
+			Width:    innerW,
+		})
+	}
 	return p
 }
