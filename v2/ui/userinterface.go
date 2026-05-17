@@ -69,6 +69,8 @@ type UserInterface struct {
 	climateDropdown *Dropdown
 	spawnDropdown   *Dropdown
 
+	speedLabel *components.Button
+
 	// references so buttons can trigger game-level actions
 	onSaveCreature func() error
 	onEditCreature func()
@@ -159,6 +161,22 @@ func NewUserInterface(
 	mb.AddButton(foodBtn)
 	mb.AddButton(climateBtn)
 	mb.AddButton(spawnBtn)
+
+	// Speed controls (right-aligned): < [speed] >
+	speedDownBtn := &components.Button{W: 24, H: 24, Label: "<", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	speedDownBtn.OnClick = func() {
+		game.simStepsPerTick = nextSimRate(game.simStepsPerTick, -1)
+	}
+	speedLabelBtn := &components.Button{W: 52, H: 24, Label: "1x", Color: color.RGBA{0, 0, 0, 0}, LabelColor: color.White, Font: font}
+	speedUpBtn := &components.Button{W: 24, H: 24, Label: ">", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	speedUpBtn.OnClick = func() {
+		game.simStepsPerTick = nextSimRate(game.simStepsPerTick, 1)
+	}
+	mb.AddButtonRight(speedDownBtn)
+	mb.AddButtonRight(speedLabelBtn)
+	mb.AddButtonRight(speedUpBtn)
+	ui.speedLabel = speedLabelBtn
+
 	ui.menuBar = mb
 
 	ui.foodDropdown = newFoodDropdown(font, foodBtn, sim)
@@ -321,6 +339,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 
 	ui.leftStack.Set(ui.histStatsIdx, ui.buildHistStatsPanel(), true)
 
+	if ui.speedLabel != nil {
+		ui.speedLabel.Label = fmt.Sprintf("%dx", state.simStepsPerTick)
+	}
 	ui.menuBar.Draw(screen)
 	if ui.foodDropdown != nil {
 		ui.foodDropdown.Draw(screen)

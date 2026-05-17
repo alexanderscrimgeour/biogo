@@ -24,18 +24,19 @@ type SpawnParameters struct {
 }
 
 type FoodParameters struct {
-	MaxFoliage           int
-	MaxFungi             int
-	FoliageMass          float32
-	FungiMass            float32
-	MeatMass             float32
-	SpawnInterval        int
-	FoliageFountainCount int
-	FungiFountainCount   int
-	FountainDriftSpeed      float64
-	FountainRadius          float64
-	FoliageRandomFraction   float64
-	FungiRandomFraction     float64
+	MaxFoliage            int
+	MaxFungi              int
+	FoliageMass           float32
+	FungiMass             float32
+	MeatMass              float32
+	MeatDecayRate         float32
+	SpawnInterval         int
+	FoliageFountainCount  int
+	FungiFountainCount    int
+	FountainDriftSpeed    float64
+	FountainRadius        float64
+	FoliageRandomFraction float64
+	FungiRandomFraction   float64
 }
 
 type CreatureParameters struct {
@@ -136,16 +137,17 @@ func DefaultParams() *Parameters {
 			Initial: 1000,
 		},
 		Food: FoodParameters{
-			MaxFoliage:           150000,
-			MaxFungi:             50000,
-			FoliageMass:          25.0,
-			FungiMass:            250.0,
-			MeatMass:             100.0,
-			SpawnInterval:        10,
-			FoliageFountainCount: 10,
-			FungiFountainCount:   10,
-			FountainDriftSpeed:   10,
-			FountainRadius:       400.0,
+			MaxFoliage:            150000,
+			MaxFungi:              50000,
+			FoliageMass:           25.0,
+			FungiMass:             250.0,
+			MeatMass:              100.0,
+			MeatDecayRate:         0.05,
+			SpawnInterval:         10,
+			FoliageFountainCount:  10,
+			FungiFountainCount:    10,
+			FountainDriftSpeed:    10,
+			FountainRadius:        400.0,
 			FoliageRandomFraction: 0.05,
 			FungiRandomFraction:   0.05,
 		},
@@ -176,7 +178,7 @@ func DefaultParams() *Parameters {
 		},
 		Metabolism: MetabolismParameters{
 			DigestionRate:          0.2,
-			BaseBMR:                0.02,
+			BaseBMR:                0.05,
 			EnergyPerMassUnit:      1.0,
 			MoveCost:               0.01,
 			SpeedDamping:           0.85,
@@ -203,9 +205,9 @@ func DefaultParams() *Parameters {
 			},
 		},
 		Evolution: EvolutionParameters{
-			Tier1Generation: 2,
-			Tier2Generation: 5,
-			Tier3Generation: 50,
+			Tier1Generation: 5,
+			Tier2Generation: 25,
+			Tier3Generation: 75,
 		},
 		Spawn: SpawnParameters{
 			SavedGenomeProportion: 0.05,

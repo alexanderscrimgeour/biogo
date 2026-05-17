@@ -58,7 +58,7 @@ type Creature struct {
 	cachedJuvenilePeriod int     // MinJuvenilePeriod + genome fraction * range
 	Sensors              SensorContext
 	// Buffers to avoid heap allocation
-	SightFoodBuffer        []int
+	SightFoliageBuffer     []int
 	SightMeatBuffer        []int
 	SightFungiBuffer       []int
 	SightCreatureBuffer    []int
@@ -251,7 +251,6 @@ func (c *Creature) Digest(params *Parameters) {
 	c.Stomach -= digested
 	actualGain := float64(digested) * float64(params.Metabolism.EnergyPerMassUnit*efficiency)
 	c.GainEnergy(float32(actualGain), params)
-	c.GainDopamine(0.001)
 }
 
 func (c *Creature) UpdateSize(p *Parameters) {

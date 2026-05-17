@@ -195,6 +195,7 @@ func (s *Simulation) step() {
 	s.Population.ProcessFeedQueue(s.Params)
 	s.Population.ProcessDeathQueue(s.World, s.Params)
 	s.Population.ProcessReproductionQueue(s.World, s.Params)
+	s.World.DecayMeat(s.Params.Food.MeatDecayRate)
 
 	aliveCount := s.Population.AliveCount()
 	const toSpawn = 5

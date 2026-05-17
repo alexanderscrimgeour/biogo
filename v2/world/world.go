@@ -12,16 +12,16 @@ const StartingCreatureID = 1
 // sources stored in the unified food spatial hash.
 const (
 	FoodTypeFoliage uint8 = 0
-	FoodTypeFungi uint8 = 2
-	FoodTypeMeat  uint8 = 1
+	FoodTypeFungi   uint8 = 2
+	FoodTypeMeat    uint8 = 1
 )
 
 // FoodMask* constants are bitmasks for type-filtered food queries.
 const (
 	FoodMaskFoliage uint8 = 1 << FoodTypeFoliage // = 1
-	FoodMaskMeat  uint8 = 1 << FoodTypeMeat  // = 2
-	FoodMaskFungi uint8 = 1 << FoodTypeFungi // = 4
-	FoodMaskAll   uint8 = FoodMaskFoliage | FoodMaskMeat | FoodMaskFungi
+	FoodMaskMeat    uint8 = 1 << FoodTypeMeat    // = 2
+	FoodMaskFungi   uint8 = 1 << FoodTypeFungi   // = 4
+	FoodMaskAll     uint8 = FoodMaskFoliage | FoodMaskMeat | FoodMaskFungi
 )
 
 // Wall is an axis-aligned rectangular obstacle in world-space.
@@ -45,15 +45,15 @@ type World struct {
 	// Unified food hash: foliages (FoodTypeFoliage=0), meat (FoodTypeMeat=1), and
 	// fungi (FoodTypeFungi=2) share one ID space and one SpatialHash.
 	// foodType[id] distinguishes them.
-	foodPos     []Position
-	foodMass    []float32
-	foodActive  []bool
-	foodType    []uint8
-	foliageCount  int
-	meatCount   int
-	fungiCount  int
-	freeFoodIDs []int
-	foodHash    *SpatialHash
+	foodPos      []Position
+	foodMass     []float32
+	foodActive   []bool
+	foodType     []uint8
+	foliageCount int
+	meatCount    int
+	fungiCount   int
+	freeFoodIDs  []int
+	foodHash     *SpatialHash
 
 	// Gaussian fountain system: separate drifting point sets for foliage and fungi.
 	FoliageFountains      []Position
@@ -254,6 +254,19 @@ func (w *World) TotalFungiMass() float64 {
 		}
 	}
 	return total
+}
+
+// DecayMeat reduces every active meat item's mass by rate fraction per tick and removes any that fall below 1.0.
+func (w *World) DecayMeat(rate float32) {
+	for id, active := range w.foodActive {
+		if active && w.foodType[id] == FoodTypeMeat {
+			if remaining := w.foodMass[id] * (1 - rate); remaining < 1.0 {
+				w.removeFoodItem(id)
+			} else {
+				w.foodMass[id] = remaining
+			}
+		}
+	}
 }
 
 // TotalMeatMass returns the sum of all active meat item masses.

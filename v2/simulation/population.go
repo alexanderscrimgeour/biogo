@@ -164,7 +164,7 @@ func (p *Population) ProcessEating(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params)
-		foodIDs, meatIDs, fungiIDs := w.GetFoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoodBuffer, c.SightMeatBuffer, c.SightFungiBuffer)
+		foodIDs, meatIDs, fungiIDs := w.GetFoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoliageBuffer, c.SightMeatBuffer, c.SightFungiBuffer)
 
 		eatNearest := func(ids []int, foodType uint8) {
 			stomachSpace := c.StomachCapacity(params) - c.Stomach
@@ -195,6 +195,7 @@ func (p *Population) ProcessEating(w *world.World, params *Parameters) {
 				eaten = stomachSpace / eff
 			}
 			c.Stomach += stomachGain
+			c.GainDopamine(0.01)
 			w.ReduceFoodMass(closestID, eaten)
 		}
 

@@ -17,6 +17,8 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 	var neuronAccumulators [256]float32
 
 	ctx := &c.Sensors
+	ctx.FwdX, ctx.FwdY = world.HeadingToVec(c.Heading)
+	ctx.HalfFOVCosSq = c.halfFOVCos * c.halfFOVCos
 
 	var sensorCache [SENSOR_COUNT]float32
 	c.Nnet.LastSensorValues = [SENSOR_COUNT]float32{}

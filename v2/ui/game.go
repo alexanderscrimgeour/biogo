@@ -15,6 +15,9 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
+// simRates are the allowed discrete simulation speed multipliers.
+var simRates = []int{1, 5, 25, 50, 100}
+
 // SimulationState is the interface the UI requires from the simulation.
 type SimulationState interface {
 	Update()
@@ -203,10 +206,10 @@ func (g *Game) Update() error {
 		g.spawnPlacing = false
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
-		g.simStepsPerTick++
+		g.simStepsPerTick = nextSimRate(g.simStepsPerTick, 1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) && g.simStepsPerTick > 1 {
-		g.simStepsPerTick--
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
+		g.simStepsPerTick = nextSimRate(g.simStepsPerTick, -1)
 	}
 
 	if !g.paused {
@@ -257,6 +260,23 @@ func drawText(dst *ebiten.Image, str string, face *textv2.GoXFace, x, y int, clr
 	op.GeoM.Translate(float64(x), float64(y))
 	op.ColorScale.ScaleWithColor(clr)
 	textv2.Draw(dst, str, face, op)
+}
+
+// nextSimRate returns the next allowed sim rate in the given direction (+1 or -1).
+// If current is not in simRates, it snaps to the nearest valid value.
+func nextSimRate(current, dir int) int {
+	for i, r := range simRates {
+		if r == current {
+			next := i + dir
+			if next < 0 {
+				next = 0
+			} else if next >= len(simRates) {
+				next = len(simRates) - 1
+			}
+			return simRates[next]
+		}
+	}
+	return simRates[0]
 }
 
 // clamp restricts v to [0, 1].
