@@ -61,7 +61,7 @@ func TestSelectBestGenomesEmptyPopulation(t *testing.T) {
 
 func TestSelectBestGenomesReturnsAtMostMax(t *testing.T) {
 	p := defaultParams()
-	p.StartingPopulation = 50
+	p.Population.Initial = 50
 	sim := simulation.New(p)
 	for i := 0; i < 5; i++ {
 		sim.Update()

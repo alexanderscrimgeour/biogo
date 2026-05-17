@@ -23,35 +23,68 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.White,
-		Min: 0, Max: 500000,
-		Value: float64(p.Food.Max),
+		Font: font, LabelColor: color.RGBA{65, 180, 55, 255},
+		Min: 0, Max: 1000000,
+		Value: float64(p.Food.MaxFoliage),
 		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Max Food: %d", int(math.Round(v)))
+			return fmt.Sprintf("Max Foliage: %d", int(math.Round(v)))
 		},
-		OnChange: func(v float64) { sim.SetMaxFood(int(math.Round(v))) },
+		OnChange: func(v float64) { sim.SetMaxFoliage(int(math.Round(v))) },
 	})
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.White,
+		Font: font, LabelColor: color.RGBA{160, 80, 200, 255},
+		Min: 0, Max: 1000000,
+		Value: float64(p.Food.MaxFungi),
+		FormatFunc: func(v float64) string {
+			return fmt.Sprintf("Max Fungi: %d", int(math.Round(v)))
+		},
+		OnChange: func(v float64) { sim.SetMaxFungi(int(math.Round(v))) },
+	})
+	d.addSlider(&components.Slider{
+		W: sw, H: sliderH,
+		TrackOffX: trackOff, TrackW: trackW,
+		Font: font, LabelColor: color.RGBA{65, 180, 55, 255},
 		Min: 0, Max: 1,
-		Value: p.Food.RandomFraction,
+		Value: p.Food.FoliageRandomFraction,
 		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Random: %.1f%%", v*100)
+			return fmt.Sprintf("Foliage Rnd: %.1f%%", v*100)
 		},
-		OnChange: func(v float64) { sim.SetFoodRandomFraction(v) },
+		OnChange: func(v float64) { sim.SetFoliageRandomFraction(v) },
 	})
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.White,
-		Min: 0, Max: 50,
-		Value: float64(p.Food.FountainCount),
+		Font: font, LabelColor: color.RGBA{160, 80, 200, 255},
+		Min: 0, Max: 1,
+		Value: p.Food.FungiRandomFraction,
 		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Fountains: %d", int(math.Round(v)))
+			return fmt.Sprintf("Fungi Rnd: %.1f%%", v*100)
 		},
-		OnChange: func(v float64) { sim.SetFountainCount(int(math.Round(v))) },
+		OnChange: func(v float64) { sim.SetFungiRandomFraction(v) },
+	})
+	d.addSlider(&components.Slider{
+		W: sw, H: sliderH,
+		TrackOffX: trackOff, TrackW: trackW,
+		Font: font, LabelColor: color.RGBA{65, 180, 55, 255},
+		Min: 0, Max: 50,
+		Value: float64(p.Food.FoliageFountainCount),
+		FormatFunc: func(v float64) string {
+			return fmt.Sprintf("Foliage Founts: %d", int(math.Round(v)))
+		},
+		OnChange: func(v float64) { sim.SetFoliageFountainCount(int(math.Round(v))) },
+	})
+	d.addSlider(&components.Slider{
+		W: sw, H: sliderH,
+		TrackOffX: trackOff, TrackW: trackW,
+		Font: font, LabelColor: color.RGBA{160, 80, 200, 255},
+		Min: 0, Max: 50,
+		Value: float64(p.Food.FungiFountainCount),
+		FormatFunc: func(v float64) string {
+			return fmt.Sprintf("Fungi Founts: %d", int(math.Round(v)))
+		},
+		OnChange: func(v float64) { sim.SetFungiFountainCount(int(math.Round(v))) },
 	})
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,

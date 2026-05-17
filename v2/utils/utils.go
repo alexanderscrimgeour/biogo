@@ -76,3 +76,12 @@ func RestrictFloat32(min, max, val float32) float32 {
 func MakeRandomByte() byte {
 	return byte(rand.Uint32() >> 24)
 }
+
+// MakeRandomByteUShaped returns a byte biased toward 0 and 255, using the
+// arcsine distribution (Beta(0.5,0.5)). Density peaks at both extremes and
+// is lowest in the middle, producing specialist rather than generalist values.
+func MakeRandomByteUShaped() byte {
+	u := rand.Float64()
+	x := math.Sin(u * math.Pi / 2)
+	return byte(x * x * 255)
+}

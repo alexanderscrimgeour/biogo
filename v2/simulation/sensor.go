@@ -14,14 +14,18 @@ const (
 	BIAS byte = iota
 	// Current energy relative to maximum: -1 = empty, 0 = half full, 1 = full.
 	ENERGY
-	// Angle to the nearest food item relative to heading [-1, 1]; 0 = directly ahead.
-	NEAREST_FOOD_ANGLE
-	// Distance to the nearest food item normalised by sight range [-1, 1]; 1 = nothing visible.
-	NEAREST_FOOD_DIST
+	// Angle to the nearest foliage item relative to heading [-1, 1]; 0 = directly ahead.
+	NEAREST_FOLIAGE_ANGLE
+	// Distance to the nearest foliage item normalised by sight range [-1, 1]; 1 = nothing visible.
+	NEAREST_FOLIAGE_DIST
 	// Angle to the nearest meat item relative to heading [-1, 1]; 0 = directly ahead.
 	NEAREST_MEAT_ANGLE
 	// Distance to the nearest meat item normalised by sight range [-1, 1]; 1 = nothing visible.
 	NEAREST_MEAT_DIST
+	// Angle to the nearest fungi item relative to heading [-1, 1]; 0 = directly ahead.
+	NEAREST_FUNGI_ANGLE
+	// Distance to the nearest fungi item normalised by sight range [-1, 1]; 1 = nothing visible.
+	NEAREST_FUNGI_DIST
 
 	// -- TIER 1 --
 
@@ -100,9 +104,9 @@ const (
 )
 
 const (
-	MaxTier0Sensor = 5
-	MaxTier1Sensor = 13
-	MaxTier2Sensor = 23
+	MaxTier0Sensor = 7
+	MaxTier1Sensor = 15
+	MaxTier2Sensor = 25
 )
 
 // Expected creature density
@@ -110,6 +114,7 @@ const kDensity = 0.00008
 
 type SensorContext struct {
 	SightFoodIDs      []int
+	SightFungiIDs     []int
 	SightMeatIDs      []int
 	SightCreatureIDs  []int
 	SightCreatureSims []float32 // genome similarity to self; parallel to SightCreatureIDs
@@ -118,13 +123,14 @@ type SensorContext struct {
 }
 
 func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params *Parameters) {
-	c.SightFoodBuffer, c.SightMeatBuffer, c.SightCreatureBuffer = world.GetAllInRadius(
-		c.Loc, c.GetVisionRadius(), c.SightFoodBuffer, c.SightMeatBuffer, c.SightCreatureBuffer,
+	c.SightFoodBuffer, c.SightMeatBuffer, c.SightFungiBuffer, c.SightCreatureBuffer = world.GetAllInRadius(
+		c.Loc, c.GetVisionRadius(), c.SightFoodBuffer, c.SightMeatBuffer, c.SightFungiBuffer, c.SightCreatureBuffer,
 	)
 	// LocalCreatureBuffer contains the same set — copy instead of a second query.
 	c.LocalCreatureBuffer = append(c.LocalCreatureBuffer[:0], c.SightCreatureBuffer...)
 
 	c.Sensors.SightFoodIDs = c.SightFoodBuffer
+	c.Sensors.SightFungiIDs = c.SightFungiBuffer
 	c.Sensors.SightMeatIDs = c.SightMeatBuffer
 	c.Sensors.SightCreatureIDs = c.SightCreatureBuffer
 	c.Sensors.LocalCreatureIDs = c.LocalCreatureBuffer
@@ -224,11 +230,17 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 	case SPEED:
 		output = calculateSpeed(c, params)
 
-	case NEAREST_FOOD_ANGLE:
+	case NEAREST_FOLIAGE_ANGLE:
 		output = calculateNearestFoodAngle(c, w, ctx)
 
-	case NEAREST_FOOD_DIST:
+	case NEAREST_FOLIAGE_DIST:
 		output = calculateNearestFoodDistFov(c, w, ctx, params)
+
+	case NEAREST_FUNGI_ANGLE:
+		output = calculateNearestFungiAngle(c, w, ctx)
+
+	case NEAREST_FUNGI_DIST:
+		output = calculateNearestFungiDistFov(c, w, ctx, params)
 
 	case NEAREST_MEAT_ANGLE:
 		output = calculateNearestMeatAngle(c, w, ctx)
@@ -714,6 +726,60 @@ func calculateNearestMeatDistFov(c Creature, w *world.World, ctx *SensorContext,
 	actualDist := float32(math.Sqrt(float64(bestDistSq)))
 	normDist := actualDist / maxDist
 
+	return (normDist * 2.0) - 1.0
+}
+
+// calculateNearestFungiAngle returns the angle to the nearest fungi item within
+// sight range, relative to the creature's heading, mapped to [-1, 1] where 0
+// means directly ahead. Returns 0 when no fungi is visible.
+func calculateNearestFungiAngle(c Creature, w *world.World, ctx *SensorContext) float32 {
+	var bestDistSq float32 = math.MaxFloat32
+	var bestDx, bestDy float32
+	found := false
+
+	for _, id := range ctx.SightFungiIDs {
+		pos := w.GetFoodPos(id)
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 < bestDistSq {
+			bestDistSq, bestDx, bestDy, found = d2, dx, dy, true
+		}
+	}
+
+	if !found {
+		return 0
+	}
+
+	angleToFungi := math.Atan2(float64(bestDy), float64(bestDx))
+	diff := angleToFungi - float64(c.Heading)
+	if diff > math.Pi {
+		diff -= 2 * math.Pi
+	} else if diff < -math.Pi {
+		diff += 2 * math.Pi
+	}
+	const invPi = 1.0 / math.Pi
+	return float32(diff * invPi)
+}
+
+func calculateNearestFungiDistFov(c Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
+	maxDist := c.GetVisionRadius()
+	var bestDistSq float32 = math.MaxFloat32
+
+	for _, id := range ctx.SightFungiIDs {
+		pos := w.GetFoodPos(id)
+		dx, dy := pos.X-c.Loc.X, pos.Y-c.Loc.Y
+		d2 := dx*dx + dy*dy
+		if d2 < bestDistSq {
+			bestDistSq = d2
+		}
+	}
+
+	if bestDistSq == math.MaxFloat32 {
+		return 1.0
+	}
+
+	actualDist := float32(math.Sqrt(float64(bestDistSq)))
+	normDist := actualDist / maxDist
 	return (normDist * 2.0) - 1.0
 }
 

@@ -2,10 +2,11 @@ package simulation
 
 import "biogo/v2/world"
 
-// FoodTypePlant and FoodTypeMeat mirror world.FoodType* for use in snapshot views.
+// FoodTypeFoliage, FoodTypeFungi, and FoodTypeMeat mirror world.FoodType* for use in snapshot views.
 const (
-	FoodTypePlant = world.FoodTypePlant
-	FoodTypeMeat  = world.FoodTypeMeat
+	FoodTypeFoliage = world.FoodTypeFoliage
+	FoodTypeFungi   = world.FoodTypeFungi
+	FoodTypeMeat    = world.FoodTypeMeat
 )
 
 // CreatureView is a read-only snapshot of a creature's display state.
@@ -23,8 +24,8 @@ type CreatureView struct {
 	Tier             byte
 }
 
-// FoodView is a read-only snapshot of a food item (plant or meat) for rendering.
-// Type is FoodTypePlant (0) or FoodTypeMeat (1).
+// FoodView is a read-only snapshot of a food item (foliage or meat) for rendering.
+// Type is FoodTypeFoliage (0), FoodTypeFungi (1), or FoodTypeMeat (2).
 type FoodView struct {
 	ID     int
 	X, Y   float64
@@ -51,53 +52,56 @@ type NeuralNetView struct {
 
 // GenomeSnapshot is a copy of the raw genome header bytes for the inspector panel.
 type GenomeSnapshot struct {
-	OscPeriod         byte
-	VisionRadius      byte
-	FieldOfView       byte
-	Responsiveness    byte
-	MutationRate      byte
-	Mass              byte
-	MinMass           byte
-	ReproductionType  byte
-	CognitiveBreadth  byte
-	SynapticDensity   byte
-	JuvenilePeriod    byte
-	MetabolicRate     byte
-	StomachSize       byte
-	Neuroplasticity   byte
-	LearningThreshold byte
-	MassSplitRatio    byte
-	DigestionType     byte
+	OscPeriod                  byte
+	VisionRadius               byte
+	FieldOfView                byte
+	Responsiveness             byte
+	MutationRate               byte
+	Mass                       byte
+	MinMass                    byte
+	ReproductionType           byte
+	CognitiveBreadth           byte
+	SynapticDensity            byte
+	JuvenilePeriod             byte
+	MetabolicRate              byte
+	StomachSize                byte
+	Neuroplasticity            byte
+	LearningThreshold          byte
+	MassSplitRatio             byte
+	FoliageDigestionEfficiency byte
+	FungiDigestionEfficiency   byte
+	MeatDigestionEfficiency    byte
 }
 
 // CreatureDetailView is a rich snapshot of a single creature for the inspector panel.
 type CreatureDetailView struct {
-	ID               int
-	Generation       float32
-	Tier             byte
-	Energy           float32
-	MaxEnergy        float32
-	Age              int
-	IsJuvenile       bool
-	JuvenilePeriod   int
-	CurrentMass      float32
-	AdultMass        float64
-	LastAction       string
-	VisionRadius     float64
-	FieldOfView      float64
-	Dopamine         float32
-	MutationPct      float32 // actual per-gene mutation probability as a percentage
-	R, G, B, A       uint8   // genome-derived display colour
-	MetabolicRate    float32 // energy drained per tick
-	MaxAge           int     // maximum lifespan in ticks
-	Stomach          float64
-	StomachCapacity  float64
-	FoodEfficiency   float32 // fraction of food mass absorbed per bite [0, 1]
-	MeatEfficiency   float32 // fraction of meat mass absorbed per bite [0, 1]
-	ReproductionType byte    // 0 = asexual, 1 = sexual
-	Responsiveness   float32 // current responsiveness multiplier [-1, 1]
-	NeuralNet        NeuralNetView
-	Genome           GenomeSnapshot
+	ID                int
+	Generation        float32
+	Tier              byte
+	Energy            float32
+	MaxEnergy         float32
+	Age               int
+	IsJuvenile        bool
+	JuvenilePeriod    int
+	CurrentMass       float32
+	AdultMass         float64
+	LastAction        string
+	VisionRadius      float64
+	FieldOfView       float64
+	Dopamine          float32
+	MutationPct       float32 // actual per-gene mutation probability as a percentage
+	R, G, B, A        uint8   // genome-derived display colour
+	MetabolicRate     float32 // energy drained per tick
+	MaxAge            int     // maximum lifespan in ticks
+	Stomach           float64
+	StomachCapacity   float64
+	FoliageEfficiency float32 // normalised foliage digestion efficiency [0, 1]
+	FungiEfficiency   float32 // normalised fungi digestion efficiency [0, 1]
+	MeatEfficiency    float32 // normalised meat digestion efficiency [0, 1]
+	ReproductionType  byte    // 0 = asexual, 1 = sexual
+	Responsiveness    float32 // current responsiveness multiplier [-1, 1]
+	NeuralNet         NeuralNetView
+	Genome            GenomeSnapshot
 }
 
 // CreatureDetail returns a detailed view of a living creature by ID.
@@ -137,55 +141,56 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		nnView.ActionValues[byte(i)] = v
 	}
 
-	foodEff, meatEff := c.DigestionEfficiencies()
-
 	return CreatureDetailView{
-		ID:               c.Id,
-		Generation:       c.Generation,
-		Tier:             c.Tier,
-		Energy:           c.Energy,
-		MaxEnergy:        c.MaxEnergy(s.Params),
-		Age:              c.Age,
-		IsJuvenile:       c.IsJuvenile(),
-		JuvenilePeriod:   c.JuvenilePeriod(),
-		CurrentMass:      float32(c.CurrentMass()),
-		AdultMass:        float64(c.MaxMass),
-		LastAction:       actionMaskToString(c.LastActionMask),
-		VisionRadius:     float64(c.GetVisionRadius()),
-		FieldOfView:      c.FieldOfView(),
-		Dopamine:         c.Dopamine,
-		MutationPct:      s.Params.Neurology.BaseMutationRate * float32(c.Genome.MutationRate),
-		R:                uint8(r >> 8),
-		G:                uint8(g >> 8),
-		B:                uint8(b >> 8),
-		A:                uint8(a >> 8),
-		MetabolicRate:    c.MetabolicRate(s.Params, s.World.TemperatureAt(c.Loc.Y)),
-		MaxAge:           c.MaxAge(s.Params),
-		Stomach:          float64(c.Stomach),
-		StomachCapacity:  float64(c.StomachCapacity(s.Params)),
-		FoodEfficiency:   foodEff,
-		MeatEfficiency:   meatEff,
-		ReproductionType: c.Genome.ReproductionType,
-		Responsiveness:   c.Responsiveness,
-		NeuralNet:        nnView,
+		ID:                c.Id,
+		Generation:        c.Generation,
+		Tier:              c.Tier,
+		Energy:            c.Energy,
+		MaxEnergy:         c.MaxEnergy(s.Params),
+		Age:               c.Age,
+		IsJuvenile:        c.IsJuvenile(),
+		JuvenilePeriod:    c.JuvenilePeriod(),
+		CurrentMass:       float32(c.CurrentMass()),
+		AdultMass:         float64(c.MaxMass),
+		LastAction:        actionMaskToString(c.LastActionMask),
+		VisionRadius:      float64(c.GetVisionRadius()),
+		FieldOfView:       c.FieldOfView(),
+		Dopamine:          c.Dopamine,
+		MutationPct:       s.Params.Neurology.BaseMutationRate * float32(c.Genome.MutationRate),
+		R:                 uint8(r >> 8),
+		G:                 uint8(g >> 8),
+		B:                 uint8(b >> 8),
+		A:                 uint8(a >> 8),
+		MetabolicRate:     c.MetabolicRate(s.Params, s.World.TemperatureAt(c.Loc.Y)),
+		MaxAge:            c.MaxAge(s.Params),
+		Stomach:           float64(c.Stomach),
+		StomachCapacity:   float64(c.StomachCapacity(s.Params)),
+		FoliageEfficiency: c.GetFoodEfficiency(FoodTypeFoliage),
+		FungiEfficiency:   c.GetFoodEfficiency(FoodTypeFungi),
+		MeatEfficiency:    c.GetFoodEfficiency(FoodTypeMeat),
+		ReproductionType:  c.Genome.ReproductionType,
+		Responsiveness:    c.Responsiveness,
+		NeuralNet:         nnView,
 		Genome: GenomeSnapshot{
-			OscPeriod:         c.Genome.OscPeriod,
-			VisionRadius:      c.Genome.VisionRadius,
-			FieldOfView:       c.Genome.FieldOfView,
-			Responsiveness:    c.Genome.Responsiveness,
-			MutationRate:      c.Genome.MutationRate,
-			Mass:              c.Genome.Mass,
-			MinMass:           c.Genome.MinMass,
-			ReproductionType:  c.Genome.ReproductionType,
-			CognitiveBreadth:  c.Genome.CognitiveBreadth,
-			SynapticDensity:   c.Genome.SynapticDensity,
-			JuvenilePeriod:    c.Genome.JuvenilePeriod,
-			MetabolicRate:     c.Genome.MetabolicRate,
-			StomachSize:       c.Genome.StomachSize,
-			Neuroplasticity:   c.Genome.Neuroplasticity,
-			LearningThreshold: c.Genome.LearningThreshold,
-			MassSplitRatio:    c.Genome.MassSplitRatio,
-			DigestionType:     c.Genome.DigestionType,
+			OscPeriod:                  c.Genome.OscPeriod,
+			VisionRadius:               c.Genome.VisionRadius,
+			FieldOfView:                c.Genome.FieldOfView,
+			Responsiveness:             c.Genome.Responsiveness,
+			MutationRate:               c.Genome.MutationRate,
+			Mass:                       c.Genome.Mass,
+			MinMass:                    c.Genome.MinMass,
+			ReproductionType:           c.Genome.ReproductionType,
+			CognitiveBreadth:           c.Genome.CognitiveBreadth,
+			SynapticDensity:            c.Genome.SynapticDensity,
+			JuvenilePeriod:             c.Genome.JuvenilePeriod,
+			MetabolicRate:              c.Genome.MetabolicRate,
+			StomachSize:                c.Genome.StomachSize,
+			Neuroplasticity:            c.Genome.Neuroplasticity,
+			LearningThreshold:          c.Genome.LearningThreshold,
+			MassSplitRatio:             c.Genome.MassSplitRatio,
+			FoliageDigestionEfficiency: c.Genome.FoliageDigestionEfficiency,
+			FungiDigestionEfficiency:   c.Genome.FungiDigestionEfficiency,
+			MeatDigestionEfficiency:    c.Genome.MeatDigestionEfficiency,
 		},
 	}, true
 }

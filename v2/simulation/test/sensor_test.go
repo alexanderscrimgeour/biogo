@@ -11,7 +11,7 @@ import (
 func makeCreatureAt(w *grid.World, pos grid.Position, sightDist, fov byte) *simulation.Creature {
 	p := defaultParams()
 	g := simulation.MakeRandomGenome(p, 0)
-	g.SightDistance = sightDist
+	g.VisionRadius = sightDist
 	g.FieldOfView = fov
 	id := w.AddCreature(pos)
 	c := simulation.NewCreature(id, pos, g, p)
@@ -167,7 +167,7 @@ func TestStomachRate_MaxDigestion(t *testing.T) {
 	c := makeCreatureAt(w, grid.Position{X: 50, Y: 50}, 1, 90)
 
 	// Stomach drained by exactly DigestionRate → output should be ~1.0.
-	c.LastStomach = float32(params.DigestionRate)
+	c.LastStomach = float32(params.Metabolism.DigestionRate)
 	c.Stomach = 0
 	c.UpdateSensorContext(w, nil, params)
 	val := c.GetSensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)

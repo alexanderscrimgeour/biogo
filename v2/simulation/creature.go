@@ -60,6 +60,7 @@ type Creature struct {
 	// Buffers to avoid heap allocation
 	SightFoodBuffer        []int
 	SightMeatBuffer        []int
+	SightFungiBuffer       []int
 	SightCreatureBuffer    []int
 	SightCreatureSimBuffer []float32 // parallel to SightCreatureBuffer; genome similarity to self
 	LocalCreatureBuffer    []int
@@ -179,13 +180,26 @@ func (c Creature) BiteSize(params *Parameters) float32 {
 	return float32(params.Creature.BaseBiteSize) * (c.Mass / float32(params.Creature.MaxMass))
 }
 
-// DigestionEfficiencies returns the fraction of food and meat mass this creature
-// can absorb into its stomach per bite.
-// gene=0 → (1.0, 0.0) pure herbivore; gene=255 → (0.0, 1.0) pure carnivore;
-// gene=128 → (~0.5, ~0.5) omnivore.
-func (c Creature) DigestionEfficiencies() (foodEff, meatEff float32) {
-	dt := float32(c.Genome.DigestionType) / 255.0
-	return 1.0 - dt, dt
+// GetFoodEfficiency returns the normalised digestion efficiency for the given food
+// type. Each of the three raw gene values (foliage, fungi, meat) is divided by
+// their sum, so a creature with all genes at maximum still gets 33% per food type.
+// Returns 0 if all three genes are zero (edge case: creatures cannot digest anything).
+func (c Creature) GetFoodEfficiency(foodType uint8) float32 {
+	total := float32(c.Genome.FoliageDigestionEfficiency) +
+		float32(c.Genome.FungiDigestionEfficiency) +
+		float32(c.Genome.MeatDigestionEfficiency)
+	if total == 0 {
+		return 0
+	}
+	switch foodType {
+	case world.FoodTypeFoliage:
+		return float32(c.Genome.FoliageDigestionEfficiency) / total
+	case world.FoodTypeFungi:
+		return float32(c.Genome.FungiDigestionEfficiency) / total
+	case world.FoodTypeMeat:
+		return float32(c.Genome.MeatDigestionEfficiency) / total
+	}
+	return 0
 }
 
 func (c *Creature) Digest(params *Parameters) {
@@ -237,6 +251,7 @@ func (c *Creature) Digest(params *Parameters) {
 	c.Stomach -= digested
 	actualGain := float64(digested) * float64(params.Metabolism.EnergyPerMassUnit*efficiency)
 	c.GainEnergy(float32(actualGain), params)
+	c.GainDopamine(0.001)
 }
 
 func (c *Creature) UpdateSize(p *Parameters) {
@@ -295,7 +310,7 @@ func (c *Creature) GrowMass(params *Parameters) {
 	// von Bertalanffy rate: peaks at massRatio ≈ 0.33, zero at 0 and 1.
 	growthRate := float64(params.Metabolism.MaxGrowthRatePerTick) * math.Sqrt(massRatio) * (1.0 - massRatio)
 	actualGrowth := growthRate * energyFactor
-	energyCost := actualGrowth * float64(params.Metabolism.GrowthEnergyCostFactor)
+	energyCost := actualGrowth * float64(params.Metabolism.EnergyPerMassUnit)
 
 	if actualGrowth > 0.001 {
 		c.Mass = utils.MinFloat32(maxMass, c.Mass+float32(actualGrowth))
@@ -359,7 +374,14 @@ func (c Creature) MetabolicRate(params *Parameters, temp float32) float32 {
 
 	tempMult := params.Environment.ColdMetabolicMultiplier + (params.Environment.WarmMetabolicMultiplier-params.Environment.ColdMetabolicMultiplier)*(tempNorm*tempNorm)
 
-	return base * tempMult
+	// Gut complexity tax: more investment in digestion genes costs more energy.
+	// Max totalGut = 765 (3 × 255); gutTax max ≈ 1.38 (38% overhead).
+	totalGut := float32(c.Genome.FoliageDigestionEfficiency) +
+		float32(c.Genome.FungiDigestionEfficiency) +
+		float32(c.Genome.MeatDigestionEfficiency)
+	gutTax := 1.0 + totalGut*0.0005
+
+	return base * tempMult * gutTax
 }
 
 // MaxAge returns the creature's maximum lifespan in ticks.

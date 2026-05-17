@@ -8,18 +8,20 @@ import (
 // StartingCreatureID is the first valid creature ID; 0 is reserved for "empty".
 const StartingCreatureID = 1
 
-// FoodTypePlant and FoodTypeMeat distinguish the two food sources stored in the
-// unified food spatial hash.
+// FoodTypeFoliage, FoodTypeFungi, and FoodTypeMeat distinguish the three food
+// sources stored in the unified food spatial hash.
 const (
-	FoodTypePlant uint8 = 0
+	FoodTypeFoliage uint8 = 0
+	FoodTypeFungi uint8 = 2
 	FoodTypeMeat  uint8 = 1
 )
 
 // FoodMask* constants are bitmasks for type-filtered food queries.
 const (
-	FoodMaskPlant uint8 = 1 << FoodTypePlant // = 1
+	FoodMaskFoliage uint8 = 1 << FoodTypeFoliage // = 1
 	FoodMaskMeat  uint8 = 1 << FoodTypeMeat  // = 2
-	FoodMaskAll   uint8 = FoodMaskPlant | FoodMaskMeat
+	FoodMaskFungi uint8 = 1 << FoodTypeFungi // = 4
+	FoodMaskAll   uint8 = FoodMaskFoliage | FoodMaskMeat | FoodMaskFungi
 )
 
 // Wall is an axis-aligned rectangular obstacle in world-space.
@@ -40,20 +42,24 @@ type World struct {
 	freeCreatureIDs []int
 	cHash           *SpatialHash
 
-	// Unified food hash: plants (FoodTypePlant=0) and meat (FoodTypeMeat=1)
-	// share one ID space and one SpatialHash. foodType[id] distinguishes them.
+	// Unified food hash: foliages (FoodTypeFoliage=0), meat (FoodTypeMeat=1), and
+	// fungi (FoodTypeFungi=2) share one ID space and one SpatialHash.
+	// foodType[id] distinguishes them.
 	foodPos     []Position
 	foodMass    []float32
 	foodActive  []bool
 	foodType    []uint8
-	plantCount  int
+	foliageCount  int
 	meatCount   int
+	fungiCount  int
 	freeFoodIDs []int
 	foodHash    *SpatialHash
 
-	// Gaussian fountain system: 3-5 drifting points that food spawns around.
-	Fountains      []Position
-	fountainAngles []float64
+	// Gaussian fountain system: separate drifting point sets for foliage and fungi.
+	FoliageFountains      []Position
+	foliageFountainAngles []float64
+	FungiFountains        []Position
+	fungiFountainAngles   []float64
 }
 
 func NewWorld(width, height float64, wallType int) *World {
@@ -135,7 +141,7 @@ func (w *World) GetCreaturesInCone(center Position, heading float32, halfFOVCos 
 	return w.cHash.InCone(center, heading, halfFOVCos, maxDist, w.creaturePos, w.creatureActive, buffer)
 }
 
-// --- Unified food/plant/meat spatial operations ---
+// --- Unified food/foliage/meat spatial operations ---
 
 // addFoodItem is the internal helper that inserts any food type into the unified hash.
 func (w *World) addFoodItem(pos Position, mass float32, typ uint8) int {
@@ -163,24 +169,27 @@ func (w *World) addFoodItem(pos Position, mass float32, typ uint8) int {
 // appropriate type counter.
 func (w *World) removeFoodItem(id int) {
 	w.foodHash.Remove(id, w.foodPos[id])
-	if w.foodType[id] == FoodTypePlant {
-		w.plantCount--
-	} else {
+	switch w.foodType[id] {
+	case FoodTypeFoliage:
+		w.foliageCount--
+	case FoodTypeMeat:
 		w.meatCount--
+	case FoodTypeFungi:
+		w.fungiCount--
 	}
 	w.foodActive[id] = false
 	w.freeFoodIDs = append(w.freeFoodIDs, id)
 }
 
-// AddPlant places a plant item with the given mass at pos and returns its ID.
-func (w *World) AddPlant(pos Position, mass float32) int {
-	id := w.addFoodItem(pos, mass, FoodTypePlant)
-	w.plantCount++
+// AddFoliage places a foliage item with the given mass at pos and returns its ID.
+func (w *World) AddFoliage(pos Position, mass float32) int {
+	id := w.addFoodItem(pos, mass, FoodTypeFoliage)
+	w.foliageCount++
 	return id
 }
 
-// RemovePlant removes the plant item with the given ID.
-func (w *World) RemovePlant(id int) {
+// RemoveFoliage removes the foliage item with the given ID.
+func (w *World) RemoveFoliage(id int) {
 	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
 		return
 	}
@@ -202,12 +211,12 @@ func (w *World) RemoveMeat(id int) {
 	w.removeFoodItem(id)
 }
 
-// GetFoodPos returns the position of any food item (plant or meat) by ID.
+// GetFoodPos returns the position of any food item (foliage or meat) by ID.
 func (w *World) GetFoodPos(id int) Position {
 	return w.foodPos[id]
 }
 
-// GetFoodMass returns the mass of any food item (plant or meat) by ID.
+// GetFoodMass returns the mass of any food item (foliage or meat) by ID.
 func (w *World) GetFoodMass(id int) float32 {
 	return w.foodMass[id]
 }
@@ -225,11 +234,22 @@ func (w *World) ReduceFoodMass(id int, amount float32) float32 {
 	return remaining
 }
 
-// TotalPlantMass returns the sum of all active plant item masses.
-func (w *World) TotalPlantMass() float64 {
+// TotalFoliageMass returns the sum of all active foliage item masses.
+func (w *World) TotalFoliageMass() float64 {
 	total := float64(0)
 	for id, active := range w.foodActive {
-		if active && w.foodType[id] == FoodTypePlant {
+		if active && w.foodType[id] == FoodTypeFoliage {
+			total += float64(w.foodMass[id])
+		}
+	}
+	return total
+}
+
+// TotalFungiMass returns the sum of all active foliage item masses.
+func (w *World) TotalFungiMass() float64 {
+	total := float64(0)
+	for id, active := range w.foodActive {
+		if active && w.foodType[id] == FoodTypeFungi {
 			total += float64(w.foodMass[id])
 		}
 	}
@@ -247,15 +267,33 @@ func (w *World) TotalMeatMass() float64 {
 	return total
 }
 
-// PlantCount returns the number of active plant items.
-func (w *World) PlantCount() int { return w.plantCount }
+// AddFungi places a fungi item with the given mass at pos and returns its ID.
+func (w *World) AddFungi(pos Position, mass float32) int {
+	id := w.addFoodItem(pos, mass, FoodTypeFungi)
+	w.fungiCount++
+	return id
+}
+
+// RemoveFungi removes the fungi item with the given ID.
+func (w *World) RemoveFungi(id int) {
+	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
+		return
+	}
+	w.removeFoodItem(id)
+}
+
+// FoliageCount returns the number of active foliage items.
+func (w *World) FoliageCount() int { return w.foliageCount }
 
 // MeatCount returns the number of active meat items.
 func (w *World) MeatCount() int { return w.meatCount }
 
-// GetFoodInRadius returns IDs of plant items within radius of center.
+// FungiCount returns the number of active fungi items.
+func (w *World) FungiCount() int { return w.fungiCount }
+
+// GetFoodInRadius returns IDs of foliage items within radius of center.
 func (w *World) GetFoodInRadius(center Position, radius float32, buffer []int) []int {
-	return w.GetFoodInRadiusByMask(center, radius, FoodMaskPlant, buffer)
+	return w.GetFoodInRadiusByMask(center, radius, FoodMaskFoliage, buffer)
 }
 
 // GetFoodInRadiusByMask returns IDs of food items within radius matching the type bitmask.
@@ -353,70 +391,101 @@ func (w *World) FindEmptyLocationNear(center Position, radius float64) Position 
 
 // --- Fountain system ---
 
-// InitFountains places count fountain points at random valid locations with random drift angles.
-func (w *World) InitFountains(count int) {
-	w.Fountains = make([]Position, count)
-	w.fountainAngles = make([]float64, count)
-	for i := range w.Fountains {
+func (w *World) initFountainSlice(count int) ([]Position, []float64) {
+	positions := make([]Position, count)
+	angles := make([]float64, count)
+	for i := range positions {
 		pos, ok := w.FindEmptyLocation()
 		if !ok {
 			pos = Position{X: float32(w.Width / 2), Y: float32(w.Height / 2)}
 		}
-		w.Fountains[i] = pos
-		w.fountainAngles[i] = rand.Float64() * 2 * math.Pi
+		positions[i] = pos
+		angles[i] = rand.Float64() * 2 * math.Pi
 	}
+	return positions, angles
 }
 
-// SetFountainCount grows or shrinks the fountain pool without re-seeding existing ones.
-func (w *World) SetFountainCount(n int) {
-	current := len(w.Fountains)
+// InitFountains places foliageCount foliage fountain points and fungiCount fungi
+// fountain points at random valid locations with random drift angles.
+func (w *World) InitFountains(foliageCount, fungiCount int) {
+	w.FoliageFountains, w.foliageFountainAngles = w.initFountainSlice(foliageCount)
+	w.FungiFountains, w.fungiFountainAngles = w.initFountainSlice(fungiCount)
+}
+
+func setFountainSliceCount(w *World, positions *[]Position, angles *[]float64, n int) {
+	current := len(*positions)
 	if n > current {
 		for i := current; i < n; i++ {
 			pos, ok := w.FindEmptyLocation()
 			if !ok {
 				pos = Position{X: float32(w.Width / 2), Y: float32(w.Height / 2)}
 			}
-			w.Fountains = append(w.Fountains, pos)
-			w.fountainAngles = append(w.fountainAngles, rand.Float64()*2*math.Pi)
+			*positions = append(*positions, pos)
+			*angles = append(*angles, rand.Float64()*2*math.Pi)
 		}
 	} else if n < current {
-		w.Fountains = w.Fountains[:n]
-		w.fountainAngles = w.fountainAngles[:n]
+		*positions = (*positions)[:n]
+		*angles = (*angles)[:n]
 	}
 }
 
-// StepFountains advances each fountain by driftSpeed units along its current angle,
-// applying a small random angular perturbation each step. Fountains bounce off world
-// edges and walls.
-func (w *World) StepFountains(driftSpeed float64) {
-	for i := range w.Fountains {
-		w.fountainAngles[i] += (rand.Float64() - 0.5) * 0.1
+// SetFoliageFountainCount grows or shrinks the foliage fountain pool.
+func (w *World) SetFoliageFountainCount(n int) {
+	setFountainSliceCount(w, &w.FoliageFountains, &w.foliageFountainAngles, n)
+}
 
+// SetFungiFountainCount grows or shrinks the fungi fountain pool.
+func (w *World) SetFungiFountainCount(n int) {
+	setFountainSliceCount(w, &w.FungiFountains, &w.fungiFountainAngles, n)
+}
+
+func stepFountainSlice(w *World, positions []Position, angles []float64, driftSpeed float64) {
+	for i := range positions {
+		angles[i] += (rand.Float64() - 0.5) * 0.1
 		newPos := Position{
-			X: w.Fountains[i].X + float32(math.Cos(w.fountainAngles[i])*driftSpeed),
-			Y: w.Fountains[i].Y + float32(math.Sin(w.fountainAngles[i])*driftSpeed),
+			X: positions[i].X + float32(math.Cos(angles[i])*driftSpeed),
+			Y: positions[i].Y + float32(math.Sin(angles[i])*driftSpeed),
 		}
-
 		if w.IsInBounds(newPos) && !w.IsWall(newPos) {
-			w.Fountains[i] = newPos
+			positions[i] = newPos
 		} else {
-			w.fountainAngles[i] += math.Pi + (rand.Float64()-0.5)*math.Pi*0.25
+			angles[i] += math.Pi + (rand.Float64()-0.5)*math.Pi*0.25
 		}
 	}
 }
 
-// SpawnPlant places n plant items (each with the given mass) sampled from Gaussian
-// distributions centred on each fountain. Each item is assigned to a fountain
-// uniformly at random, then offset by a 2-D normal with standard deviation sigma.
-// randomFraction controls what proportion [0,1] is scattered uniformly at random.
-// Items that fall outside the world bounds or inside a wall are retried; if the retry
-// budget is exhausted the remainder are placed uniformly at random so the requested
-// count is always satisfied.
-func (w *World) SpawnPlant(n int, sigma float64, mass float32, randomFraction float64) {
+// StepFountains advances all foliage and fungi fountains by driftSpeed units
+// along their current angles, with small random angular perturbation each step.
+func (w *World) StepFountains(driftSpeed float64) {
+	stepFountainSlice(w, w.FoliageFountains, w.foliageFountainAngles, driftSpeed)
+	stepFountainSlice(w, w.FungiFountains, w.fungiFountainAngles, driftSpeed)
+}
+
+func spawnClustered(w *World, n int, sigma float64, mass float32, fountains []Position, addFn func(Position, float32) int) int {
+	maxAttempts := n * 20
+	spawned := 0
+	for attempts := 0; spawned < n && attempts < maxAttempts; attempts++ {
+		fi := rand.Intn(len(fountains))
+		center := fountains[fi]
+		pos := Position{
+			X: center.X + float32(rand.NormFloat64()*sigma),
+			Y: center.Y + float32(rand.NormFloat64()*sigma),
+		}
+		if w.IsInBounds(pos) && !w.IsWall(pos) {
+			addFn(pos, mass)
+			spawned++
+		}
+	}
+	return spawned
+}
+
+// SpawnFoliage places n foliage items (each with the given mass) sampled from Gaussian
+// distributions centred on each foliage fountain. randomFraction controls what
+// proportion [0,1] is scattered uniformly at random.
+func (w *World) SpawnFoliage(n int, sigma float64, mass float32, randomFraction float64) {
 	if n <= 0 {
 		return
 	}
-
 	if randomFraction < 0 {
 		randomFraction = 0
 	} else if randomFraction > 1 {
@@ -429,37 +498,61 @@ func (w *World) SpawnPlant(n int, sigma float64, mass float32, randomFraction fl
 		w.SpawnRandom(randomCount, mass)
 	}
 
-	if len(w.Fountains) == 0 {
+	if len(w.FoliageFountains) == 0 {
 		w.SpawnRandom(clusterCount, mass)
 		return
 	}
-
-	maxAttempts := clusterCount * 20
-	spawned := 0
-	for attempts := 0; spawned < clusterCount && attempts < maxAttempts; attempts++ {
-		fi := rand.Intn(len(w.Fountains))
-		center := w.Fountains[fi]
-		pos := Position{
-			X: center.X + float32(rand.NormFloat64()*sigma),
-			Y: center.Y + float32(rand.NormFloat64()*sigma),
-		}
-		if w.IsInBounds(pos) && !w.IsWall(pos) {
-			w.AddPlant(pos, mass)
-			spawned++
-		}
-	}
-
+	spawned := spawnClustered(w, clusterCount, sigma, mass, w.FoliageFountains, w.AddFoliage)
 	if spawned < clusterCount {
 		w.SpawnRandom(clusterCount-spawned, mass)
 	}
 }
 
-// SpawnRandom places n plant items (each with the given mass) at uniformly random valid positions.
+// SpawnFungi places n fungi items (each with the given mass) sampled from Gaussian
+// distributions centred on each fungi fountain. randomFraction controls what
+// proportion [0,1] is scattered uniformly at random.
+func (w *World) SpawnFungi(n int, sigma float64, mass float32, randomFraction float64) {
+	if n <= 0 {
+		return
+	}
+	if randomFraction < 0 {
+		randomFraction = 0
+	} else if randomFraction > 1 {
+		randomFraction = 1
+	}
+	randomCount := int(float64(n) * randomFraction)
+	clusterCount := n - randomCount
+
+	if randomCount > 0 {
+		w.SpawnRandomFungi(randomCount, mass)
+	}
+
+	if len(w.FungiFountains) == 0 {
+		w.SpawnRandomFungi(clusterCount, mass)
+		return
+	}
+	spawned := spawnClustered(w, clusterCount, sigma, mass, w.FungiFountains, w.AddFungi)
+	if spawned < clusterCount {
+		w.SpawnRandomFungi(clusterCount-spawned, mass)
+	}
+}
+
+// SpawnRandom places n foliage items (each with the given mass) at uniformly random valid positions.
 func (w *World) SpawnRandom(n int, mass float32) {
 	for i := 0; i < n; i++ {
 		pos, ok := w.FindEmptyLocation()
 		if ok {
-			w.AddPlant(pos, mass)
+			w.AddFoliage(pos, mass)
+		}
+	}
+}
+
+// SpawnRandomFungi places n fungi items (each with the given mass) at uniformly random valid positions.
+func (w *World) SpawnRandomFungi(n int, mass float32) {
+	for i := 0; i < n; i++ {
+		pos, ok := w.FindEmptyLocation()
+		if ok {
+			w.AddFungi(pos, mass)
 		}
 	}
 }
@@ -487,7 +580,7 @@ func (w *World) TemperatureAt(y float32) float32 {
 	return TempCold + t*(TempWarm-TempCold)
 }
 
-// ForEachActiveFood iterates all active food items (plants and meat) and calls fn
+// ForEachActiveFood iterates all active food items (foliages and meat) and calls fn
 // with each item's ID, position, radius, and type.
 func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64, typ uint8)) {
 	for id, active := range w.foodActive {
@@ -499,11 +592,12 @@ func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64, typ u
 	}
 }
 
-// GetFoodAndMeatInRadius fills plantBuf and meatBuf for a radius query in a single
-// cell traversal of the unified food hash.
-func (w *World) GetFoodAndMeatInRadius(center Position, radius float32, plantBuf, meatBuf []int) ([]int, []int) {
-	plantBuf = plantBuf[:0]
+// GetFoodAndMeatInRadius fills foliageBuf, meatBuf, and fungiBuf for a radius query
+// in a single cell traversal of the unified food hash.
+func (w *World) GetFoodAndMeatInRadius(center Position, radius float32, foliageBuf, meatBuf, fungiBuf []int) ([]int, []int, []int) {
+	foliageBuf = foliageBuf[:0]
 	meatBuf = meatBuf[:0]
+	fungiBuf = fungiBuf[:0]
 	rSq := radius * radius
 	minBx, maxBx, minBy, maxBy := w.foodHash.cellBounds(center, radius)
 	for bx := minBx; bx <= maxBx; bx++ {
@@ -518,23 +612,27 @@ func (w *World) GetFoodAndMeatInRadius(center Position, radius float32, plantBuf
 				if dx*dx+dy*dy > rSq {
 					continue
 				}
-				if w.foodType[id] == FoodTypePlant {
-					plantBuf = append(plantBuf, id)
-				} else {
+				switch w.foodType[id] {
+				case FoodTypeFoliage:
+					foliageBuf = append(foliageBuf, id)
+				case FoodTypeMeat:
 					meatBuf = append(meatBuf, id)
+				case FoodTypeFungi:
+					fungiBuf = append(fungiBuf, id)
 				}
 			}
 		}
 	}
-	return plantBuf, meatBuf
+	return foliageBuf, meatBuf, fungiBuf
 }
 
-// GetAllInRadius fills all three buffers (plant, meat, creature) in a single pass
+// GetAllInRadius fills all four buffers (foliage, meat, fungi, creature) in a single pass
 // over the cell bounds. The food hash and creature hash share the same grid dimensions,
 // so both are visited in one loop.
-func (w *World) GetAllInRadius(center Position, radius float32, plantBuf, meatBuf, creatureBuf []int) ([]int, []int, []int) {
-	plantBuf = plantBuf[:0]
+func (w *World) GetAllInRadius(center Position, radius float32, foliageBuf, meatBuf, fungiBuf, creatureBuf []int) ([]int, []int, []int, []int) {
+	foliageBuf = foliageBuf[:0]
 	meatBuf = meatBuf[:0]
+	fungiBuf = fungiBuf[:0]
 	creatureBuf = creatureBuf[:0]
 	rSq := radius * radius
 	// cHash and foodHash share the same grid layout (same width/height/cellSize).
@@ -552,10 +650,13 @@ func (w *World) GetAllInRadius(center Position, radius float32, plantBuf, meatBu
 				if dx*dx+dy*dy > rSq {
 					continue
 				}
-				if w.foodType[id] == FoodTypePlant {
-					plantBuf = append(plantBuf, id)
-				} else {
+				switch w.foodType[id] {
+				case FoodTypeFoliage:
+					foliageBuf = append(foliageBuf, id)
+				case FoodTypeMeat:
 					meatBuf = append(meatBuf, id)
+				case FoodTypeFungi:
+					fungiBuf = append(fungiBuf, id)
 				}
 			}
 			for _, id := range w.cHash.cells[idx] {
@@ -570,5 +671,5 @@ func (w *World) GetAllInRadius(center Position, radius float32, plantBuf, meatBu
 			}
 		}
 	}
-	return plantBuf, meatBuf, creatureBuf
+	return foliageBuf, meatBuf, fungiBuf, creatureBuf
 }

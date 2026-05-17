@@ -46,7 +46,8 @@ type UserInterface struct {
 	menuBar   *components.MenuBar
 	leftStack *LeftPanelStack
 	histGraph *HistoryGraph
-	histIdx   int
+	histStatsIdx int
+	histIdx      int
 
 	detailIdx int
 	nnIdx     int
@@ -176,12 +177,12 @@ func NewUserInterface(
 		Spacing: leftStackSpacing,
 	}
 
+	ui.histStatsIdx = ui.leftStack.Register(nil) // stats panel, set each frame in Draw
+
 	histGraph := &HistoryGraph{
-		Font:      font,
 		getCount:  func() int { return game.histCount },
 		getHead:   func() int { return game.histHead },
 		getSample: func(i int) histSample { return game.history[i] },
-		sim:       sim,
 	}
 	ui.histGraph = histGraph
 	ui.histIdx = ui.leftStack.Register(histGraph)
@@ -318,6 +319,8 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 		ui.currentSaveInput = nil
 	}
 
+	ui.leftStack.Set(ui.histStatsIdx, ui.buildHistStatsPanel(), true)
+
 	ui.menuBar.Draw(screen)
 	if ui.foodDropdown != nil {
 		ui.foodDropdown.Draw(screen)
@@ -360,7 +363,8 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	x := sw - 200
 	if ui.font != nil {
 		drawText(screen, fmt.Sprintf("Population: %d", ui.sim.PopulationCount()), ui.font, x, 23, color.White)
-		drawText(screen, fmt.Sprintf("Plants: %d", ui.sim.PlantCount()), ui.font, x, 43, color.White)
+		drawText(screen, fmt.Sprintf("Foliage: %d", ui.sim.FoliageCount()), ui.font, x, 43, color.White)
+		drawText(screen, fmt.Sprintf("Fungi: %d", ui.sim.FungiCount()), ui.font, x, 43, color.White)
 		drawText(screen, fmt.Sprintf("Avg Age: %.0f", ui.sim.AverageAge()), ui.font, x, 63, color.White)
 		drawText(screen, fmt.Sprintf("Avg Gen: %.1f", ui.sim.AverageGeneration()), ui.font, x, 83, color.White)
 		if state.tickDuration > 0 {
@@ -449,14 +453,16 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 		Width:    innerW,
 	})
 
-	// Efficiency
-	barW := (detailPanelW - detailPad*2 - detailSpacing) / 2
+	// Digestion Efficiency (3-way)
+	barW := (detailPanelW - detailPad*2 - detailSpacing*2) / 3
 	p.AddRow(
-		&components.Label{Text: fmt.Sprintf("Food: %.0f%%", d.FoodEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
-		&components.Label{Text: fmt.Sprintf("Meat: %.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
 	)
 	p.AddRow(
-		&components.EnergyBar{Value: d.FoodEfficiency, Max: 1, MaxColor: color.RGBA{55, 185, 55, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
+		&components.EnergyBar{Value: d.FoliageEfficiency, Max: 1, MaxColor: color.RGBA{55, 185, 55, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
+		&components.EnergyBar{Value: d.FungiEfficiency, Max: 1, MaxColor: color.RGBA{160, 80, 200, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
 		&components.EnergyBar{Value: d.MeatEfficiency, Max: 1, MaxColor: color.RGBA{215, 60, 60, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
 	)
 
@@ -608,7 +614,9 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 		{"Neuroplasticity", g.Neuroplasticity, false},
 		{"LearningThreshold", g.LearningThreshold, false},
 		{"MassSplitRatio", g.MassSplitRatio, false},
-		{"DigestionType", g.DigestionType, false},
+		{"FoliageDigestion", g.FoliageDigestionEfficiency, false},
+		{"FungiDigestion", g.FungiDigestionEfficiency, false},
+		{"MeatDigestion", g.MeatDigestionEfficiency, false},
 	}
 	for _, t := range traits {
 		p.Add(&components.GenomeBar{
@@ -619,5 +627,23 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 			Binary: t.binary,
 		})
 	}
+	return p
+}
+
+// buildHistStatsPanel constructs a compact Panel showing current world stats.
+// Rebuilt each frame so values stay current.
+func (ui *UserInterface) buildHistStatsPanel() *components.Panel {
+	p := &components.Panel{
+		W:         histGraphW,
+		Padding:   histGraphPad,
+		Spacing:   2,
+		BaseColor: color.RGBA{8, 10, 22, 160},
+		Border:    color.RGBA{50, 60, 90, 180},
+	}
+	p.Add(&components.Label{Text: fmt.Sprintf("Pop: %d", ui.sim.PopulationCount()), Font: ui.font, Color: color.RGBA{100, 180, 255, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Foliage: %.0f", ui.sim.FoliageEnergy()), Font: ui.font, Color: color.RGBA{80, 210, 100, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Fungi: %.0f", ui.sim.FungiEnergy()), Font: ui.font, Color: color.RGBA{150, 50, 190, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Meat: %.0f", ui.sim.MeatEnergy()), Font: ui.font, Color: color.RGBA{210, 90, 90, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Energy: %.2f%%", ui.sim.TotalEnergy()/ui.sim.TargetEnergy()*100), Font: ui.font, Color: color.RGBA{255, 230, 50, 255}})
 	return p
 }

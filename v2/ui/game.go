@@ -21,8 +21,10 @@ type SimulationState interface {
 	WorldWidth() float64
 	WorldHeight() float64
 	PopulationCount() int
-	PlantCount() int
-	PlantEnergy() float64
+	FoliageCount() int
+	FoliageEnergy() float64
+	FungiCount() int
+	FungiEnergy() float64
 	MeatEnergy() float64
 	AverageAge() float64
 	AverageGeneration() float64
@@ -33,9 +35,12 @@ type SimulationState interface {
 	TotalEnergy() float64
 	TargetEnergy() float64
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
-	SetFoodRandomFraction(v float64)
-	SetFountainCount(n int)
-	SetMaxFood(n int)
+	SetFoliageRandomFraction(v float64)
+	SetFungiRandomFraction(v float64)
+	SetFoliageFountainCount(n int)
+	SetFungiFountainCount(n int)
+	SetMaxFoliage(n int)
+	SetMaxFungi(n int)
 	SetFountainDriftSpeed(v float64)
 	SetFountainRadius(v float64)
 	SetColdMetabolicMultiplier(v float32)
@@ -55,10 +60,11 @@ type SimulationState interface {
 const historyLen = 5000
 
 type histSample struct {
-	pop         int
-	plantEnergy float64
-	meatEnergy  float64
-	totalEnergy float64
+	pop           int
+	foliageEnergy float64
+	fungiEnergy   float64
+	meatEnergy    float64
+	totalEnergy   float64
 }
 
 // UnitSize is the pixel size of one simulation unit.
@@ -211,10 +217,11 @@ func (g *Game) Update() error {
 		g.sim.Update()
 
 		g.history[g.histHead] = histSample{
-			pop:         g.sim.PopulationCount(),
-			plantEnergy: g.sim.PlantEnergy(),
-			meatEnergy:  g.sim.MeatEnergy(),
-			totalEnergy: g.sim.TotalEnergy(),
+			pop:           g.sim.PopulationCount(),
+			foliageEnergy: g.sim.FoliageEnergy(),
+			fungiEnergy:   g.sim.FungiEnergy(),
+			meatEnergy:    g.sim.MeatEnergy(),
+			totalEnergy:   g.sim.TotalEnergy(),
 		}
 		g.histHead = (g.histHead + 1) % historyLen
 		if g.histCount < historyLen {

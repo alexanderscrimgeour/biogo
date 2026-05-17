@@ -319,9 +319,10 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 
 	bs := float64(UnitSize)
 	if snapshot != nil {
-		// Plant colour: muted green. Meat colour: dark red.
+		// Foliage: muted green. Meat: dark red. Fungi: purple.
 		const pr, pg, pb, pa = float32(65) / 255, float32(140) / 255, float32(55) / 255, float32(125) / 255
 		const mr, mg, mb, ma = float32(180) / 255, float32(30) / 255, float32(30) / 255, float32(180) / 255
+		const fr, fg, fb, fa = float32(150) / 255, float32(50) / 255, float32(190) / 255, float32(140) / 255
 
 		wr.foodVs = wr.foodVs[:0]
 		wr.nFoodCircles = 0
@@ -340,9 +341,12 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 			cx, cy := float32(scx), float32(scy)
 			r := float32(fv.Radius*bs) * zoom
 			var cr, cg, cb, ca float32
-			if fv.Type == world.FoodTypePlant {
+			switch fv.Type {
+			case world.FoodTypeFoliage:
 				cr, cg, cb, ca = pr, pg, pb, pa
-			} else {
+			case world.FoodTypeFungi:
+				cr, cg, cb, ca = fr, fg, fb, fa
+			default:
 				cr, cg, cb, ca = mr, mg, mb, ma
 			}
 			base := len(wr.foodVs)

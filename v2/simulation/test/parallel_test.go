@@ -7,9 +7,9 @@ import (
 
 func BenchmarkSimulationStep(b *testing.B) {
 	p := simulation.DefaultParams()
-	p.StartingPopulation = 1000
-	p.MaxPopulation = 5000
-	p.MinPopulation = 0
+	p.Population.Initial = 1000
+	p.Population.Max = 5000
+	p.Population.Min = 0
 	sim := simulation.New(p)
 
 	b.ResetTimer()
@@ -20,9 +20,9 @@ func BenchmarkSimulationStep(b *testing.B) {
 
 func BenchmarkSimulationStep100(b *testing.B) {
 	p := simulation.DefaultParams()
-	p.StartingPopulation = 100
-	p.MaxPopulation = 500
-	p.MinPopulation = 0
+	p.Population.Initial = 100
+	p.Population.Max = 500
+	p.Population.Min = 0
 	sim := simulation.New(p)
 
 	b.ResetTimer()
@@ -36,8 +36,8 @@ func TestAliveIDs(t *testing.T) {
 	sim := simulation.New(p)
 
 	ids := sim.Population.AliveIDs()
-	if len(ids) != p.StartingPopulation {
-		t.Errorf("AliveIDs returned %d IDs, want %d", len(ids), p.StartingPopulation)
+	if len(ids) != p.Population.Initial {
+		t.Errorf("AliveIDs returned %d IDs, want %d", len(ids), p.Population.Initial)
 	}
 
 	seen := make(map[int]bool, len(ids))
@@ -58,10 +58,9 @@ func TestAliveIDs(t *testing.T) {
 
 func TestParallelStepMatchesExpectedBehaviour(t *testing.T) {
 	p := defaultParams()
-	p.BaseBMR = 10000
-	p.FoodSpawnInterval = 999999
-	p.CorpseDecayRate = 0
-	p.MinPopulation = 0
+	p.Metabolism.BaseBMR = 10000
+	p.Food.SpawnInterval = 999999
+	p.Population.Min = 0
 
 	sim := simulation.New(p)
 	initialCount := sim.PopulationCount()

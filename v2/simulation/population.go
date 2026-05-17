@@ -164,14 +164,17 @@ func (p *Population) ProcessEating(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params)
-		foodIDs, meatIDs := w.GetFoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoodBuffer, c.SightMeatBuffer)
-		foodEff, meatEff := c.DigestionEfficiencies()
+		foodIDs, meatIDs, fungiIDs := w.GetFoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoodBuffer, c.SightMeatBuffer, c.SightFungiBuffer)
 
-		stomachSpace := c.StomachCapacity(params) - c.Stomach
-		if stomachSpace > 0 && len(foodIDs) > 0 && foodEff > 0 {
-			closestID := foodIDs[0]
+		eatNearest := func(ids []int, foodType uint8) {
+			stomachSpace := c.StomachCapacity(params) - c.Stomach
+			eff := c.GetFoodEfficiency(foodType)
+			if stomachSpace <= 0 || len(ids) == 0 || eff <= 0 {
+				return
+			}
+			closestID := ids[0]
 			var closestDistSq float32 = math.MaxFloat32
-			for _, fid := range foodIDs {
+			for _, fid := range ids {
 				fpos := w.GetFoodPos(fid)
 				dx := fpos.X - c.Loc.X
 				dy := fpos.Y - c.Loc.Y
@@ -186,46 +189,18 @@ func (p *Population) ProcessEating(w *world.World, params *Parameters) {
 			if eaten > foodMass {
 				eaten = foodMass
 			}
-			stomachGain := eaten * foodEff
+			stomachGain := eaten * eff
 			if stomachGain > stomachSpace {
 				stomachGain = stomachSpace
-				if foodEff > 0 {
-					eaten = stomachSpace / foodEff
-				}
+				eaten = stomachSpace / eff
 			}
 			c.Stomach += stomachGain
 			w.ReduceFoodMass(closestID, eaten)
 		}
 
-		stomachSpace = c.StomachCapacity(params) - c.Stomach
-		if stomachSpace > 0 && len(meatIDs) > 0 && meatEff > 0 {
-			closestMeatID := meatIDs[0]
-			var closestMeatDistSq float32 = math.MaxFloat32
-			for _, mid := range meatIDs {
-				mpos := w.GetFoodPos(mid)
-				dx := mpos.X - c.Loc.X
-				dy := mpos.Y - c.Loc.Y
-				d2 := dx*dx + dy*dy
-				if d2 < closestMeatDistSq {
-					closestMeatDistSq = d2
-					closestMeatID = mid
-				}
-			}
-			meatMass := w.GetFoodMass(closestMeatID)
-			eaten := bite
-			if eaten > meatMass {
-				eaten = meatMass
-			}
-			stomachGain := eaten * meatEff
-			if stomachGain > stomachSpace {
-				stomachGain = stomachSpace
-				if meatEff > 0 {
-					eaten = stomachSpace / meatEff
-				}
-			}
-			c.Stomach += stomachGain
-			w.ReduceFoodMass(closestMeatID, eaten)
-		}
+		eatNearest(foodIDs, world.FoodTypeFoliage)
+		eatNearest(fungiIDs, world.FoodTypeFungi)
+		eatNearest(meatIDs, world.FoodTypeMeat)
 	}
 }
 
@@ -285,7 +260,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		defenseFactor := float32(0.5) + 0.5*float32(math.Min(1.0, float64(sizeRatio)))
 		effectiveBite := bite * defenseFactor
 
-		_, meatEff := c.DigestionEfficiencies()
+		meatEff := c.GetFoodEfficiency(world.FoodTypeMeat)
 
 		eaten := effectiveBite
 		if eaten > target.Mass {
@@ -298,20 +273,21 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			stomachGain = stomachSpace
 			if meatEff > 0 {
 				eaten = stomachSpace / meatEff
-			} else {
-				eaten = effectiveBite
-				if eaten > target.Mass {
-					eaten = target.Mass
-				}
 			}
 		}
 
-		// waste includes compensation for the energy drained from target so TotalEnergy is conserved.
-		waste := 2*eaten - stomachGain
+		// Clamp the energy drain to what the target actually has; a near-dead target
+		// can't fund the full bite, so waste must reflect only what was actually taken.
+		energyToDrain := eaten * params.Metabolism.EnergyPerMassUnit
+		actualDrained := energyToDrain
+		if actualDrained > target.Energy {
+			actualDrained = target.Energy
+		}
+		waste := eaten + actualDrained/params.Metabolism.EnergyPerMassUnit - stomachGain
 		c.Stomach += stomachGain
 		target.Mass -= eaten
 		target.UpdateSize(params)
-		target.DrainEnergy(eaten * params.Metabolism.EnergyPerMassUnit)
+		target.DrainEnergy(actualDrained)
 		if waste > 0.01 {
 			w.AddMeat(target.Loc, waste)
 		}
@@ -414,7 +390,7 @@ func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 // totalling the creature's body mass, split into FoodMass-sized chunks.
 func spawnMeatFromCreature(w *world.World, c *Creature, params *Parameters) {
 	remaining := c.Mass
-	chunkMass := params.Food.BaseMass
+	chunkMass := params.Food.MeatMass
 	for remaining > 0 {
 		m := chunkMass
 		if m > remaining {

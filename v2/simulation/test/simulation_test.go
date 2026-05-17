@@ -7,14 +7,15 @@ import (
 
 func smallParams() *simulation.Parameters {
 	p := simulation.DefaultParams()
-	p.WorldWidth = 50
-	p.WorldHeight = 50
-	p.StartingPopulation = 10
-	p.MaxPopulation = 20
-	p.MinPopulation = 5
-	p.FoodSpawnInterval = 10
-	p.MaxFood = 200
-	p.FountainCount = 2
+	p.World.Width = 50
+	p.World.Height = 50
+	p.Population.Initial = 10
+	p.Population.Max = 20
+	p.Population.Min = 5
+	p.Food.SpawnInterval = 10
+	p.Food.MaxFoliage = 200
+	p.Food.MaxFungi = 0
+	p.Food.FoliageFountainCount = 2
 	return p
 }
 
@@ -30,8 +31,8 @@ func TestNewSimulation(t *testing.T) {
 	if sim.Population == nil {
 		t.Error("simulation Population should be initialized")
 	}
-	if len(sim.Population.Creatures) != p.StartingPopulation {
-		t.Errorf("expected %d creatures, got %d", p.StartingPopulation, len(sim.Population.Creatures))
+	if len(sim.Population.Creatures) != p.Population.Initial {
+		t.Errorf("expected %d creatures, got %d", p.Population.Initial, len(sim.Population.Creatures))
 	}
 	if sim.Tick != 0 {
 		t.Errorf("initial Tick should be 0, got %d", sim.Tick)
@@ -56,15 +57,15 @@ func TestSimulationCreatureViews(t *testing.T) {
 	sim := simulation.New(p)
 
 	views := sim.CreatureViews()
-	if len(views) != p.StartingPopulation {
-		t.Errorf("CreatureViews returned %d views, want %d", len(views), p.StartingPopulation)
+	if len(views) != p.Population.Initial {
+		t.Errorf("CreatureViews returned %d views, want %d", len(views), p.Population.Initial)
 	}
 	for _, v := range views {
-		if v.X < 0 || v.X >= p.WorldWidth {
-			t.Errorf("creature X=%f out of world bounds [0,%.0f)", v.X, p.WorldWidth)
+		if v.X < 0 || v.X >= p.World.Width {
+			t.Errorf("creature X=%f out of world bounds [0,%.0f)", v.X, p.World.Width)
 		}
-		if v.Y < 0 || v.Y >= p.WorldHeight {
-			t.Errorf("creature Y=%f out of world bounds [0,%.0f)", v.Y, p.WorldHeight)
+		if v.Y < 0 || v.Y >= p.World.Height {
+			t.Errorf("creature Y=%f out of world bounds [0,%.0f)", v.Y, p.World.Height)
 		}
 	}
 }
@@ -73,20 +74,20 @@ func TestSimulationInterfaceMethods(t *testing.T) {
 	p := smallParams()
 	sim := simulation.New(p)
 
-	if sim.WorldWidth() != p.WorldWidth {
-		t.Errorf("WorldWidth() = %.0f, want %.0f", sim.WorldWidth(), p.WorldWidth)
+	if sim.WorldWidth() != p.World.Width {
+		t.Errorf("WorldWidth() = %.0f, want %.0f", sim.WorldWidth(), p.World.Width)
 	}
-	if sim.WorldHeight() != p.WorldHeight {
-		t.Errorf("WorldHeight() = %.0f, want %.0f", sim.WorldHeight(), p.WorldHeight)
+	if sim.WorldHeight() != p.World.Height {
+		t.Errorf("WorldHeight() = %.0f, want %.0f", sim.WorldHeight(), p.World.Height)
 	}
-	if sim.PopulationCount() != p.StartingPopulation {
-		t.Errorf("PopulationCount() = %d, want %d", sim.PopulationCount(), p.StartingPopulation)
+	if sim.PopulationCount() != p.Population.Initial {
+		t.Errorf("PopulationCount() = %d, want %d", sim.PopulationCount(), p.Population.Initial)
 	}
 }
 
 func TestSimulationFoodSpawns(t *testing.T) {
 	p := smallParams()
-	p.FoodSpawnInterval = 1
+	p.Food.SpawnInterval = 1
 	sim := simulation.New(p)
 
 	sim.Update()
@@ -97,7 +98,7 @@ func TestSimulationFoodSpawns(t *testing.T) {
 
 func TestSimulationFoodViews(t *testing.T) {
 	p := smallParams()
-	p.FoodSpawnInterval = 1
+	p.Food.SpawnInterval = 1
 	sim := simulation.New(p)
 	sim.Update()
 
@@ -112,7 +113,7 @@ func TestSimulationFoodViews(t *testing.T) {
 		t.Errorf("snapshot plant count %d != world PlantCount %d", plantCount, sim.World.PlantCount())
 	}
 	for _, v := range snap.Food {
-		if v.X < 0 || v.X >= p.WorldWidth || v.Y < 0 || v.Y >= p.WorldHeight {
+		if v.X < 0 || v.X >= p.World.Width || v.Y < 0 || v.Y >= p.World.Height {
 			t.Errorf("food item at (%f,%f) is out of world bounds", v.X, v.Y)
 		}
 	}
@@ -121,8 +122,8 @@ func TestSimulationFoodViews(t *testing.T) {
 func TestSimulationMeatSpawnedOnDeath(t *testing.T) {
 	p := smallParams()
 	// High metabolic rate kills creatures quickly; disable food spawning.
-	p.BaseBMR = 10000
-	p.FoodSpawnInterval = 999999
+	p.Metabolism.BaseBMR = 10000
+	p.Food.SpawnInterval = 999999
 	sim := simulation.New(p)
 
 	sim.Update()
@@ -132,7 +133,7 @@ func TestSimulationMeatSpawnedOnDeath(t *testing.T) {
 		if mv.Type != simulation.FoodTypeMeat {
 			continue
 		}
-		if mv.X < 0 || mv.X >= p.WorldWidth || mv.Y < 0 || mv.Y >= p.WorldHeight {
+		if mv.X < 0 || mv.X >= p.World.Width || mv.Y < 0 || mv.Y >= p.World.Height {
 			t.Errorf("meat at (%f,%f) is out of world bounds", mv.X, mv.Y)
 		}
 		if mv.Radius <= 0 {
@@ -143,37 +144,38 @@ func TestSimulationMeatSpawnedOnDeath(t *testing.T) {
 
 func TestSimulationMinPopulationMaintained(t *testing.T) {
 	p := smallParams()
-	p.StartingPopulation = 1
-	p.MaxPopulation = 10
-	p.MinPopulation = 5
+	p.Population.Initial = 1
+	p.Population.Max = 10
+	p.Population.Min = 5
 	// High metabolic rate to kill creatures quickly
-	p.BaseBMR = 1000
-	p.FoodSpawnInterval = 999999
+	p.Metabolism.BaseBMR = 1000
+	p.Food.SpawnInterval = 999999
 	sim := simulation.New(p)
 
 	for i := 0; i < 20; i++ {
 		sim.Update()
 	}
 
-	if sim.PopulationCount() < p.MinPopulation {
-		t.Errorf("population %d dropped below MinPopulation %d", sim.PopulationCount(), p.MinPopulation)
+	if sim.PopulationCount() < p.Population.Min {
+		t.Errorf("population %d dropped below MinPopulation %d", sim.PopulationCount(), p.Population.Min)
 	}
 }
 
 func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 	p := smallParams()
-	p.MaxJuvenilePeriod = 10000 // very long juvenile phase
-	p.BaseBMR = 0
-	p.MoveCost = 0
-	p.ReproductionEnergyThreshold = 0.1
-	p.MinPopulation = 0
-	p.MaxFood = 0
+	p.Creature.MaxJuvenilePeriod = 10000 // very long juvenile phase
+	p.Metabolism.BaseBMR = 0
+	p.Metabolism.MoveCost = 0
+	p.Reproduction.EnergyThreshold = 0.1
+	p.Population.Min = 0
+	p.Food.MaxFoliage = 0
+	p.Food.MaxFungi = 0
 
 	sim := simulation.New(p)
 
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
-		c.Energy = float32(c.Mass) * p.EnergyPerMassUnit
+		c.Energy = float32(c.Mass) * p.Metabolism.EnergyPerMassUnit
 		c.Age = 0 // reset so the full juvenile phase must elapse before reproduction
 	}
 
@@ -191,14 +193,15 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 
 func TestAdultCreaturesCanReproduce(t *testing.T) {
 	p := smallParams()
-	p.MaxJuvenilePeriod = 0 // no juvenile phase — all creatures are immediately adults
-	p.BaseBMR = 0
-	p.MoveCost = 0
-	p.ReproductionEnergyThreshold = 0.1
-	p.MinPopulation = 0
-	p.MaxPopulation = 200
-	p.StartingPopulation = 10
-	p.MaxFood = 0
+	p.Creature.MaxJuvenilePeriod = 0 // no juvenile phase — all creatures are immediately adults
+	p.Metabolism.BaseBMR = 0
+	p.Metabolism.MoveCost = 0
+	p.Reproduction.EnergyThreshold = 0.1
+	p.Population.Min = 0
+	p.Population.Max = 200
+	p.Population.Initial = 10
+	p.Food.MaxFoliage = 0
+	p.Food.MaxFungi = 0
 
 	sim := simulation.New(p)
 
@@ -206,7 +209,7 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 		c.Genome.JuvenilePeriod = 255
 		c.Genome.ReproductionType = 0   // asexual
 		c.Genome.MassSplitRatio = 128   // ~25% split
-		c.Energy = float32(c.Mass) * p.EnergyPerMassUnit
+		c.Energy = float32(c.Mass) * p.Metabolism.EnergyPerMassUnit
 		// Wire ENERGY sensor directly to REPRODUCE action so it fires unconditionally.
 		c.Genome.Brain = append(c.Genome.Brain, simulation.Gene{
 			SourceType: simulation.SENSOR,

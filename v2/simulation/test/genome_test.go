@@ -63,7 +63,7 @@ func TestGeneCopy(t *testing.T) {
 
 func TestMutateChangesGenome(t *testing.T) {
 	p := defaultParams()
-	p.BaseMutationRate = 1.0 // force mutation on every gene
+	p.Neurology.BaseMutationRate = 1.0 // force mutation on every gene
 	g := simulation.MakeRandomGenome(p, 0)
 	original := g.String()
 	simulation.Mutate(g, p, false, 1.0, 0)
@@ -103,11 +103,11 @@ func TestGenomeSimilarity(t *testing.T) {
 
 func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 	p := defaultParams()
-	p.MaxMass = 50
+	p.Creature.MaxMass = 50
 	for i := 0; i < 100; i++ {
 		g := simulation.MakeRandomGenome(p, 0)
-		if g.Mass < 3 || float64(g.Mass) > p.MaxMass {
-			t.Errorf("Mass %d outside [3, %g]", g.Mass, p.MaxMass)
+		if g.Mass < 3 || float64(g.Mass) > p.Creature.MaxMass {
+			t.Errorf("Mass %d outside [3, %g]", g.Mass, p.Creature.MaxMass)
 		}
 		if g.MinMass < 1 {
 			t.Errorf("MinMass %d below 1", g.MinMass)
@@ -120,7 +120,7 @@ func TestMakeRandomGenomeMassInBounds(t *testing.T) {
 
 func TestMutatePreservesMinMassConstraint(t *testing.T) {
 	p := defaultParams()
-	p.BaseMutationRate = 1.0 // force mutations on every gene
+	p.Neurology.BaseMutationRate = 1.0 // force mutations on every gene
 	for i := 0; i < 200; i++ {
 		g := simulation.MakeRandomGenome(p, 0)
 		simulation.Mutate(g, p, false, 1.0, 0)
@@ -160,7 +160,7 @@ func TestMakeRandomGenomeMutationRateNonZero(t *testing.T) {
 
 func TestMutateNeverZeroMutationRate(t *testing.T) {
 	p := defaultParams()
-	p.BaseMutationRate = 1.0
+	p.Neurology.BaseMutationRate = 1.0
 	for i := 0; i < 1000; i++ {
 		g := simulation.MakeRandomGenome(p, 0)
 		simulation.Mutate(g, p, false, 1.0, 0)

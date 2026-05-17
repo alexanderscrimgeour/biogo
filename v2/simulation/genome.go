@@ -31,7 +31,9 @@ const (
 	LEARNING_RATE
 	LEARNING_THRESHOLD
 	MASS_SPLIT_RATIO
-	DIGESTION_TYPE
+	FOLIAGE_DIGESTION_EFFICIENCY
+	FUNGI_DIGESTION_EFFICIENCY
+	MEAT_DIGESTION_EFFICIENCY
 	// NEUROLOGY - not counted
 	GENOME_STRUCTURE_COUNT
 )
@@ -47,24 +49,26 @@ type Gene struct {
 
 // All data must be expressed via a byte
 type Genome struct {
-	OscPeriod         byte
-	VisionRadius      byte
-	FieldOfView       byte
-	Responsiveness    byte
-	MutationRate      byte
-	Mass              byte
-	MinMass           byte // birth mass; scales linearly to Mass over the juvenile period
-	ReproductionType  byte
-	CognitiveBreadth  byte
-	SynapticDensity   byte
-	JuvenilePeriod    byte
-	MetabolicRate     byte
-	StomachSize       byte
-	Neuroplasticity   byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
-	LearningThreshold byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
-	MassSplitRatio    byte // fraction of mass (and energy) transferred to daughter on asexual reproduction; maps to [0, 0.5]
-	DigestionType     byte // diet specialisation: 0 = pure herbivore, 255 = pure carnivore
-	Brain             []Gene
+	OscPeriod                   byte
+	VisionRadius                byte
+	FieldOfView                 byte
+	Responsiveness              byte
+	MutationRate                byte
+	Mass                        byte
+	MinMass                     byte // birth mass; scales linearly to Mass over the juvenile period
+	ReproductionType            byte
+	CognitiveBreadth            byte
+	SynapticDensity             byte
+	JuvenilePeriod              byte
+	MetabolicRate               byte
+	StomachSize                 byte
+	Neuroplasticity             byte // base learning rate; maps to [MinNeuroplasticity, MaxNeuroplasticity]
+	LearningThreshold           byte // minimum learning signal to update a weight; maps to [MinLearningThreshold, MaxLearningThreshold]
+	MassSplitRatio              byte // fraction of mass (and energy) transferred to daughter on asexual reproduction; maps to [0, 0.5]
+	FoliageDigestionEfficiency  byte // raw weight for foliage digestion; normalised against all three to get actual efficiency
+	FungiDigestionEfficiency    byte // raw weight for fungi digestion; normalised against all three
+	MeatDigestionEfficiency     byte // raw weight for meat digestion; normalised against all three
+	Brain                       []Gene
 
 	// flat byte cache for GenomeSimilarity; recomputed after any mutation or brain change.
 	// Layout: 15 header bytes + 5 bytes per gene (SourceID, SourceType, SinkID, SinkType, Weight).
@@ -78,7 +82,7 @@ type Genome struct {
 // stamps a new uid so per-creature similarity caches can detect stale entries.
 // Call this after any field change or Brain modification.
 func (g *Genome) recomputeBytes() {
-	need := 17 + len(g.Brain)*5
+	need := 19 + len(g.Brain)*5
 	if cap(g.bytes) >= need {
 		g.bytes = g.bytes[:need]
 	} else {
@@ -101,9 +105,11 @@ func (g *Genome) recomputeBytes() {
 	b[13] = g.Neuroplasticity
 	b[14] = g.LearningThreshold
 	b[15] = g.MassSplitRatio
-	b[16] = g.DigestionType
+	b[16] = g.FoliageDigestionEfficiency
+	b[17] = g.FungiDigestionEfficiency
+	b[18] = g.MeatDigestionEfficiency
 	for i, gn := range g.Brain {
-		off := 17 + i*5
+		off := 19 + i*5
 		b[off] = gn.SourceID
 		b[off+1] = gn.SourceType
 		b[off+2] = gn.SinkID
@@ -118,7 +124,7 @@ func (g Gene) String() string {
 }
 
 func (g Genome) String() string {
-	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
+	str := fmt.Sprintf("%08b%08b%08b%08b%08b%08b%08b%b%08b%08b%08b%08b%08b%08b%08b%08b%08b%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.FoliageDigestionEfficiency, g.FungiDigestionEfficiency, g.MeatDigestionEfficiency)
 	for _, gene := range g.Brain {
 		str += gene.String()
 	}
@@ -130,7 +136,7 @@ func (g Gene) BinaryString() string {
 }
 
 func (g Genome) BinaryString() string {
-	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
+	str := fmt.Sprintf("%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.FoliageDigestionEfficiency, g.FungiDigestionEfficiency, g.MeatDigestionEfficiency)
 	for _, gene := range g.Brain {
 		str += gene.BinaryString()
 	}
@@ -138,7 +144,7 @@ func (g Genome) BinaryString() string {
 }
 
 func (g Genome) ToByteArray() []byte {
-	arr := make([]byte, 0, 17+len(g.Brain)*4)
+	arr := make([]byte, 0, 19+len(g.Brain)*4)
 	arr = append(arr, g.OscPeriod)
 	arr = append(arr, g.VisionRadius)
 	arr = append(arr, g.FieldOfView)
@@ -155,7 +161,9 @@ func (g Genome) ToByteArray() []byte {
 	arr = append(arr, g.Neuroplasticity)
 	arr = append(arr, g.LearningThreshold)
 	arr = append(arr, g.MassSplitRatio)
-	arr = append(arr, g.DigestionType)
+	arr = append(arr, g.FoliageDigestionEfficiency)
+	arr = append(arr, g.FungiDigestionEfficiency)
+	arr = append(arr, g.MeatDigestionEfficiency)
 	for _, n := range g.Brain {
 		arr = append(arr, n.SourceType)
 		arr = append(arr, n.SourceID)
@@ -170,7 +178,7 @@ func (g Gene) PrettyString() string {
 }
 
 func (g Genome) PrettyString() string {
-	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.DigestionType)
+	str := fmt.Sprintf("|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b|%08b", g.OscPeriod, g.VisionRadius, g.FieldOfView, g.Responsiveness, g.MutationRate, g.Mass, g.MinMass, g.ReproductionType, g.SynapticDensity, g.JuvenilePeriod, g.MetabolicRate, g.StomachSize, g.Neuroplasticity, g.LearningThreshold, g.MassSplitRatio, g.FoliageDigestionEfficiency, g.FungiDigestionEfficiency, g.MeatDigestionEfficiency)
 	for _, gene := range g.Brain {
 		str += gene.PrettyString()
 	}
@@ -291,22 +299,24 @@ func MakeRandomGenome(p *Parameters, tier byte) *Genome {
 	synDensity := utils.LerpByte(minDensity, maxDensity, utils.MakeRandomByte())
 
 	g := Genome{
-		OscPeriod:         utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		VisionRadius:      utils.MakeRandomByte(),
-		FieldOfView:       utils.MakeRandomByte(),
-		Responsiveness:    utils.MakeRandomByte(),
-		MutationRate:      utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
-		Mass:              massByte,
-		ReproductionType:  makeRandomBool(),
-		CognitiveBreadth:  cogBreadth,
-		SynapticDensity:   synDensity,
-		JuvenilePeriod:    utils.MakeRandomByte(),
-		MetabolicRate:     utils.MakeRandomByte(),
-		StomachSize:       utils.MakeRandomByte(),
-		Neuroplasticity:   utils.MakeRandomByte(),
-		LearningThreshold: utils.MakeRandomByte(),
-		MassSplitRatio:    utils.MakeRandomByte(),
-		DigestionType:     utils.MakeRandomByte(),
+		OscPeriod:                  utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		VisionRadius:               utils.MakeRandomByte(),
+		FieldOfView:                utils.MakeRandomByte(),
+		Responsiveness:             utils.MakeRandomByte(),
+		MutationRate:               utils.LerpByte(1, math.MaxUint8, utils.MakeRandomByte()),
+		Mass:                       massByte,
+		ReproductionType:           makeRandomBool(),
+		CognitiveBreadth:           cogBreadth,
+		SynapticDensity:            synDensity,
+		JuvenilePeriod:             utils.MakeRandomByte(),
+		MetabolicRate:              utils.MakeRandomByte(),
+		StomachSize:                utils.MakeRandomByte(),
+		Neuroplasticity:            utils.MakeRandomByte(),
+		LearningThreshold:          utils.MakeRandomByte(),
+		MassSplitRatio:             utils.MakeRandomByte(),
+		FoliageDigestionEfficiency: utils.MakeRandomByteUShaped(),
+		FungiDigestionEfficiency:   utils.MakeRandomByteUShaped(),
+		MeatDigestionEfficiency:    utils.MakeRandomByteUShaped(),
 	}
 	maxMinMass := (g.Mass - 1) / 2
 	if maxMinMass < 1 {
@@ -388,7 +398,9 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, c
 	mutateTarget(&g.Neuroplasticity, 0, 255, 10)
 	mutateTarget(&g.LearningThreshold, 0, 255, 10)
 	mutateTarget(&g.MassSplitRatio, 0, 255, 15)
-	mutateTarget(&g.DigestionType, 0, 255, 15)
+	mutateTarget(&g.FoliageDigestionEfficiency, 0, 255, 15)
+	mutateTarget(&g.FungiDigestionEfficiency, 0, 255, 15)
+	mutateTarget(&g.MeatDigestionEfficiency, 0, 255, 15)
 
 	maxMinMass := (g.Mass - 1) / 2
 	if maxMinMass < 1 {
@@ -502,8 +514,10 @@ func Crossover(g1, g2 *Genome, p *Parameters, mutationMult float32, childGenerat
 		StomachSize:       pickByte(g1.StomachSize, g2.StomachSize),
 		Neuroplasticity:   pickByte(g1.Neuroplasticity, g2.Neuroplasticity),
 		LearningThreshold: pickByte(g1.LearningThreshold, g2.LearningThreshold),
-		MassSplitRatio:    pickByte(g1.MassSplitRatio, g2.MassSplitRatio),
-		DigestionType:     pickByte(g1.DigestionType, g2.DigestionType),
+		MassSplitRatio:             pickByte(g1.MassSplitRatio, g2.MassSplitRatio),
+		FoliageDigestionEfficiency: pickByte(g1.FoliageDigestionEfficiency, g2.FoliageDigestionEfficiency),
+		FungiDigestionEfficiency:   pickByte(g1.FungiDigestionEfficiency, g2.FungiDigestionEfficiency),
+		MeatDigestionEfficiency:    pickByte(g1.MeatDigestionEfficiency, g2.MeatDigestionEfficiency),
 	}
 
 	// If parents from different tiers cross over, force child into its generation tier bounds

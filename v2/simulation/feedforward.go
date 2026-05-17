@@ -64,7 +64,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
 				c.Nnet.Weights[i] += neuroplasticity * learningSignal
-				c.Energy -= energyCostOfLearning
+				c.DrainEnergy(energyCostOfLearning)
 				if c.Nnet.Weights[i] > 4.0 {
 					c.Nnet.Weights[i] = 4.0
 				} else if c.Nnet.Weights[i] < -4.0 {
@@ -87,7 +87,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
 				c.Nnet.Weights[i] += neuroplasticity * learningSignal
-				c.Energy -= energyCostOfLearning
+				c.DrainEnergy(energyCostOfLearning)
 				if c.Nnet.Weights[i] > 4.0 {
 					c.Nnet.Weights[i] = 4.0
 				} else if c.Nnet.Weights[i] < -4.0 {
@@ -129,7 +129,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 			neuron.Output = output
 			absOutput := absf32(output)
 			neuron.AverageOutput = (neuron.AverageOutput * 0.99) + (absOutput * 0.01)
-			c.Energy -= absOutput * energyCostOfFiring
+			c.DrainEnergy(absOutput * energyCostOfFiring)
 		}
 	}
 
@@ -150,7 +150,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
 				c.Nnet.Weights[i] += neuroplasticity * learningSignal
-				c.Energy -= energyCostOfLearning
+				c.DrainEnergy(energyCostOfLearning)
 				if c.Nnet.Weights[i] > 4.0 {
 					c.Nnet.Weights[i] = 4.0
 				} else if c.Nnet.Weights[i] < -4.0 {
@@ -173,7 +173,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
 				c.Nnet.Weights[i] += neuroplasticity * learningSignal
-				c.Energy -= energyCostOfLearning
+				c.DrainEnergy(energyCostOfLearning)
 				if c.Nnet.Weights[i] > 4.0 {
 					c.Nnet.Weights[i] = 4.0
 				} else if c.Nnet.Weights[i] < -4.0 {

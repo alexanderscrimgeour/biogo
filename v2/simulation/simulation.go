@@ -22,7 +22,7 @@ type Simulation struct {
 	Params       *Parameters
 	Energy       float64 // total liquid energy to maintain (set at initialisation)
 	displayCache []CreatureView
-	foodCache    []FoodView // combined plants and meat
+	foodCache    []FoodView // combined Foliages and meat
 	cacheMu      sync.RWMutex
 	cacheDirty   bool
 }
@@ -40,8 +40,9 @@ func New(params *Parameters) *Simulation {
 
 func (s *Simulation) initializeWorld() {
 	s.World = world.NewWorld(s.Params.World.Width, s.Params.World.Height, 1)
-	s.World.SpawnRandom(s.Params.Food.Max/2, s.Params.Food.BaseMass)
-	s.World.InitFountains(s.Params.Food.FountainCount)
+	s.World.SpawnRandom(s.Params.Food.MaxFoliage/2, s.Params.Food.FoliageMass)
+	s.World.SpawnRandomFungi(s.Params.Food.MaxFungi/2, s.Params.Food.FungiMass)
+	s.World.InitFountains(s.Params.Food.FoliageFountainCount, s.Params.Food.FungiFountainCount)
 }
 
 func (s *Simulation) initializePopulation() {
@@ -109,19 +110,33 @@ func (s *Simulation) Update() {
 
 func (s *Simulation) step() {
 	s.World.StepFountains(s.Params.Food.FountainDriftSpeed)
-
 	if s.Tick%s.Params.Food.SpawnInterval == 0 {
-		// Spawning food by energy temporarily disabled. Not enough creatures
-		// eat meat and so it energy ends up stagnating in meat.+
 		deficit := s.Energy - s.TotalEnergy()
-		if deficit < 0 {
+		if deficit <= 0 {
 			deficit = 0
 		}
-		energyPerPiece := float64(s.Params.Food.BaseMass) * float64(s.Params.Metabolism.EnergyPerMassUnit)
-		// number of food items to spawn
-		n := int(deficit / energyPerPiece)
-		// n := s.Params.Food.Max - s.World.PlantCount()
-		s.World.SpawnPlant(n, s.Params.Food.FountainRadius, s.Params.Food.BaseMass, s.Params.Food.RandomFraction)
+
+		energyPerFoliage := float64(s.Params.Food.FoliageMass) * float64(s.Params.Metabolism.EnergyPerMassUnit)
+		energyPerFungi := float64(s.Params.Food.FungiMass) * float64(s.Params.Metabolism.EnergyPerMassUnit)
+
+		totalMax := s.Params.Food.MaxFoliage + s.Params.Food.MaxFungi
+		var nFoliage, nFungi int
+
+		if totalMax > 0 {
+			foliageEnergyTarget := deficit * (float64(s.Params.Food.MaxFoliage) / float64(totalMax))
+			fungiEnergyTarget := deficit - foliageEnergyTarget
+
+			nFoliage = int((foliageEnergyTarget / energyPerFoliage) + 0.5)
+			nFungi = int((fungiEnergyTarget / energyPerFungi) + 0.5)
+		} else {
+			nFoliage = int((deficit / energyPerFoliage) + 0.5)
+		}
+		if nFoliage > 0 {
+			s.World.SpawnFoliage(nFoliage, s.Params.Food.FountainRadius, s.Params.Food.FoliageMass, s.Params.Food.FoliageRandomFraction)
+		}
+		if nFungi > 0 {
+			s.World.SpawnFungi(nFungi, s.Params.Food.FountainRadius, s.Params.Food.FungiMass, s.Params.Food.FungiRandomFraction)
+		}
 	}
 
 	// AliveIDs() now returns the live backing slice — no allocation, O(1).
@@ -282,7 +297,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 
 	if IsActionEnabled(ATTACK) {
 		level := math.Abs(float64(actionLevels[ATTACK]))
-		if level > 0.7 {
+		if level > 0.7 && !c.IsResting {
 			pending.attack = append(pending.attack, AttackInstruction{c, level})
 			c.LastActionMask |= ActionAttacking
 		}
@@ -357,6 +372,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			}
 		}
 	}
+
 	if IsActionEnabled(FEED) {
 		level := actionLevels[FEED]
 		if (level > 0.5 && c.Stomach > 0) || (level < -0.5) {
@@ -518,10 +534,12 @@ func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled =
 func (s *Simulation) SetClusterInterval(v int) { s.Params.Spawn.ClusterInterval = v }
 func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v }
 
-func (s *Simulation) SetMaxFood(v int)                { s.Params.Food.Max = v }
-func (s *Simulation) SetFoodRandomFraction(v float64) { s.Params.Food.RandomFraction = v }
-func (s *Simulation) SetFountainDriftSpeed(v float64) { s.Params.Food.FountainDriftSpeed = v }
-func (s *Simulation) SetFountainRadius(v float64)     { s.Params.Food.FountainRadius = v }
+func (s *Simulation) SetMaxFoliage(v int)                { s.Params.Food.MaxFoliage = v }
+func (s *Simulation) SetMaxFungi(v int)                  { s.Params.Food.MaxFungi = v }
+func (s *Simulation) SetFoliageRandomFraction(v float64) { s.Params.Food.FoliageRandomFraction = v }
+func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.FungiRandomFraction = v }
+func (s *Simulation) SetFountainDriftSpeed(v float64)    { s.Params.Food.FountainDriftSpeed = v }
+func (s *Simulation) SetFountainRadius(v float64)        { s.Params.Food.FountainRadius = v }
 func (s *Simulation) SetColdMetabolicMultiplier(v float32) {
 	s.Params.Environment.ColdMetabolicMultiplier = v
 }
@@ -529,12 +547,20 @@ func (s *Simulation) SetWarmMetabolicMultiplier(v float32) {
 	s.Params.Environment.WarmMetabolicMultiplier = v
 }
 
-func (s *Simulation) SetFountainCount(n int) {
+func (s *Simulation) SetFoliageFountainCount(n int) {
 	if n < 0 {
 		n = 0
 	}
-	s.Params.Food.FountainCount = n
-	s.World.SetFountainCount(n)
+	s.Params.Food.FoliageFountainCount = n
+	s.World.SetFoliageFountainCount(n)
+}
+
+func (s *Simulation) SetFungiFountainCount(n int) {
+	if n < 0 {
+		n = 0
+	}
+	s.Params.Food.FungiFountainCount = n
+	s.World.SetFungiFountainCount(n)
 }
 
 // SpawnAt creates a new random creature at the given world-space position.
@@ -614,11 +640,17 @@ func (s *Simulation) WorldHeight() float64 { return s.Params.World.Height }
 
 func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
-func (s *Simulation) PlantCount() int { return s.World.PlantCount() }
+func (s *Simulation) FoliageCount() int { return s.World.FoliageCount() }
+
+func (s *Simulation) FungiCount() int { return s.World.FungiCount() }
 func (s *Simulation) MeatCount() int  { return s.World.MeatCount() }
 
-func (s *Simulation) PlantEnergy() float64 {
-	return s.World.TotalPlantMass() * float64(s.Params.Metabolism.EnergyPerMassUnit)
+func (s *Simulation) FoliageEnergy() float64 {
+	return s.World.TotalFoliageMass() * float64(s.Params.Metabolism.EnergyPerMassUnit)
+}
+
+func (s *Simulation) FungiEnergy() float64 {
+	return s.World.TotalFungiMass() * float64(s.Params.Metabolism.EnergyPerMassUnit)
 }
 
 func (s *Simulation) MeatEnergy() float64 {
@@ -629,7 +661,8 @@ func (s *Simulation) MeatEnergy() float64 {
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
 func (s *Simulation) TotalEnergy() float64 {
 	epu := float64(s.Params.Metabolism.EnergyPerMassUnit)
-	energy := s.World.TotalPlantMass() * epu
+	energy := s.World.TotalFoliageMass() * epu
+	energy += s.World.TotalFungiMass() * epu
 	energy += s.World.TotalMeatMass() * epu
 	for _, c := range s.Population.Creatures {
 		if c == nil {
@@ -777,7 +810,7 @@ func (s *Simulation) updateFoodCache() {
 }
 
 // StateSnapshot holds the display state for one rendered frame.
-// Food contains both plants (Type==FoodTypePlant) and meat (Type==FoodTypeMeat).
+// Food contains both Foliages (Type==FoodTypeFoliage) and meat (Type==FoodTypeMeat).
 type StateSnapshot struct {
 	Creatures []CreatureView
 	Food      []FoodView
