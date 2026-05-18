@@ -378,9 +378,9 @@ func (c *Creature) CanAffordMassInvestment(massCost float32) bool {
 func (c Creature) MetabolicRate(params *Parameters, temp float32) float32 {
 	// Kleiber's law: BMR ∝ M^0.75, normalised to MetabolicReferenceMass so that
 	// BaseBMR is the exact cost at reference body size rather than an unscaled coefficient.
-	massEffect := float32(math.Pow(float64(c.Mass), 0.75))
-	refEffect := float32(math.Pow(float64(params.Metabolism.MetabolicReferenceMass), 0.75))
-	base := params.Metabolism.BaseBMR * (massEffect / refEffect) * c.cachedMetabolicGene
+	sqrtMass := math.Sqrt(float64(c.Mass))
+	massEffect := float32(math.Sqrt(float64(c.Mass) * sqrtMass))
+	base := params.Metabolism.BaseBMR * (massEffect / params.Metabolism.refMassEffect) * c.cachedMetabolicGene
 
 	optTemp := (params.Environment.TempMin + params.Environment.TempMax) / 2
 	var tempMult float32 = 1.0

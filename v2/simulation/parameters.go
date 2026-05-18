@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"fmt"
+	"math"
 )
 
 type WorldParameters struct {
@@ -84,7 +85,8 @@ type MetabolismParameters struct {
 	MaxStomachSize         float64
 	DigestionRate          float64
 	BaseBMR                float32
-	MetabolicReferenceMass float32 // mass at which BaseBMR applies exactly; Kleiber scaling is normalised to this
+	MetabolicReferenceMass float32  // mass at which BaseBMR applies exactly; Kleiber scaling is normalised to this
+	refMassEffect          float32  // cached: MetabolicReferenceMass^0.75
 	EnergyCapacityPerMass  float32 // MaxEnergy = Mass * this; tunes how much energy a body can store
 	EnergyPerFoodMass      float32 // energy gained per unit of digested food mass; tunes food richness
 	BiosynthesisEfficiency float32 // fraction of EnergyPerFoodMass that becomes structural mass; EnergyCostToBuildMass = EnergyPerFoodMass / this
@@ -211,7 +213,7 @@ func DefaultParams() *Parameters {
 			EnergyCapacityPerMass:  4.0,
 			EnergyPerFoodMass:      10.0,
 			BiosynthesisEfficiency: 0.2, // EnergyPerFoodMass(10) / 0.2 = 50 energy per mass unit built
-			MoveCostMultiplier:     0.01,
+			MoveCostMultiplier:     0.0007,
 			GrowthEnergyCostFactor: 0.2,
 		},
 		Reproduction: ReproductionParameters{
@@ -250,6 +252,8 @@ func DefaultParams() *Parameters {
 	if err := p.Validate(); err != nil {
 		panic(err)
 	}
+	sqrtRef := math.Sqrt(float64(p.Metabolism.MetabolicReferenceMass))
+	p.Metabolism.refMassEffect = float32(math.Sqrt(float64(p.Metabolism.MetabolicReferenceMass) * sqrtRef))
 	return p
 }
 

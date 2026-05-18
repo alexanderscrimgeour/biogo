@@ -19,6 +19,16 @@ func (s *Simulation) processCollisions() {
 
 	repulsion := float32(s.Params.World.CollisionRepulsion)
 
+	// Pre-compute the maximum alive radius so small creatures search far enough
+	// to find large creatures that overlap them (pairs are processed from the
+	// smaller-ID creature, whose own radius may be much less than the other's).
+	var maxRadius float32
+	for _, id := range ids {
+		if c, ok := s.Population.Get(id); ok && c.Alive && c.Radius > maxRadius {
+			maxRadius = c.Radius
+		}
+	}
+
 	var buf []int
 	for _, id := range ids {
 		c, ok := s.Population.Get(id)
@@ -30,7 +40,7 @@ func (s *Simulation) processCollisions() {
 			speed = -speed
 		}
 		localSweptExpansion := speed * 2.0
-		searchRadius := c.Radius + localSweptExpansion + s.Params.World.MaxVelocityFallback
+		searchRadius := c.Radius + maxRadius + localSweptExpansion + s.Params.World.MaxVelocityFallback
 		buf = s.World.GetCreaturesInRadius(c.Loc, searchRadius, buf)
 
 		for _, otherID := range buf {

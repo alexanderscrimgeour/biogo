@@ -1,0 +1,112 @@
+{
+  "osc_period": 191,
+  "sight_distance": 6,
+  "field_of_view": 195,
+  "responsiveness": 237,
+  "mutation_rate": 194,
+  "mass": 18,
+  "min_mass": 1,
+  "reproduction_type": 0,
+  "neuron_count": 14,
+  "brain_length": 13,
+  "juvenile_period": 173,
+  "metabolic_rate": 134,
+  "stomach_size": 158,
+  "learning_rate": 175,
+  "learning_threshold": 197,
+  "mass_split_ratio": 249,
+  "brain": [
+    {
+      "source_type": 0,
+      "source_id": 5,
+      "sink_type": 0,
+      "sink_id": 1,
+      "weight": 93
+    },
+    {
+      "source_type": 0,
+      "source_id": 7,
+      "sink_type": 0,
+      "sink_id": 1,
+      "weight": 107
+    },
+    {
+      "source_type": 0,
+      "source_id": 1,
+      "sink_type": 0,
+      "sink_id": 1,
+      "weight": 81
+    },
+    {
+      "source_type": 0,
+      "source_id": 13,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 98
+    },
+    {
+      "source_type": 1,
+      "source_id": 2,
+      "sink_type": 0,
+      "sink_id": 3,
+      "weight": 127
+    },
+    {
+      "source_type": 1,
+      "source_id": 1,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 109
+    },
+    {
+      "source_type": 1,
+      "source_id": 0,
+      "sink_type": 0,
+      "sink_id": 12,
+      "weight": 155
+    },
+    {
+      "source_type": 0,
+      "source_id": 3,
+      "sink_type": 0,
+      "sink_id": 13,
+      "weight": 148
+    },
+    {
+      "source_type": 1,
+      "source_id": 7,
+      "sink_type": 2,
+      "sink_id": 1,
+      "weight": 171
+    },
+    {
+      "source_type": 0,
+      "source_id": 11,
+      "sink_type": 2,
+      "sink_id": 0,
+      "weight": 1
+    },
+    {
+      "source_type": 1,
+      "source_id": 6,
+      "sink_type": 2,
+      "sink_id": 1,
+      "weight": 26
+    },
+    {
+      "source_type": 1,
+      "source_id": 6,
+      "sink_type": 0,
+      "sink_id": 0,
+      "weight": 165
+    },
+    {
+      "source_type": 0,
+      "source_id": 12,
+      "sink_type": 0,
+      "sink_id": 12,
+      "weight": 128
+    }
+  ],
+  "generation": 1
+}

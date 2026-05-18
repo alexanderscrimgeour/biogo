@@ -456,7 +456,8 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		accelAmount := float32(0)
 		if IsActionEnabled(ACCELERATE) {
 			act := actionLevels[ACCELERATE]
-			accelAmount = act * responseAdjust * s.Params.Creature.BaseMaxForce
+			cbrt := float32(math.Cbrt(float64(c.Mass)))
+				accelAmount = act * responseAdjust * s.Params.Creature.BaseMaxForce * cbrt * cbrt
 		}
 
 		optTemp := (s.Params.Environment.TempMin + s.Params.Environment.TempMax) / 2
@@ -511,17 +512,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 					absAccel = -absAccel
 				}
 				if absAccel > 0.001 {
-					absAccel := accelAmount
-					if absAccel < 0 {
-						absAccel = -absAccel
-					}
-
-					absSpeed := c.Speed
-					if absSpeed < 0 {
-						absSpeed = -absSpeed
-					}
-					linearWork := absAccel * absSpeed
-					energyTax := s.Params.Metabolism.MoveCostMultiplier * linearWork
+					energyTax := s.Params.Metabolism.MoveCostMultiplier * absAccel
 					c.DrainEnergy(energyTax)
 				}
 				c.LastActionMask |= ActionMoving
