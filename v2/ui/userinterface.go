@@ -476,9 +476,9 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 
 	// Digestion Efficiency (proportional)
 	p.AddRow(
-		&components.Label{Text: fmt.Sprintf("F %.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
-		&components.Label{Text: fmt.Sprintf("M %.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}},
-		&components.Label{Text: fmt.Sprintf("C %.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
 	)
 	p.Add(&components.ProportionBar{
 		Segments: []components.ProportionSegment{
