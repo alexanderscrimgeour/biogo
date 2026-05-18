@@ -32,20 +32,22 @@ func New(params *Parameters) *Simulation {
 	sim := &Simulation{
 		Params: params,
 	}
-	sim.initializeWorld()
-	sim.initializePopulation()
+	sim.initialiseWorld()
+	sim.initialisePopulation()
 	sim.Energy = sim.TotalEnergy()
 	return sim
 }
 
-func (s *Simulation) initializeWorld() {
+func (s *Simulation) initialiseWorld() {
 	s.World = world.NewWorld(s.Params.World.Width, s.Params.World.Height, 1)
+	s.World.TempMin = s.Params.Environment.TempMin
+	s.World.TempMax = s.Params.Environment.TempMax
 	s.World.SpawnRandom(s.Params.Food.MaxFoliage/2, s.Params.Food.FoliageMass)
 	s.World.SpawnRandomFungi(s.Params.Food.MaxFungi/2, s.Params.Food.FungiMass)
 	s.World.InitFountains(s.Params.Food.FoliageFountainCount, s.Params.Food.FungiFountainCount)
 }
 
-func (s *Simulation) initializePopulation() {
+func (s *Simulation) initialisePopulation() {
 	pop := NewPopulation(s.Params)
 	savedGenomes, _ := LoadAllCreatureGenomes()
 	maxSeeded := int(float64(s.Params.Population.Initial) * s.Params.Spawn.SavedGenomeProportion)
@@ -96,8 +98,8 @@ func (s *Simulation) SaveCreature(id int, name string) error {
 // Reset reinitialises the simulation from scratch.
 func (s *Simulation) Reset() {
 	s.Tick = 0
-	s.initializeWorld()
-	s.initializePopulation()
+	s.initialiseWorld()
+	s.initialisePopulation()
 	s.Energy = s.TotalEnergy()
 }
 
@@ -116,8 +118,8 @@ func (s *Simulation) step() {
 			deficit = 0
 		}
 
-		energyPerFoliage := float64(s.Params.Food.FoliageMass) * float64(s.Params.Metabolism.EnergyPerMassUnit)
-		energyPerFungi := float64(s.Params.Food.FungiMass) * float64(s.Params.Metabolism.EnergyPerMassUnit)
+		energyPerFoliage := float64(s.Params.Food.FoliageMass) * float64(s.Params.Food.FoliageEnergyDensity)
+		energyPerFungi := float64(s.Params.Food.FungiMass) * float64(s.Params.Food.FungiEnergyDensity)
 
 		totalMax := s.Params.Food.MaxFoliage + s.Params.Food.MaxFungi
 		var nFoliage, nFungi int
@@ -189,7 +191,7 @@ func (s *Simulation) step() {
 	s.pairMates(wantMate)
 
 	s.Population.ProcessMoveQueue(s.World)
-	s.Population.ProcessEating(s.World, s.Params)
+	s.Population.ProcessEatingParallel(s.World, s.Params, batches)
 	s.processCollisions()
 	s.Population.ProcessAttackQueue(s.World, s.Params)
 	s.Population.ProcessFeedQueue(s.Params)
@@ -200,7 +202,7 @@ func (s *Simulation) step() {
 	aliveCount := s.Population.AliveCount()
 	const toSpawn = 5
 	for aliveCount < s.Params.Population.Min {
-		loc, ok := s.World.FindEmptyLocation()
+		loc, ok := s.fountainLocation()
 		if !ok {
 			break
 		}
@@ -210,7 +212,7 @@ func (s *Simulation) step() {
 
 	if s.Params.Spawn.ClusterEnabled && s.Tick > 0 && s.Tick%s.Params.Spawn.ClusterInterval == 0 &&
 		aliveCount < s.Params.Population.Max {
-		loc, ok := s.World.FindEmptyLocation()
+		loc, ok := s.fountainLocation()
 		if ok {
 			s.SpawnClusterAt(float64(loc.X), float64(loc.Y), s.Params.Spawn.ClusterSize)
 		}
@@ -225,18 +227,36 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		c.Dopamine = 0
 	}
 	c.Age++
+	if c.ReproductionCooldown > 0 {
+		c.ReproductionCooldown--
+	}
 	c.LastActionMask = 0
 	temp := s.World.TemperatureAt(c.Loc.Y)
 	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
 	if float64(c.Loc.X) < s.Params.Environment.Radiation.ZoneWidth*s.Params.World.Width {
-		massNorm := float64(c.Mass) / s.Params.Creature.MaxMass
-		massEffect := float32(math.Sqrt(massNorm * math.Sqrt(massNorm)))
+		absoluteMassScale := float64(c.Mass) / float64(s.Params.Creature.MinSurvivalMass)
+		// Kleiber's Law (M^0.75)
+		massEffect := float32(math.Sqrt(absoluteMassScale * math.Sqrt(absoluteMassScale)))
 		c.DrainEnergy(s.Params.Environment.Radiation.DamagePerTick * massEffect)
 	}
 	c.Digest(s.Params)
-	c.GrowMass(s.Params)
+	c.GrowMass(s.Params, temp)
 
-	if c.Energy <= 0 || c.Age > c.MaxAge(s.Params) {
+	// Starvation catabolism: when energy reserves run critically low, the body
+	// breaks down structural mass to keep itself alive — at lower efficiency than
+	// digestion. This burns through mass faster than food would imply, making
+	// prolonged starvation fatal even in a creature with mass to spare.
+	const catabolismThreshold float32 = 0.30
+	if c.Energy < c.MaxEnergy(s.Params)*catabolismThreshold {
+		const catabolismEfficiency float32 = 0.35
+		bmr := c.MetabolicRate(s.Params, temp)
+		massConsumed := bmr / (s.Params.Metabolism.EnergyPerFoodMass * catabolismEfficiency)
+		c.Mass -= massConsumed
+		c.UpdateRadius(s.Params)
+		c.GainEnergy(massConsumed*s.Params.Metabolism.EnergyPerFoodMass*catabolismEfficiency, s.Params)
+	}
+
+	if c.Energy <= 0 || c.Mass < c.SurvivalMass || c.Age > c.MaxAge(s.Params) {
 		pending.death = append(pending.death, DeathInstruction{c})
 		return
 	}
@@ -260,15 +280,19 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	c.IsResting = false
 	if IsActionEnabled(REST) {
 		level := actionLevels[REST]
-		if math.Abs(float64(level)) > 0.75 {
+		absLevel := level
+		if absLevel < 0 {
+			absLevel = -absLevel
+		}
+		if absLevel > 0.75 {
 			// Resting pays fraction of the basal metabolic rate: refund the base drain
 			// already charged this tick, then re-charge the lower resting rate.
-			massRatio := float64(c.Mass) / s.Params.Creature.MaxMass
-			restingCostFactor := 0.1 - (massRatio * 0.08)
+			const restingCostFactor float32 = 0.20
 			rate := c.MetabolicRate(s.Params, temp)
 
+			// Refund energy as resting
 			c.GainEnergy(rate, s.Params)
-			c.DrainEnergy(rate * float32(restingCostFactor))
+			c.DrainEnergy(rate * restingCostFactor)
 			c.IsResting = true
 
 			c.LastActionMask |= ActionResting
@@ -326,23 +350,20 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		currentTier := c.Tier
 		baseThreshold := s.Params.Reproduction.EnergyThreshold * c.MaxEnergy(s.Params)
 
-		splitRatio := 0.1 + (float32(c.Genome.MassSplitRatio)/255.0)*0.4
-		estimatedChildMass := c.Mass * splitRatio
-		remainingParentMass := c.Mass - estimatedChildMass
-
-		// Check baseline physiological milestones
+		// Mass the parent must donate: their split ratio × their current mass
+		requiredMassContribution := c.Mass * c.Genome.CalculateSplitRatio()
+		// Creature is of age and has the required mass to contribute to child
 		milestonesMet := c.Age >= c.cachedJuvenilePeriod &&
-			remainingParentMass >= c.MinMass &&
-			float32(c.Genome.MinMass)*2 < float32(c.Genome.Mass)
+			c.CanAffordMassInvestment(requiredMassContribution) &&
+			c.ReproductionCooldown <= 0
 		if currentTier >= 2 {
 			level := actionLevels[REPRODUCE]
 			brainWantsToReproduce := math.Abs(float64(level)) > 0.5
 
-			// --- THE EVOLUTIONARY BRIDGE ---
-			// If the brain fires the action, give them a 25% discount on the energy required to encourage using it
+			// If the brain fires the action, give them a 10% discount on the energy required to encourage using it
 			var dynamicEnergyThreshold float32
 			if brainWantsToReproduce {
-				dynamicEnergyThreshold = baseThreshold * 0.75
+				dynamicEnergyThreshold = baseThreshold * 0.90
 			} else {
 				dynamicEnergyThreshold = baseThreshold // Standard high requirement
 			}
@@ -351,24 +372,24 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			if isPhysicallyReady {
 				if brainWantsToReproduce {
 					if c.Genome.ReproductionType == 0 {
-						pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
+						pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c, IsFallback: false})
 						c.LastActionMask |= ActionReproducing
 					} else {
 						pending.mate = append(pending.mate, c)
 						c.LastActionMask |= ActionSeekingMate
 					}
-				} else if currentTier == 2 && c.Energy >= baseThreshold {
+				} else if currentTier >= 2 && c.Energy >= baseThreshold {
 					// If the brain fails to press the button at tier 2,
 					// they still auto-split at maximum energy so they don't go extinct.
-					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
+					pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c, IsFallback: true})
 					c.LastActionMask |= ActionAutoSplitting
 				}
 			}
 		} else {
-			// Tier 1: Purely automatic physiological reproduction
+			// Tier 0/1: Purely automatic physiological reproduction — requires full energy capacity
 			isPhysicallyReady := c.Energy >= baseThreshold && milestonesMet
 			if isPhysicallyReady {
-				pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c})
+				pending.reproduction = append(pending.reproduction, ReproductionInstruction{Creature: c, IsFallback: true})
 				c.LastActionMask |= ActionAutoSplitting
 			}
 		}
@@ -411,47 +432,73 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 	}
 
 	if !c.IsResting {
-		// Rotation: positive level turns CCW (left), negative turns CW (right).
-		rotateAmount := float64(0)
-		massNorm := float64(c.Mass) / s.Params.Creature.MaxMass
+		// Inertia
+		momentOfInertia := 0.5 * c.Mass * c.Radius * c.Radius
+
+		rotateAmount := float32(0)
 		if IsActionEnabled(ROTATE) {
-			act := float64(actionLevels[ROTATE])
-			turnInertia := 1.0 / (1.0 + (massNorm * 4.0))
-			const absoluteMaxSpur float64 = math.Pi
-			rotateAmount = float64(tanhf(float32(act))) * float64(responseAdjust) * absoluteMaxSpur * turnInertia
+			act := actionLevels[ROTATE]
+			rawTorque := tanhf(act) * responseAdjust * s.Params.Creature.BaseMaxForce * c.Radius
+			angularAccel := rawTorque / momentOfInertia
+			rotateAmount = angularAccel * float32(1.0)
 		}
+
 		if rotateAmount != 0 {
-			massCostMult := 0.5 + (massNorm * massNorm * 2.0)
-			rotationalKineticEnergy := rotateAmount * rotateAmount
-			energyTax := s.Params.Metabolism.MoveCost * float32(rotationalKineticEnergy) * float32(massCostMult)
+			// Kinetic Energy Tax: E_k = 0.5 * I * omega^2
+			rotationalWork := float32(0.5) * momentOfInertia * (rotateAmount * rotateAmount)
+			energyTax := s.Params.Metabolism.MoveCostMultiplier * rotationalWork
+
 			c.DrainEnergy(energyTax)
 			c.LastActionMask |= ActionRotating
 		}
-		c.Heading = float32(world.NormalizeAngle(float64(c.Heading) + rotateAmount))
+		c.Heading = float32(world.NormalizeAngle(float64(c.Heading + rotateAmount)))
 
-		massFactor := 1.0 + (massNorm * massNorm * 5.0)
-		maxAccel := s.Params.Creature.BaseMaxForce / massFactor
-		accelAmount := float64(0)
-		// ACCELERATE: positive = accelerate forward, negative = decelerate/reverse.
+		accelAmount := float32(0)
 		if IsActionEnabled(ACCELERATE) {
-			act := float64(actionLevels[ACCELERATE])
-			accelAmount = float64(act) * float64(responseAdjust) * maxAccel
+			act := actionLevels[ACCELERATE]
+			accelAmount = act * responseAdjust * s.Params.Creature.BaseMaxForce
 		}
 
-		// Colder temperatures reduce acceleration capability (ectotherm-like muscle penalty).
-		tempNorm := float64((temp - 10.0) / 30.0)
-		if tempNorm < 0 {
-			tempNorm = 0
-		} else if tempNorm > 1 {
-			tempNorm = 1
+		optTemp := (s.Params.Environment.TempMin + s.Params.Environment.TempMax) / 2
+		speedMult := float32(1.0)
+		if temp < optTemp && optTemp > s.Params.Environment.TempMin {
+			coldNorm := (optTemp - temp) / (optTemp - s.Params.Environment.TempMin)
+			if coldNorm > 1 {
+				coldNorm = 1
+			}
+			speedMult = s.Params.Environment.ColdSpeedMultiplier + (1.0-s.Params.Environment.ColdSpeedMultiplier)*(1.0-coldNorm)
 		}
-		speedMult := float64(s.Params.Environment.ColdSpeedMultiplier) + (1.0-float64(s.Params.Environment.ColdSpeedMultiplier))*tempNorm
 		accelAmount *= speedMult
+		// A = F / M
+		c.Speed += accelAmount / c.Mass
 
-		// Integrate acceleration into speed, apply drag, clamp to mass-adjusted max speed.
-		c.Speed += float32(accelAmount)
-		dragCoefficient := s.Params.Metabolism.SpeedDamping * massFactor
-		c.Speed *= float32((1.0 - (dragCoefficient * 0.05)))
+		fluidDensity := s.Params.World.FluidDensity
+		frontalArea := c.Radius * 2.0
+		dragCoefficient := s.Params.World.DragCoefficient
+
+		currentSpeed := c.Speed
+		var dragForce float32
+		if currentSpeed >= 0 {
+			dragForce = 0.5 * fluidDensity * (currentSpeed * currentSpeed) * dragCoefficient * frontalArea
+		} else {
+			dragForce = -0.5 * fluidDensity * (currentSpeed * currentSpeed) * dragCoefficient * frontalArea
+		}
+		dragDecel := dragForce / c.Mass
+
+		absDragDecel := dragDecel
+		if absDragDecel < 0 {
+			absDragDecel = -absDragDecel
+		}
+		absSpeed := currentSpeed
+		if absSpeed < 0 {
+			absSpeed = -absSpeed
+		}
+
+		if absDragDecel > absSpeed {
+			c.Speed = 0
+		} else {
+			c.Speed -= dragDecel
+		}
 
 		if math.Abs(float64(c.Speed)) >= 0.001 {
 			dx := float32(math.Cos(float64(c.Heading))) * c.Speed
@@ -459,10 +506,23 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			newPos := s.World.ClampToBounds(world.Position{X: c.Loc.X + dx, Y: c.Loc.Y + dy})
 
 			if !s.World.IsWall(newPos) {
-				if math.Abs(accelAmount) > 0.001 {
-					// Energy cost scales linearly with mass: heavier creatures need more force to accelerate.
-					massCostMult := 0.5 + massNorm*2.0
-					c.DrainEnergy(s.Params.Metabolism.MoveCost * float32(math.Abs(accelAmount)) * float32(massCostMult))
+				absAccel := accelAmount
+				if absAccel < 0 {
+					absAccel = -absAccel
+				}
+				if absAccel > 0.001 {
+					absAccel := accelAmount
+					if absAccel < 0 {
+						absAccel = -absAccel
+					}
+
+					absSpeed := c.Speed
+					if absSpeed < 0 {
+						absSpeed = -absSpeed
+					}
+					linearWork := absAccel * absSpeed
+					energyTax := s.Params.Metabolism.MoveCostMultiplier * linearWork
+					c.DrainEnergy(energyTax)
 				}
 				c.LastActionMask |= ActionMoving
 				pending.move = append(pending.move, MoveInstruction{c, newPos, c.Speed})
@@ -487,7 +547,8 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 	paired := make(map[int]bool, len(candidates))
 
 	for i, c := range candidates {
-		if paired[c.Id] || !c.Alive {
+		// guard against dead or auto-splitting creatures
+		if paired[c.Id] || !c.Alive || (c.LastActionMask&ActionAutoSplitting) != 0 {
 			continue
 		}
 
@@ -504,7 +565,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 			dy := other.Loc.Y - c.Loc.Y
 			d2 := dx*dx + dy*dy
 			mr := float32(s.Params.Reproduction.MatingRadius)
-			matingRadiusSq := (c.VisionRadius + mr) * (c.VisionRadius + mr)
+			matingRadiusSq := (c.VisionRadius + c.Radius + mr) * (c.VisionRadius + c.Radius + mr)
 
 			if d2 <= matingRadiusSq {
 				similarity := c.cachedSimilarity(other.Id, other)
@@ -526,9 +587,30 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 			paired[c.Id] = true
 			paired[partner.Id] = true
 			s.Population.ReproductionQueue = append(s.Population.ReproductionQueue,
-				ReproductionInstruction{Creature: c, Partner: partner})
+				ReproductionInstruction{Creature: c, Partner: partner, IsFallback: false})
 		}
 	}
+}
+
+// fountainLocation picks a random fountain (foliage or fungi) and returns a
+// non-wall position within FountainRadius of it. Falls back to FindEmptyLocation
+// if no fountains have been initialised.
+func (s *Simulation) fountainLocation() (world.Position, bool) {
+	foliage := s.World.FoliageFountains
+	fungi := s.World.FungiFountains
+	total := len(foliage) + len(fungi)
+	if total == 0 {
+		return s.World.FindEmptyLocation()
+	}
+	idx := rand.Intn(total)
+	var center world.Position
+	if idx < len(foliage) {
+		center = foliage[idx]
+	} else {
+		center = fungi[idx-len(foliage)]
+	}
+	pos := s.World.FindEmptyLocationNear(center, s.Params.Food.FountainRadius)
+	return pos, true
 }
 
 func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled = v }
@@ -541,11 +623,19 @@ func (s *Simulation) SetFoliageRandomFraction(v float64) { s.Params.Food.Foliage
 func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.FungiRandomFraction = v }
 func (s *Simulation) SetFountainDriftSpeed(v float64)    { s.Params.Food.FountainDriftSpeed = v }
 func (s *Simulation) SetFountainRadius(v float64)        { s.Params.Food.FountainRadius = v }
-func (s *Simulation) SetColdMetabolicMultiplier(v float32) {
-	s.Params.Environment.ColdMetabolicMultiplier = v
-}
 func (s *Simulation) SetWarmMetabolicMultiplier(v float32) {
 	s.Params.Environment.WarmMetabolicMultiplier = v
+}
+func (s *Simulation) SetColdSpeedMultiplier(v float32) {
+	s.Params.Environment.ColdSpeedMultiplier = v
+}
+func (s *Simulation) SetTempMin(v float32) {
+	s.Params.Environment.TempMin = v
+	s.World.TempMin = v
+}
+func (s *Simulation) SetTempMax(v float32) {
+	s.Params.Environment.TempMax = v
+	s.World.TempMax = v
 }
 
 func (s *Simulation) SetFoliageFountainCount(n int) {
@@ -647,24 +737,25 @@ func (s *Simulation) FungiCount() int { return s.World.FungiCount() }
 func (s *Simulation) MeatCount() int  { return s.World.MeatCount() }
 
 func (s *Simulation) FoliageEnergy() float64 {
-	return s.World.TotalFoliageMass() * float64(s.Params.Metabolism.EnergyPerMassUnit)
+	return s.World.TotalFoliageMass() * float64(s.Params.Food.FoliageEnergyDensity)
 }
 
 func (s *Simulation) FungiEnergy() float64 {
-	return s.World.TotalFungiMass() * float64(s.Params.Metabolism.EnergyPerMassUnit)
+	return s.World.TotalFungiMass() * float64(s.Params.Food.FungiEnergyDensity)
 }
 
 func (s *Simulation) MeatEnergy() float64 {
-	return s.World.TotalMeatMass() * float64(s.Params.Metabolism.EnergyPerMassUnit)
+	return s.World.TotalMeatMass() * float64(s.Params.Food.MeatEnergyDensity)
 }
 
 // TotalEnergy returns the total liquid energy in the system: food, meat, and the
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
+// Stomach contents are valued at EnergyPerFoodMass because density is baked in at eat time.
 func (s *Simulation) TotalEnergy() float64 {
-	epu := float64(s.Params.Metabolism.EnergyPerMassUnit)
-	energy := s.World.TotalFoliageMass() * epu
-	energy += s.World.TotalFungiMass() * epu
-	energy += s.World.TotalMeatMass() * epu
+	epu := float64(s.Params.Metabolism.EnergyPerFoodMass)
+	energy := s.World.TotalFoliageMass() * float64(s.Params.Food.FoliageEnergyDensity)
+	energy += s.World.TotalFungiMass() * float64(s.Params.Food.FungiEnergyDensity)
+	energy += s.World.TotalMeatMass() * float64(s.Params.Food.MeatEnergyDensity)
 	for _, c := range s.Population.Creatures {
 		if c == nil {
 			continue
@@ -674,9 +765,8 @@ func (s *Simulation) TotalEnergy() float64 {
 	return energy
 }
 
-func (s *Simulation) TargetEnergy() float64 {
-	return s.Energy
-}
+func (s *Simulation) TargetEnergy() float64     { return s.Energy }
+func (s *Simulation) SetTargetEnergy(v float64) { s.Energy = v }
 
 func (s *Simulation) AverageAge() float64 {
 	count := len(s.Population.aliveIDs)
@@ -850,7 +940,7 @@ func (s *Simulation) FillSnapshot(dst *StateSnapshot) {
 // Pre-cached response curve to save on math.Pow calls
 var ResponseCurveLUT [256]float32
 
-// Initialize at startup
+// Initialise at startup
 func InitResponseCurve(params *Parameters) {
 	for i := 0; i < 256; i++ {
 		// Map index 0 -> 255 directly to a 0.0 -> 1.0 float range

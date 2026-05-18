@@ -18,7 +18,7 @@ type CreatureView struct {
 	VisionRadius     float64
 	FieldOfView      float64
 	Radius           float64
-	Mass             byte
+	BodyMass         byte
 	CurrentMass      float64
 	ReproductionType byte // 0 = asexual, 1 = sexual
 	Tier             byte
@@ -57,8 +57,8 @@ type GenomeSnapshot struct {
 	FieldOfView                byte
 	Responsiveness             byte
 	MutationRate               byte
-	Mass                       byte
-	MinMass                    byte
+	BodyMass                    byte
+	SurvivalMass               byte
 	ReproductionType           byte
 	CognitiveBreadth           byte
 	SynapticDensity            byte
@@ -84,7 +84,6 @@ type CreatureDetailView struct {
 	IsJuvenile        bool
 	JuvenilePeriod    int
 	CurrentMass       float32
-	AdultMass         float64
 	LastAction        string
 	VisionRadius      float64
 	FieldOfView       float64
@@ -151,7 +150,6 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 		IsJuvenile:        c.IsJuvenile(),
 		JuvenilePeriod:    c.JuvenilePeriod(),
 		CurrentMass:       float32(c.CurrentMass()),
-		AdultMass:         float64(c.MaxMass),
 		LastAction:        actionMaskToString(c.LastActionMask),
 		VisionRadius:      float64(c.GetVisionRadius()),
 		FieldOfView:       c.FieldOfView(),
@@ -177,8 +175,8 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 			FieldOfView:                c.Genome.FieldOfView,
 			Responsiveness:             c.Genome.Responsiveness,
 			MutationRate:               c.Genome.MutationRate,
-			Mass:                       c.Genome.Mass,
-			MinMass:                    c.Genome.MinMass,
+			BodyMass:                   c.Genome.BodyMass,
+			SurvivalMass:               c.Genome.SurvivalMass,
 			ReproductionType:           c.Genome.ReproductionType,
 			CognitiveBreadth:           c.Genome.CognitiveBreadth,
 			SynapticDensity:            c.Genome.SynapticDensity,
@@ -217,7 +215,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			VisionRadius:     float64(c.GetVisionRadius()),
 			FieldOfView:      c.FieldOfView(),
 			Radius:           float64(c.Radius),
-			Mass:             c.Genome.Mass,
+			BodyMass:         c.Genome.BodyMass,
 			CurrentMass:      float64(c.Mass),
 			ReproductionType: c.Genome.ReproductionType,
 			Tier:             c.Tier,
@@ -225,6 +223,3 @@ func (s *Simulation) CreatureViews() []CreatureView {
 	}
 	return views
 }
-
-func (s *Simulation) CreatureMinMass() byte    { return 1 }
-func (s *Simulation) CreatureMaxMass() float64 { return s.Params.Creature.MaxMass }

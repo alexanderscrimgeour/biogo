@@ -43,9 +43,9 @@ type UserInterface struct {
 	smallFont *textv2.GoXFace
 	sim       SimulationState
 
-	menuBar   *components.MenuBar
-	leftStack *LeftPanelStack
-	histGraph *HistoryGraph
+	menuBar      *components.MenuBar
+	leftStack    *LeftPanelStack
+	histGraph    *HistoryGraph
 	histStatsIdx int
 	histIdx      int
 
@@ -462,7 +462,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	})
 
 	// Mass
-	p.Add(&components.Label{Text: fmt.Sprintf("Mass: %.0f / %.0f", d.CurrentMass, d.AdultMass), Font: ui.font, Color: color.White})
+	p.Add(&components.Label{Text: fmt.Sprintf("Mass: %.0f", d.CurrentMass), Font: ui.font, Color: color.White})
 
 	// Stomach
 	p.Add(&components.Label{Text: fmt.Sprintf("Stomach: %.0f/%.0f", d.Stomach, d.StomachCapacity), Font: ui.font, Color: color.White})
@@ -474,18 +474,20 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 		Width:    innerW,
 	})
 
-	// Digestion Efficiency (3-way)
-	barW := (detailPanelW - detailPad*2 - detailSpacing*2) / 3
+	// Digestion Efficiency (proportional)
 	p.AddRow(
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}},
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
+		&components.Label{Text: fmt.Sprintf("F %.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
+		&components.Label{Text: fmt.Sprintf("M %.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}},
+		&components.Label{Text: fmt.Sprintf("C %.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
 	)
-	p.AddRow(
-		&components.EnergyBar{Value: d.FoliageEfficiency, Max: 1, MaxColor: color.RGBA{55, 185, 55, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
-		&components.EnergyBar{Value: d.FungiEfficiency, Max: 1, MaxColor: color.RGBA{160, 80, 200, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
-		&components.EnergyBar{Value: d.MeatEfficiency, Max: 1, MaxColor: color.RGBA{215, 60, 60, 255}, MinColor: color.RGBA{35, 35, 35, 255}, Width: barW},
-	)
+	p.Add(&components.ProportionBar{
+		Segments: []components.ProportionSegment{
+			{Value: d.FoliageEfficiency, Color: color.RGBA{55, 185, 55, 255}},
+			{Value: d.FungiEfficiency, Color: color.RGBA{160, 80, 200, 255}},
+			{Value: d.MeatEfficiency, Color: color.RGBA{215, 60, 60, 255}},
+		},
+		Width: innerW,
+	})
 
 	// Dopamine
 	p.Add(&components.Label{Text: fmt.Sprintf("Dopamine: %.02f", d.Dopamine), Font: ui.font, Color: color.White})
@@ -624,8 +626,8 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 		{"FieldOfView", g.FieldOfView, false},
 		{"Responsiveness", g.Responsiveness, false},
 		{"MutationRate", g.MutationRate, false},
-		{"Mass", g.Mass, false},
-		{"MinMass", g.MinMass, false},
+		{"BodyMass", g.BodyMass, false},
+		{"SurvivalMass", g.SurvivalMass, false},
 		{"ReproductionType", g.ReproductionType, true},
 		{"CognitiveBreadth", g.CognitiveBreadth, false},
 		{"SynapticDensity", g.SynapticDensity, false},
@@ -663,7 +665,7 @@ func (ui *UserInterface) buildHistStatsPanel() *components.Panel {
 	}
 	p.Add(&components.Label{Text: fmt.Sprintf("Pop: %d", ui.sim.PopulationCount()), Font: ui.font, Color: color.RGBA{100, 180, 255, 255}})
 	p.Add(&components.Label{Text: fmt.Sprintf("Foliage: %.0f", ui.sim.FoliageEnergy()), Font: ui.font, Color: color.RGBA{80, 210, 100, 255}})
-	p.Add(&components.Label{Text: fmt.Sprintf("Fungi: %.0f", ui.sim.FungiEnergy()), Font: ui.font, Color: color.RGBA{150, 50, 190, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Fungi: %.0f", ui.sim.FungiEnergy()), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}})
 	p.Add(&components.Label{Text: fmt.Sprintf("Meat: %.0f", ui.sim.MeatEnergy()), Font: ui.font, Color: color.RGBA{210, 90, 90, 255}})
 	p.Add(&components.Label{Text: fmt.Sprintf("Energy: %.2f%%", ui.sim.TotalEnergy()/ui.sim.TargetEnergy()*100), Font: ui.font, Color: color.RGBA{255, 230, 50, 255}})
 	return p

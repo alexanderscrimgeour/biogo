@@ -263,9 +263,7 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 	case KINSHIP_NEAREST:
 		output = calculateNearestKinship(c, p, ctx)
 	case MASS_FRACTION:
-		if c.Genome.Mass > 0 {
-			output = c.Mass / float32(c.Genome.Mass)
-		}
+		output = c.Mass / c.Genome.CalculateBirthMass(params)
 
 	case BLOCKED_FORWARD:
 		output = calculateBlockedFwd(c, w, p, ctx, params)
@@ -301,9 +299,9 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 
 	case TEMPERATURE:
 		temp := w.TemperatureAt(c.Loc.Y)
-		// (temp - average) / half_range creates a linear -1 to 1 scale.
-		midPoint := (world.TempWarm + world.TempCold) / 2
-		halfRange := (world.TempWarm - world.TempCold) / 2
+		// (temp - midpoint) / half_range creates a linear -1 to 1 scale across the full range.
+		midPoint := (w.TempMax + w.TempMin) / 2
+		halfRange := (w.TempMax - w.TempMin) / 2
 		tempCentered := (temp - midPoint) / halfRange
 		return tanhf(tempCentered * 2.0)
 
@@ -323,8 +321,9 @@ func (c Creature) GetSensor(sensorID byte, w *world.World, p *Population, ctx *S
 }
 
 func calculateSpeed(c Creature, p *Parameters) float32 {
-	massNorm := float64(c.Mass) / p.Creature.MaxMass
-	massFactor := 1.0 + (massNorm * massNorm * 5.0)
+	// How much mass over the skeletal mass is there?
+	massOverhead := float64(c.Mass) / float64(c.SurvivalMass)
+	massFactor := 1.0 + (massOverhead * massOverhead * 0.5)
 	output := float64(c.Speed) / massFactor
 	if output > 1.0 {
 		return 1.0

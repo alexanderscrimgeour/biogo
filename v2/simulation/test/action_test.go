@@ -27,7 +27,7 @@ func TestDoNothingReducesMetabolicCost(t *testing.T) {
 		}
 	}
 	c.Genome.MetabolicRate = 127
-	c.Energy = float32(c.Mass) * p.Metabolism.EnergyPerMassUnit // start at full MaxEnergy
+	c.Energy = float32(c.Mass) * p.Metabolism.EnergyCapacityPerMass // start at full MaxEnergy
 	energyBefore := c.Energy
 
 	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into REST so it always fires.
@@ -69,8 +69,8 @@ func TestPassivePredation_TakesBiteFromNearbyMeat(t *testing.T) {
 	w := grid.NewWorld(20, 20, 0)
 
 	predGenome := simulation.MakeRandomGenome(params, 0)
-	predGenome.Mass = 128
-	predGenome.MinMass = 10
+	predGenome.BodyMass = 128
+	predGenome.SurvivalMass = 10
 	predGenome.FieldOfView = 180
 	predGenome.StomachSize = 255
 

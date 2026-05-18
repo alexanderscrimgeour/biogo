@@ -10,12 +10,12 @@ import (
 func TestCurrentMassAtBirth(t *testing.T) {
 	params := defaultParams()
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 200
-	genome.MinMass = 10
+	genome.BodyMass = 200
+	genome.SurvivalMass = 10
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 	got := c.CurrentMass()
-	want := simulation.MapGeneToRange(genome.MinMass, 3, params.Creature.MaxMass)
+	want := simulation.MapGeneToRange(genome.SurvivalMass, 3, params.Creature.MaxMass)
 	if math.Abs(got-want) > 0.001 {
 		t.Errorf("CurrentMass at age 0: got %f, want %f", got, want)
 	}
@@ -24,12 +24,12 @@ func TestCurrentMassAtBirth(t *testing.T) {
 func TestCurrentMassAtAdulthood(t *testing.T) {
 	params := defaultParams()
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 200
+	genome.BodyMass = 200
 
 	c := simulation.NewAdultCreature(1, grid.Position{}, genome, params)
 
 	got := c.CurrentMass()
-	want := simulation.MapGeneToRange(genome.Mass, 3, params.Creature.MaxMass)
+	want := simulation.MapGeneToRange(genome.BodyMass, 3, params.Creature.MaxMass)
 	if math.Abs(got-want) > 0.001 {
 		t.Errorf("CurrentMass at adulthood: got %f, want %f", got, want)
 	}
@@ -41,8 +41,8 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 	params.Creature.MaxJuvenilePeriod = 100
 
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 100
-	genome.MinMass = 10
+	genome.BodyMass = 100
+	genome.SurvivalMass = 10
 	genome.JuvenilePeriod = 0 // maps to MinJuvenilePeriod (100)
 
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
@@ -52,7 +52,7 @@ func TestCurrentMassGrowsWithVonBertalanffy(t *testing.T) {
 		c.GrowMass(params)
 	}
 
-	adultMass := simulation.MapGeneToRange(genome.Mass, 3, params.Creature.MaxMass)
+	adultMass := simulation.MapGeneToRange(genome.BodyMass, 3, params.Creature.MaxMass)
 	midMass := c.CurrentMass()
 	if midMass <= startMass {
 		t.Errorf("mass should grow after 50 ticks: start=%f mid=%f", startMass, midMass)
@@ -130,8 +130,8 @@ func TestCurrentMassNeverExceedsGenomeMass(t *testing.T) {
 	params := defaultParams()
 	genome := simulation.MakeRandomGenome(params, 0)
 
-	maxMass := simulation.MapGeneToRange(genome.Mass, 3, params.Creature.MaxMass)
-	minMass := simulation.MapGeneToRange(genome.MinMass, 3, params.Creature.MaxMass)
+	maxMass := simulation.MapGeneToRange(genome.BodyMass, 3, params.Creature.MaxMass)
+	minMass := simulation.MapGeneToRange(genome.SurvivalMass, 3, params.Creature.MaxMass)
 	c := simulation.NewCreature(1, grid.Position{}, genome, params)
 	for tick := 0; tick <= params.Creature.MaxJuvenilePeriod+10; tick++ {
 		s := c.CurrentMass()

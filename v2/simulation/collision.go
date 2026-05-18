@@ -17,7 +17,6 @@ func (s *Simulation) processCollisions() {
 		return
 	}
 
-	maxRadius := float32(math.Sqrt(float64(s.Params.Creature.MaxMass) * math.Pi))
 	repulsion := float32(s.Params.World.CollisionRepulsion)
 
 	var buf []int
@@ -31,7 +30,8 @@ func (s *Simulation) processCollisions() {
 			speed = -speed
 		}
 		localSweptExpansion := speed * 2.0
-		buf = s.World.GetCreaturesInRadius(c.Loc, c.Radius+maxRadius+localSweptExpansion, buf)
+		searchRadius := c.Radius + localSweptExpansion + s.Params.World.MaxVelocityFallback
+		buf = s.World.GetCreaturesInRadius(c.Loc, searchRadius, buf)
 
 		for _, otherID := range buf {
 			if otherID <= id {

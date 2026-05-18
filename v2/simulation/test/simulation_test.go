@@ -175,7 +175,7 @@ func TestJuvenilePhaseBlocksReproduction(t *testing.T) {
 
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
-		c.Energy = float32(c.Mass) * p.Metabolism.EnergyPerMassUnit
+		c.Energy = float32(c.Mass) * p.Metabolism.EnergyCapacityPerMass
 		c.Age = 0 // reset so the full juvenile phase must elapse before reproduction
 	}
 
@@ -209,7 +209,7 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 		c.Genome.JuvenilePeriod = 255
 		c.Genome.ReproductionType = 0   // asexual
 		c.Genome.MassSplitRatio = 128   // ~25% split
-		c.Energy = float32(c.Mass) * p.Metabolism.EnergyPerMassUnit
+		c.Energy = float32(c.Mass) * p.Metabolism.EnergyCapacityPerMass
 		// Wire ENERGY sensor directly to REPRODUCE action so it fires unconditionally.
 		c.Genome.Brain = append(c.Genome.Brain, simulation.Gene{
 			SourceType: simulation.SENSOR,

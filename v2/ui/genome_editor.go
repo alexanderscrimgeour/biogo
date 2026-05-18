@@ -90,15 +90,15 @@ func makeTraitDefs() []traitDef {
 		},
 		{
 			label: "Mass",
-			get:   func(g *simulation.Genome) byte { return g.Mass },
+			get:   func(g *simulation.Genome) byte { return g.BodyMass },
 			set: func(g *simulation.Genome, v byte) {
-				g.Mass = v
+				g.BodyMass = v
 				maxMin := (v - 1) / 2
 				if maxMin < 1 {
 					maxMin = 1
 				}
-				if g.MinMass > maxMin {
-					g.MinMass = maxMin
+				if g.SurvivalMass > maxMin {
+					g.SurvivalMass = maxMin
 				}
 			},
 			minB: func(_ *simulation.Genome, _ *simulation.Parameters) byte { return 3 },
@@ -106,11 +106,11 @@ func makeTraitDefs() []traitDef {
 		},
 		{
 			label: "Min Mass",
-			get:   func(g *simulation.Genome) byte { return g.MinMass },
-			set:   func(g *simulation.Genome, v byte) { g.MinMass = v },
+			get:   func(g *simulation.Genome) byte { return g.SurvivalMass },
+			set:   func(g *simulation.Genome, v byte) { g.SurvivalMass = v },
 			minB:  func(_ *simulation.Genome, _ *simulation.Parameters) byte { return 1 },
 			maxB: func(g *simulation.Genome, _ *simulation.Parameters) byte {
-				m := (g.Mass - 1) / 2
+				m := (g.BodyMass - 1) / 2
 				if m < 1 {
 					m = 1
 				}
@@ -275,8 +275,8 @@ func (e *GenomeEditor) Open(g *simulation.Genome, p *simulation.Parameters) {
 			CognitiveBreadth: 0,
 
 			// Physical Invariants
-			Mass:    byte(15),
-			MinMass: byte(10),
+			BodyMass:    byte(15),
+			SurvivalMass: byte(10),
 
 			// Reproduction: Default to Asexual Circle (0)
 			ReproductionType: 0,

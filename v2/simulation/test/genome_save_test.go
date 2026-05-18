@@ -28,7 +28,7 @@ func TestSaveAndLoadGenomes(t *testing.T) {
 	}
 	for i := range genomes {
 		g, l := genomes[i], loaded[i]
-		if g.OscPeriod != l.OscPeriod || g.Mass != l.Mass {
+		if g.OscPeriod != l.OscPeriod || g.BodyMass != l.BodyMass {
 			t.Errorf("genome[%d] header mismatch", i)
 		}
 		if len(g.Brain) != len(l.Brain) {
@@ -131,8 +131,8 @@ func TestFromGenomeDataClampsZeroMass(t *testing.T) {
 	// must be clamped to at least 1 on load.
 	p := defaultParams()
 	g := simulation.MakeRandomGenome(p, 0)
-	g.Mass = 0
-	g.MinMass = 0
+	g.BodyMass = 0
+	g.SurvivalMass = 0
 
 	path := filepath.Join(t.TempDir(), "zero_mass.json")
 	if err := simulation.SaveGenomesToFile([]*simulation.Genome{g}, path); err != nil {
@@ -145,14 +145,14 @@ func TestFromGenomeDataClampsZeroMass(t *testing.T) {
 	if len(loaded) != 1 {
 		t.Fatalf("expected 1 genome, got %d", len(loaded))
 	}
-	if loaded[0].Mass < 1 {
-		t.Errorf("Mass should be >= 1 after load, got %d", loaded[0].Mass)
+	if loaded[0].BodyMass < 1 {
+		t.Errorf("BodyMass should be >= 1 after load, got %d", loaded[0].BodyMass)
 	}
-	if loaded[0].MinMass < 1 {
-		t.Errorf("MinMass should be >= 1 after load, got %d", loaded[0].MinMass)
+	if loaded[0].SurvivalMass < 1 {
+		t.Errorf("SurvivalMass should be >= 1 after load, got %d", loaded[0].SurvivalMass)
 	}
-	if loaded[0].MinMass > loaded[0].Mass {
-		t.Errorf("MinMass %d should be <= Mass %d", loaded[0].MinMass, loaded[0].Mass)
+	if loaded[0].SurvivalMass > loaded[0].BodyMass {
+		t.Errorf("SurvivalMass %d should be <= BodyMass %d", loaded[0].SurvivalMass, loaded[0].BodyMass)
 	}
 }
 

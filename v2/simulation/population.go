@@ -24,8 +24,9 @@ type DeathInstruction struct {
 }
 
 type ReproductionInstruction struct {
-	Creature *Creature
-	Partner  *Creature // nil = asexual; non-nil = sexual (crossover)
+	Creature   *Creature
+	Partner    *Creature // nil = asexual; non-nil = sexual (crossover)
+	IsFallback bool      // If true, creature has reproduced via fallback mechanism
 }
 
 type MoveInstruction struct {
@@ -43,6 +44,14 @@ type FeedInstruction struct {
 	Creature  *Creature // donor
 	Recipient *Creature
 	Level     float32 // raw action level; proportion = tanh(level)
+}
+
+type eatInstruction struct {
+	creature *Creature
+	foodID   int
+	maxBite  float32
+	eff      float32
+	foodType uint8
 }
 
 // pendingInstructions accumulates instructions produced by a single goroutine's
@@ -154,27 +163,49 @@ func (p *Population) ProcessMoveQueue(w *world.World) {
 	p.MoveQueue = p.MoveQueue[:0]
 }
 
-// ProcessEating consumes the nearest food/meat within interaction radius for every
-// alive creature. Called after ProcessMoveQueue so positions are up to date.
-func (p *Population) ProcessEating(w *world.World, params *Parameters) {
-	for _, id := range p.aliveIDs {
+// ProcessEatingParallel gathers eat decisions across batches in parallel (read-only
+// spatial queries) then applies them serially (world mutations). Batches must be
+// the same partition used for the creature step so each creature appears in exactly
+// one batch and buffer reuse is safe.
+func (p *Population) ProcessEatingParallel(w *world.World, params *Parameters, batches [][]int) {
+	results := make([][]eatInstruction, len(batches))
+	var wg sync.WaitGroup
+	for i, batch := range batches {
+		wg.Add(1)
+		go func(idx int, b []int) {
+			defer wg.Done()
+			results[idx] = gatherEatBatch(b, p, w, params, results[idx])
+		}(i, batch)
+	}
+	wg.Wait()
+	for _, instrs := range results {
+		applyEatInstructions(w, params, instrs)
+	}
+}
+
+// gatherEatBatch runs in a goroutine. It performs only read-only world queries to
+// find the nearest food item of each type for each creature, recording the desired
+// bite without modifying any shared state.
+func gatherEatBatch(ids []int, p *Population, w *world.World, params *Parameters, out []eatInstruction) []eatInstruction {
+	for _, id := range ids {
 		c, ok := p.Get(id)
 		if !ok || !c.Alive {
 			continue
 		}
-
+		if c.StomachCapacity(params)-c.Stomach <= 0 {
+			continue
+		}
 		bite := c.BiteSize(params)
 		foodIDs, meatIDs, fungiIDs := w.GetFoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoliageBuffer, c.SightMeatBuffer, c.SightFungiBuffer)
 
-		eatNearest := func(ids []int, foodType uint8) {
-			stomachSpace := c.StomachCapacity(params) - c.Stomach
+		appendNearest := func(fids []int, foodType uint8) {
 			eff := c.GetFoodEfficiency(foodType)
-			if stomachSpace <= 0 || len(ids) == 0 || eff <= 0 {
+			if len(fids) == 0 || eff <= 0 {
 				return
 			}
-			closestID := ids[0]
+			closestID := fids[0]
 			var closestDistSq float32 = math.MaxFloat32
-			for _, fid := range ids {
+			for _, fid := range fids {
 				fpos := w.GetFoodPos(fid)
 				dx := fpos.X - c.Loc.X
 				dy := fpos.Y - c.Loc.Y
@@ -184,24 +215,58 @@ func (p *Population) ProcessEating(w *world.World, params *Parameters) {
 					closestID = fid
 				}
 			}
-			foodMass := w.GetFoodMass(closestID)
-			eaten := bite
-			if eaten > foodMass {
-				eaten = foodMass
-			}
-			stomachGain := eaten * eff
-			if stomachGain > stomachSpace {
-				stomachGain = stomachSpace
-				eaten = stomachSpace / eff
-			}
-			c.Stomach += stomachGain
-			c.GainDopamine(0.01)
-			w.ReduceFoodMass(closestID, eaten)
+			out = append(out, eatInstruction{c, closestID, bite, eff, foodType})
 		}
 
-		eatNearest(foodIDs, world.FoodTypeFoliage)
-		eatNearest(fungiIDs, world.FoodTypeFungi)
-		eatNearest(meatIDs, world.FoodTypeMeat)
+		appendNearest(foodIDs, world.FoodTypeFoliage)
+		appendNearest(fungiIDs, world.FoodTypeFungi)
+		appendNearest(meatIDs, world.FoodTypeMeat)
+	}
+	return out
+}
+
+// applyEatInstructions runs serially. It re-checks stomach space and actual food
+// mass at apply time so that two creatures targeting the same item each get only
+// what remains.
+func applyEatInstructions(w *world.World, params *Parameters, instrs []eatInstruction) {
+	for _, inst := range instrs {
+		c := inst.creature
+		if !c.Alive {
+			continue
+		}
+		stomachSpace := c.StomachCapacity(params) - c.Stomach
+		if stomachSpace <= 0 {
+			continue
+		}
+		foodMass := w.GetFoodMass(inst.foodID)
+		if foodMass <= 0 {
+			continue
+		}
+		eaten := inst.maxBite
+		if eaten > foodMass {
+			eaten = foodMass
+		}
+		var densityRatio float32
+		switch inst.foodType {
+		case world.FoodTypeFoliage:
+			densityRatio = params.Food.FoliageEnergyDensity / params.Metabolism.EnergyPerFoodMass
+		case world.FoodTypeFungi:
+			densityRatio = params.Food.FungiEnergyDensity / params.Metabolism.EnergyPerFoodMass
+		case world.FoodTypeMeat:
+			densityRatio = params.Food.MeatEnergyDensity / params.Metabolism.EnergyPerFoodMass
+		default:
+			densityRatio = 1.0
+		}
+		stomachGain := eaten * inst.eff * densityRatio
+		if stomachGain > stomachSpace {
+			stomachGain = stomachSpace
+			if inst.eff*densityRatio > 0 {
+				eaten = stomachSpace / (inst.eff * densityRatio)
+			}
+		}
+		c.Stomach += stomachGain
+		c.GainDopamine(0.01)
+		w.ReduceFoodMass(inst.foodID, eaten)
 	}
 }
 
@@ -222,7 +287,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params) * float32(instruction.Level)
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.VisionRadius, c.SightCreatureBuffer)
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.VisionRadius+c.Radius, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		var closestPreyDistSq float32 = math.MaxFloat32
@@ -262,6 +327,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		effectiveBite := bite * defenseFactor
 
 		meatEff := c.GetFoodEfficiency(world.FoodTypeMeat)
+		meatDensityRatio := params.Food.MeatEnergyDensity / params.Metabolism.EnergyPerFoodMass
 
 		eaten := effectiveBite
 		if eaten > target.Mass {
@@ -269,28 +335,37 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		stomachSpace = c.StomachCapacity(params) - c.Stomach
-		stomachGain := eaten * meatEff
+		// stomachGain is in caloric units (density baked in)
+		stomachGain := eaten * meatEff * meatDensityRatio
 		if stomachGain > stomachSpace {
 			stomachGain = stomachSpace
-			if meatEff > 0 {
-				eaten = stomachSpace / meatEff
+			if meatEff*meatDensityRatio > 0 {
+				eaten = stomachSpace / (meatEff * meatDensityRatio)
 			}
 		}
 
 		// Clamp the energy drain to what the target actually has; a near-dead target
 		// can't fund the full bite, so waste must reflect only what was actually taken.
-		energyToDrain := eaten * params.Metabolism.EnergyPerMassUnit
+		energyToDrain := eaten * params.Metabolism.EnergyPerFoodMass
 		actualDrained := energyToDrain
 		if actualDrained > target.Energy {
 			actualDrained = target.Energy
 		}
-		waste := eaten + actualDrained/params.Metabolism.EnergyPerMassUnit - stomachGain
+		// wasteMass: energy the target lost minus what attacker will gain from digestion,
+		// expressed as meat mass. Clamp to zero — a high-eff carnivore extracts more than
+		// EnergyPerFoodMass accounts for, which the spawn system compensates for.
+		attackerEventualGain := stomachGain * params.Metabolism.EnergyPerFoodMass
+		targetEnergyLost := eaten*params.Metabolism.EnergyPerFoodMass + actualDrained
+		var wasteMass float32
+		if energyForWaste := targetEnergyLost - attackerEventualGain; energyForWaste > 0 {
+			wasteMass = energyForWaste / params.Food.MeatEnergyDensity
+		}
 		c.Stomach += stomachGain
 		target.Mass -= eaten
-		target.UpdateSize(params)
+		target.UpdateRadius(params)
 		target.DrainEnergy(actualDrained)
-		if waste > 0.01 {
-			w.AddMeat(target.Loc, waste)
+		if wasteMass > 0.01 {
+			w.AddMeat(target.Loc, wasteMass)
 		}
 		struggleCost := params.Predation.AttackEnergyCost
 		if sizeRatio < 1.0 {
@@ -421,107 +496,125 @@ func (p *Population) ProcessReproductionQueue(w *world.World, params *Parameters
 		if parent.Energy < params.Reproduction.EnergyThreshold*parent.MaxEnergy(params) {
 			continue
 		}
-		if parent.Mass < parent.MaxMass*0.9 {
-			continue
-		}
-		if float32(parent.Genome.MinMass)*2 >= float32(parent.Genome.Mass) {
+		offspringLoc, ok := findOffspringLocation(w, parent)
+		if !ok {
 			continue
 		}
 
 		// Sexual: partner must still be alive and eligible.
 		if ri.Partner != nil {
-			partner := ri.Partner
-			if !partner.Alive {
-				continue
+			if sexualReproduction(w, params, p, ri, offspringLoc) {
+				aliveCount++
 			}
-			if partner.Energy < params.Reproduction.EnergyThreshold*partner.MaxEnergy(params) {
-				continue
-			}
-			if partner.Mass < partner.MaxMass*0.9 {
-				continue
-			}
-
-			offspringLoc, ok := findOffspringLocation(w, parent)
-			if !ok {
-				continue
-			}
-
-			// 1. Find the baseline mid-point of the parental lineages
-			baseGen := (parent.Generation + partner.Generation) * 0.5
-			bonusA := parent.CalculateGenerationBonus(params)
-			bonusB := partner.CalculateGenerationBonus(params)
-			childGen := baseGen + (bonusA+bonusB)*0.5
-
-			radMult := radiationMult(parent.Loc.X, params)
-			childGenome := Crossover(parent.Genome, partner.Genome, params, radMult, childGen)
-			childStartingMass := float32(childGenome.Mass)
-
-			ratioA := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
-			ratioB := 0.1 + (float32(partner.Genome.MassSplitRatio)/255.0)*0.4
-			totalRatio := ratioA + ratioB
-			shareA := ratioA / totalRatio
-			shareB := ratioB / totalRatio
-
-			massFromParent := childStartingMass * shareA
-			massFromPartner := childStartingMass * shareB
-
-			energyFromParent := parent.Energy * ratioA
-			energyFromPartner := partner.Energy * ratioB
-			energyToSplit := energyFromParent + energyFromPartner
-			energyTransferred := energyToSplit * params.Reproduction.Efficiency
-
-			parent.Mass -= massFromParent
-			parent.DrainEnergy(energyFromParent)
-			parent.UpdateSize(params)
-
-			partner.Mass -= massFromPartner
-			partner.DrainEnergy(energyFromPartner)
-			partner.UpdateSize(params)
-
-			id := w.AddCreature(offspringLoc)
-			child := NewCreature(id, offspringLoc, childGenome, params)
-			child.Generation = childGen
-			child.Tier = GetTierFromGeneration(childGen, params)
-			child.GainEnergy(energyTransferred, params)
-			p.SetCreature(id, child)
-			p.AddAlive(id)
+			continue
+		}
+		// Asexual reproduction
+		if asexualReproduction(w, params, p, ri, offspringLoc) {
 			aliveCount++
-			continue
 		}
-
-		// Asexual path.
-		offspringLoc, ok := findOffspringLocation(w, parent)
-		if !ok {
-			continue
-		}
-		splitRatio := 0.1 + (float32(parent.Genome.MassSplitRatio)/255.0)*0.4
-		childMass := parent.Mass * splitRatio
-		energyToSplit := parent.Energy * splitRatio
-		energyTransferred := energyToSplit * params.Reproduction.Efficiency
-		massRatio := parent.Mass / parent.MaxMass
-		if massRatio > 1.0 {
-			massRatio = 1.0
-		}
-
-		childGen := parent.Generation + parent.CalculateGenerationBonus(params)
-
-		parent.Mass -= childMass
-		parent.UpdateSize(params)
-		parent.DrainEnergy(energyToSplit)
-		radMult := radiationMult(parent.Loc.X, params)
-		childGenome := AsexualReproduction(parent.Genome, params, radMult, childGen)
-		id := w.AddCreature(offspringLoc)
-		child := NewCreature(id, offspringLoc, childGenome, params)
-		child.Generation = childGen
-		child.Tier = GetTierFromGeneration(childGen, params)
-		child.Mass = childMass
-		child.UpdateSize(params)
-		child.Energy = energyTransferred
-		p.SetCreature(id, child)
-		p.AddAlive(id)
-		aliveCount++
 	}
+	// Clear queue
 	p.ReproductionQueue = p.ReproductionQueue[:0]
+}
+
+func sexualReproduction(
+	world *world.World,
+	params *Parameters,
+	population *Population,
+	ri ReproductionInstruction,
+	offspringLoc world.Position,
+) bool {
+	if !ri.Partner.Alive {
+		return false
+	}
+	if ri.Partner.Energy < params.Reproduction.EnergyThreshold*ri.Partner.MaxEnergy(params) {
+		return false
+	}
+
+	// 1. Find the baseline mid-point of the parental lineages
+	baseGen := (ri.Creature.Generation + ri.Partner.Generation) * 0.5
+	bonusA := ri.Creature.CalculateGenerationBonus(params)
+	bonusB := ri.Partner.CalculateGenerationBonus(params)
+	childGen := baseGen + (bonusA+bonusB)*0.5
+
+	mutMult := radiationMult(ri.Creature.Loc.X, params)
+	// Using the fallback in tiers 1+ is punished
+	if ri.IsFallback && ri.Creature.Tier >= 1 {
+		mutMult *= 1.25
+	}
+	childGenome := Crossover(ri.Creature.Genome, ri.Partner.Genome, params, mutMult, childGen)
+
+	ratioA := ri.Creature.Genome.CalculateSplitRatio()
+	ratioB := ri.Partner.Genome.CalculateSplitRatio()
+
+	massFromParent := ri.Creature.Mass * ratioA
+	massFromPartner := ri.Partner.Mass * ratioB
+	childStartingMass := massFromParent + massFromPartner
+
+	if childStartingMass < float32(params.Creature.MinBirthMass) {
+		return false
+	}
+
+	energyFromParent := ri.Creature.Energy * ratioA
+	energyFromPartner := ri.Partner.Energy * ratioB
+	energyToSplit := energyFromParent + energyFromPartner
+	energyTransferred := energyToSplit * params.Reproduction.Efficiency
+
+	// Ensure this investment doesn't physically drop either parent below their survival skeleton
+	if (ri.Creature.Mass-massFromParent) < ri.Creature.SurvivalMass || (ri.Partner.Mass-massFromPartner) < ri.Partner.SurvivalMass {
+		return false
+	}
+	ri.Creature.ApplyReproductionCost(massFromParent, energyFromParent, ri.IsFallback, params)
+	ri.Partner.ApplyReproductionCost(massFromPartner, energyFromPartner, ri.IsFallback, params)
+	ri.Creature.ReproductionCooldown = int(massFromParent * params.Reproduction.GestationTicksPerMass)
+	ri.Partner.ReproductionCooldown = int(massFromPartner * params.Reproduction.GestationTicksPerMass)
+
+	id := world.AddCreature(offspringLoc)
+	child := NewCreature(id, offspringLoc, childGenome, childStartingMass, params)
+	child.Generation = childGen
+	child.Tier = GetTierFromGeneration(childGen, params)
+	child.GainEnergy(energyTransferred, params)
+	population.SetCreature(id, child)
+	population.AddAlive(id)
+	return true
+}
+
+func asexualReproduction(
+	world *world.World,
+	params *Parameters,
+	population *Population,
+	ri ReproductionInstruction,
+	offspringLoc world.Position,
+) bool {
+	childGen := ri.Creature.Generation + ri.Creature.CalculateGenerationBonus(params)
+	mutMult := radiationMult(ri.Creature.Loc.X, params)
+	// Using the fallback in tiers 1+ is punished
+	if ri.IsFallback && ri.Creature.Tier >= 1 {
+		mutMult *= 1.25
+	}
+	childGenome := AsexualReproduction(ri.Creature.Genome, params, mutMult, childGen)
+	splitRatio := ri.Creature.Genome.CalculateSplitRatio()
+	childStartingMass := ri.Creature.Mass * splitRatio
+	if childStartingMass < float32(params.Creature.MinBirthMass) {
+		return false
+	}
+	if (ri.Creature.Mass - childStartingMass) < ri.Creature.SurvivalMass {
+		return false
+	}
+	energyToSplit := ri.Creature.Energy * splitRatio
+	energyTransferred := energyToSplit * params.Reproduction.Efficiency
+	ri.Creature.ApplyReproductionCost(childStartingMass, energyToSplit, ri.IsFallback, params)
+	ri.Creature.ReproductionCooldown = int(childStartingMass * params.Reproduction.GestationTicksPerMass)
+
+	id := world.AddCreature(offspringLoc)
+	child := NewCreature(id, offspringLoc, childGenome, childStartingMass, params)
+	child.Generation = childGen
+	child.Tier = GetTierFromGeneration(childGen, params)
+	child.Energy = energyTransferred
+	child.UpdateRadius(params)
+	population.SetCreature(id, child)
+	population.AddAlive(id)
+	return true
 }
 
 // radiationMult returns the mutation multiplier for a creature at world x-coordinate x.

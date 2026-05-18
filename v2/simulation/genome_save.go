@@ -33,8 +33,8 @@ type genomeData struct {
 	FieldOfView      byte       `json:"field_of_view"`
 	Responsiveness   byte       `json:"responsiveness"`
 	MutationRate     byte       `json:"mutation_rate"`
-	Mass             byte       `json:"mass"`
-	MinMass          byte       `json:"min_mass"`
+	BodyMass         byte       `json:"mass"`
+	SurvivalMass     byte       `json:"min_mass"`
 	ReproductionType byte       `json:"reproduction_type"`
 	CognitiveBreadth      byte       `json:"neuron_count"`
 	SynapticDensity      byte       `json:"brain_length"`
@@ -65,8 +65,8 @@ func toGenomeData(g *Genome) genomeData {
 		FieldOfView:      g.FieldOfView,
 		Responsiveness:   g.Responsiveness,
 		MutationRate:     g.MutationRate,
-		Mass:             g.Mass,
-		MinMass:          g.MinMass,
+		BodyMass:         g.BodyMass,
+		SurvivalMass:     g.SurvivalMass,
 		ReproductionType: g.ReproductionType,
 		CognitiveBreadth:      g.CognitiveBreadth,
 		SynapticDensity:      g.SynapticDensity,
@@ -91,11 +91,11 @@ func fromGenomeData(gd genomeData) *Genome {
 			Weight:     entry.Weight,
 		}
 	}
-	mass := gd.Mass
+	mass := gd.BodyMass
 	if mass < 1 {
 		mass = 1
 	}
-	minMass := gd.MinMass
+	minMass := gd.SurvivalMass
 	if minMass < 1 {
 		minMass = 1
 	}
@@ -108,8 +108,8 @@ func fromGenomeData(gd genomeData) *Genome {
 		FieldOfView:       gd.FieldOfView,
 		Responsiveness:    gd.Responsiveness,
 		MutationRate:      gd.MutationRate,
-		Mass:              mass,
-		MinMass:           minMass,
+		BodyMass:          mass,
+		SurvivalMass:      minMass,
 		ReproductionType:  gd.ReproductionType,
 		CognitiveBreadth:  gd.CognitiveBreadth,
 		SynapticDensity:   gd.SynapticDensity,

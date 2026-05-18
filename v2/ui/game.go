@@ -31,12 +31,11 @@ type SimulationState interface {
 	MeatEnergy() float64
 	AverageAge() float64
 	AverageGeneration() float64
-	CreatureMinMass() byte
-	CreatureMaxMass() float64
 	SaveCreature(id int, name string) error
 	Reset()
 	TotalEnergy() float64
 	TargetEnergy() float64
+	SetTargetEnergy(v float64)
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
 	SetFoliageRandomFraction(v float64)
 	SetFungiRandomFraction(v float64)
@@ -46,8 +45,10 @@ type SimulationState interface {
 	SetMaxFungi(n int)
 	SetFountainDriftSpeed(v float64)
 	SetFountainRadius(v float64)
-	SetColdMetabolicMultiplier(v float32)
+	SetTempMin(v float32)
+	SetTempMax(v float32)
 	SetWarmMetabolicMultiplier(v float32)
+	SetColdSpeedMultiplier(v float32)
 	SetClusterEnabled(v bool)
 	SetClusterInterval(v int)
 	SetClusterSize(v int)

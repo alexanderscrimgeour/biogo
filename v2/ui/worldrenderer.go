@@ -430,7 +430,7 @@ func (wr *WorldRenderer) TrySelectCreature(mx, my, sw, sh int, currentSelected i
 	for id, anim := range wr.animByID {
 		dx, dy := clickX-(anim.curX+half), clickY-(anim.curY+half)
 		dist := math.Sqrt(dx*dx + dy*dy)
-		hitRadius := float64(anim.radius) + float64(UnitSize)*3
+		hitRadius := float64(anim.radius) + 15.0/wr.camera.Zoom
 		if dist < hitRadius && dist < bestDist {
 			bestDist, bestID = dist, id
 		}
@@ -482,10 +482,10 @@ func (wr *WorldRenderer) drawTemperatureBackground(sw, sh int, camGeoM ebiten.Ge
 	screenRadX, _ := camGeoM.Apply(radZoneWorldX, 0)
 	if screenRadX > 0 {
 		rw := float32(math.Min(screenRadX, float64(sw)))
-		vector.FillRect(wr.worldLayer, 0, 0, rw, float32(sh), color.RGBA{100, 130, 50, 40}, false)
+		vector.FillRect(wr.worldLayer, 0, 0, rw, float32(sh), color.RGBA{100, 130, 50, 18}, false)
 	}
 	if screenRadX > 0 && screenRadX < float64(sw) {
-		vector.StrokeLine(wr.worldLayer, float32(screenRadX), 0, float32(screenRadX), float32(sh), 2, color.RGBA{100, 255, 70, 60}, false)
+		vector.StrokeLine(wr.worldLayer, float32(screenRadX), 0, float32(screenRadX), float32(sh), 2, color.RGBA{100, 200, 70, 40}, false)
 	}
 
 	worldW := float64(int(wr.sim.WorldWidth()) * UnitSize)
@@ -510,7 +510,7 @@ func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulatio
 		}
 		scx, scy := camGeoM.Apply(float64(worldCX), float64(worldCY))
 		cx, cy := float32(scx), float32(scy)
-		r := float32(cv.VisionRadius) * float32(UnitSize) * zoom
+		r := float32(cv.VisionRadius+cv.Radius) * float32(UnitSize) * zoom
 		halfFOV := float64(cv.FieldOfView) / 2.0 * math.Pi / 180.0
 		var path vector.Path
 		path.MoveTo(cx, cy)

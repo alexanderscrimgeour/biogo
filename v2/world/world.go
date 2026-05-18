@@ -34,6 +34,8 @@ type Wall struct {
 // map hashing).
 type World struct {
 	Width, Height float64
+	TempMin       float32
+	TempMax       float32
 	Walls         []Wall
 
 	creaturePos     []Position
@@ -65,10 +67,12 @@ type World struct {
 func NewWorld(width, height float64, wallType int) *World {
 	const initialCapacity = 25000
 	const creatureCapacity = 20000
-	const cellSize = 150.0
+	const cellSize = 600.0
 	w := &World{
 		Width:           width,
 		Height:          height,
+		TempMin:         0.0,
+		TempMax:         50.0,
 		creaturePos:     make([]Position, 1, creatureCapacity),
 		creatureActive:  make([]bool, 1, creatureCapacity),
 		freeCreatureIDs: make([]int, 0, 100),
@@ -216,15 +220,21 @@ func (w *World) GetFoodPos(id int) Position {
 	return w.foodPos[id]
 }
 
-// GetFoodMass returns the mass of any food item (foliage or meat) by ID.
+// GetFoodMass returns the mass of any food item by ID, or 0 if the item is inactive.
 func (w *World) GetFoodMass(id int) float32 {
+	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
+		return 0
+	}
 	return w.foodMass[id]
 }
 
 // ReduceFoodMass subtracts amount from any food item's mass.
 // Automatically removes the item when mass drops to zero or below.
-// Returns remaining mass (0 if removed).
+// Returns remaining mass (0 if removed or inactive).
 func (w *World) ReduceFoodMass(id int, amount float32) float32 {
+	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
+		return 0
+	}
 	remaining := w.foodMass[id] - amount
 	if remaining <= 0 {
 		w.removeFoodItem(id)
@@ -573,24 +583,22 @@ func (w *World) SpawnRandomFungi(n int, mass float32) {
 // TempCold and TempWarm define the ambient temperature range across the world's
 // Y axis. The top 20% is TempCold, the bottom 20% is TempWarm, with a linear
 // gradient in between.
-const (
-	TempCold = float32(10.0)
-	TempWarm = float32(40.0)
-)
-
 // TemperatureAt returns the ambient temperature in Celsius at world y-coordinate y.
+// Top 20%: gradient from TempMin to optimal. Middle 60%: flat at optimal. Bottom 20%: gradient to TempMax.
 func (w *World) TemperatureAt(y float32) float32 {
 	const coldBandEnd = 0.2
 	const warmBandStart = 0.8
+	optTemp := (w.TempMin + w.TempMax) / 2
 	norm := float64(y) / w.Height
 	if norm <= coldBandEnd {
-		return TempCold
+		t := float32(norm / coldBandEnd)
+		return w.TempMin + t*(optTemp-w.TempMin)
 	}
 	if norm >= warmBandStart {
-		return TempWarm
+		t := float32((norm - warmBandStart) / (1.0 - warmBandStart))
+		return optTemp + t*(w.TempMax-optTemp)
 	}
-	t := float32((norm - coldBandEnd) / (warmBandStart - coldBandEnd))
-	return TempCold + t*(TempWarm-TempCold)
+	return optTemp
 }
 
 // ForEachActiveFood iterates all active food items (foliages and meat) and calls fn

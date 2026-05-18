@@ -5,9 +5,12 @@ import (
 )
 
 type WorldParameters struct {
-	Width              float64
-	Height             float64
-	CollisionRepulsion float64
+	Width               float64
+	Height              float64
+	CollisionRepulsion  float64
+	MaxVelocityFallback float32
+	FluidDensity        float32 // ρ in drag equation: F_drag = 0.5 * ρ * v² * Cd * A
+	DragCoefficient     float32 // Cd in drag equation; 0.47 is a sphere, lower for streamlined bodies
 }
 
 type PopulationParameters struct {
@@ -37,16 +40,21 @@ type FoodParameters struct {
 	FountainRadius        float64
 	FoliageRandomFraction float64
 	FungiRandomFraction   float64
+	FoliageEnergyDensity  float32 // energy yielded per unit of foliage mass digested
+	FungiEnergyDensity    float32 // energy yielded per unit of fungi mass digested
+	MeatEnergyDensity     float32 // energy yielded per unit of meat mass digested; higher than plants
 }
 
 type CreatureParameters struct {
 	BaseMaxAge        float64
 	BaseBiteSize      float64
-	BaseMaxForce      float64
+	BaseMaxForce      float32
 	MinJuvenilePeriod int
 	MaxJuvenilePeriod int
-	MinMass           float64
-	MaxMass           float64
+	MinSurvivalMass   float64
+	MaxSurvivalMass   float64
+	MinBirthMass      float64
+	MaxBirthMass      float64
 	MinVisionRadius   float64
 	MaxVisionRadius   float64
 	MinFieldOfView    float64
@@ -73,18 +81,20 @@ type MetabolismParameters struct {
 	MaxStomachSize         float64
 	DigestionRate          float64
 	BaseBMR                float32
-	EnergyPerMassUnit      float32
-	MoveCost               float32
-	SpeedDamping           float64
-	MaxGrowthRatePerTick   float32
+	MetabolicReferenceMass float32 // mass at which BaseBMR applies exactly; Kleiber scaling is normalised to this
+	EnergyCapacityPerMass  float32 // MaxEnergy = Mass * this; tunes how much energy a body can store
+	EnergyPerFoodMass      float32 // energy gained per unit of digested food mass; tunes food richness
+	BiosynthesisEfficiency float32 // fraction of EnergyPerFoodMass that becomes structural mass; EnergyCostToBuildMass = EnergyPerFoodMass / this
+	MoveCostMultiplier     float32
 	GrowthEnergyCostFactor float32
 }
 
 type ReproductionParameters struct {
-	EnergyThreshold float32
-	Efficiency      float32
-	MatingRadius    float64
-	MinSimilarity   float32
+	EnergyThreshold       float32
+	Efficiency            float32
+	MatingRadius          float64
+	MinSimilarity         float32
+	GestationTicksPerMass float32 // cooldown ticks per unit of child starting mass after reproduction
 }
 
 type PredationParameters struct {
@@ -98,7 +108,8 @@ type RadiationParameters struct {
 }
 
 type EnvironmentParameters struct {
-	ColdMetabolicMultiplier float32
+	TempMin                 float32
+	TempMax                 float32
 	WarmMetabolicMultiplier float32
 	ColdSpeedMultiplier     float32
 	Radiation               RadiationParameters
@@ -127,9 +138,12 @@ type Parameters struct {
 func DefaultParams() *Parameters {
 	p := &Parameters{
 		World: WorldParameters{
-			Width:              15000,
-			Height:             15000,
-			CollisionRepulsion: 0.5,
+			Width:               25000,
+			Height:              15000,
+			CollisionRepulsion:  0.5,
+			MaxVelocityFallback: 30.0,
+			FluidDensity:        0.01,
+			DragCoefficient:     0.47,
 		},
 		Population: PopulationParameters{
 			Max:     35000,
@@ -137,30 +151,35 @@ func DefaultParams() *Parameters {
 			Initial: 1000,
 		},
 		Food: FoodParameters{
-			MaxFoliage:            150000,
-			MaxFungi:              50000,
-			FoliageMass:           25.0,
-			FungiMass:             250.0,
+			MaxFoliage:            250000,
+			MaxFungi:              100000,
+			FoliageMass:           10.0,
+			FungiMass:             15.0,
 			MeatMass:              100.0,
-			MeatDecayRate:         0.05,
+			MeatDecayRate:         0.0001,
 			SpawnInterval:         10,
-			FoliageFountainCount:  10,
-			FungiFountainCount:    10,
-			FountainDriftSpeed:    10,
+			FoliageFountainCount:  14,
+			FungiFountainCount:    50,
+			FountainDriftSpeed:    0.01,
 			FountainRadius:        400.0,
-			FoliageRandomFraction: 0.05,
-			FungiRandomFraction:   0.05,
+			FoliageRandomFraction: 0.01,
+			FungiRandomFraction:   0.01,
+			FoliageEnergyDensity:  10.0,
+			FungiEnergyDensity:    25.0,
+			MeatEnergyDensity:     50.0,
 		},
 		Creature: CreatureParameters{
-			BaseMaxForce:      2.5,
+			BaseMaxForce:      50,
 			BaseMaxAge:        25000,
 			BaseBiteSize:      100.0,
 			MinJuvenilePeriod: 300,
 			MaxJuvenilePeriod: 1000,
-			MinMass:           3,
-			MaxMass:           750,
+			MinSurvivalMass:   50,
+			MaxSurvivalMass:   500,
+			MinBirthMass:      60,
+			MaxBirthMass:      1500,
 			MinVisionRadius:   50,
-			MaxVisionRadius:   250,
+			MaxVisionRadius:   500,
 			MinFieldOfView:    10,
 			MaxFieldOfView:    180,
 		},
@@ -178,26 +197,29 @@ func DefaultParams() *Parameters {
 		},
 		Metabolism: MetabolismParameters{
 			DigestionRate:          0.2,
-			BaseBMR:                0.05,
-			EnergyPerMassUnit:      1.0,
-			MoveCost:               0.01,
-			SpeedDamping:           0.85,
-			MaxGrowthRatePerTick:   1.0,
+			BaseBMR:                0.1,
+			MetabolicReferenceMass: 50.0, // equals MinSurvivalMass; BaseBMR is the cost at this exact body size
+			EnergyCapacityPerMass:  4.0,
+			EnergyPerFoodMass:      10.0,
+			BiosynthesisEfficiency: 0.2, // EnergyPerFoodMass(10) / 0.2 = 50 energy per mass unit built
+			MoveCostMultiplier:     0.01,
 			GrowthEnergyCostFactor: 0.2,
 		},
 		Reproduction: ReproductionParameters{
-			EnergyThreshold: 0.85,
-			Efficiency:      0.9,
-			MatingRadius:    16.0,
-			MinSimilarity:   0.75,
+			EnergyThreshold:       0.85,
+			Efficiency:            0.9,
+			MatingRadius:          16.0,
+			MinSimilarity:         0.75,
+			GestationTicksPerMass: 10.0,
 		},
 		Predation: PredationParameters{
 			AttackEnergyCost: 1.0,
 		},
 		Environment: EnvironmentParameters{
-			ColdMetabolicMultiplier: 0.8,
+			TempMin:                 0.0,
+			TempMax:                 50.0,
 			WarmMetabolicMultiplier: 4.0,
-			ColdSpeedMultiplier:     0.4,
+			ColdSpeedMultiplier:     0.3,
 			Radiation: RadiationParameters{
 				ZoneWidth:          0.2,
 				MutationMultiplier: 25.0,
@@ -205,12 +227,12 @@ func DefaultParams() *Parameters {
 			},
 		},
 		Evolution: EvolutionParameters{
-			Tier1Generation: 5,
-			Tier2Generation: 25,
+			Tier1Generation: 2,
+			Tier2Generation: 10,
 			Tier3Generation: 75,
 		},
 		Spawn: SpawnParameters{
-			SavedGenomeProportion: 0.05,
+			SavedGenomeProportion: 0.1,
 			ClusterEnabled:        false,
 			ClusterInterval:       500,
 			ClusterSize:           10,
@@ -232,8 +254,20 @@ func (p *Parameters) Validate() error {
 	if p.Metabolism.BaseBMR < 0 {
 		return fmt.Errorf("BaseBMR (%v) must be >= 0", p.Metabolism.BaseBMR)
 	}
-	if p.Metabolism.EnergyPerMassUnit <= 0 {
-		return fmt.Errorf("EnergyPerMassUnit (%v) must be > 0", p.Metabolism.EnergyPerMassUnit)
+	if p.Metabolism.EnergyCapacityPerMass <= 0 {
+		return fmt.Errorf("EnergyCapacityPerMass (%v) must be > 0", p.Metabolism.EnergyCapacityPerMass)
+	}
+	if p.Metabolism.EnergyPerFoodMass <= 0 {
+		return fmt.Errorf("EnergyPerFoodMass (%v) must be > 0", p.Metabolism.EnergyPerFoodMass)
+	}
+	if p.Food.FoliageEnergyDensity <= 0 {
+		return fmt.Errorf("FoliageEnergyDensity (%v) must be > 0", p.Food.FoliageEnergyDensity)
+	}
+	if p.Food.FungiEnergyDensity <= 0 {
+		return fmt.Errorf("FungiEnergyDensity (%v) must be > 0", p.Food.FungiEnergyDensity)
+	}
+	if p.Food.MeatEnergyDensity <= 0 {
+		return fmt.Errorf("MeatEnergyDensity (%v) must be > 0", p.Food.MeatEnergyDensity)
 	}
 
 	if p.Reproduction.EnergyThreshold <= 0 || p.Reproduction.EnergyThreshold > 1 {

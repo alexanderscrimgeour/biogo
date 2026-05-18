@@ -23,25 +23,51 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.RGBA{65, 180, 55, 255},
-		Min: 0, Max: 1000000,
-		Value: float64(p.Food.MaxFoliage),
+		Font: font, LabelColor: color.RGBA{255, 230, 50, 255},
+		Min: 0, Max: 20000000,
+		Value: sim.TargetEnergy(),
 		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Max Foliage: %d", int(math.Round(v)))
+			return fmt.Sprintf("Target E: %.0fk", v/1000)
 		},
-		OnChange: func(v float64) { sim.SetMaxFoliage(int(math.Round(v))) },
+		OnChange: func(v float64) { sim.SetTargetEnergy(v) },
 	})
-	d.addSlider(&components.Slider{
+
+	// Ratio of energy deficit allocated to foliage vs fungi.
+	// The absolute values of MaxFoliage/MaxFungi only matter as a ratio.
+	foodTotal := p.Food.MaxFoliage + p.Food.MaxFungi
+	var initFoliageRatio float64
+	if foodTotal > 0 {
+		initFoliageRatio = float64(p.Food.MaxFoliage) / float64(foodTotal)
+	}
+
+	foliageColor := color.RGBA{65, 180, 55, 255}
+	fungiColor := color.RGBA{160, 80, 200, 255}
+	lerpFoodColor := func(t float64) color.RGBA {
+		// t=1 → foliage green, t=0 → fungi purple
+		return color.RGBA{
+			R: uint8(float64(fungiColor.R) + t*(float64(foliageColor.R)-float64(fungiColor.R))),
+			G: uint8(float64(fungiColor.G) + t*(float64(foliageColor.G)-float64(fungiColor.G))),
+			B: uint8(float64(fungiColor.B) + t*(float64(foliageColor.B)-float64(fungiColor.B))),
+			A: 255,
+		}
+	}
+
+	ratioSlider := &components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.RGBA{160, 80, 200, 255},
-		Min: 0, Max: 1000000,
-		Value: float64(p.Food.MaxFungi),
+		Font: font, LabelColor: lerpFoodColor(initFoliageRatio),
+		Min: 0, Max: 1,
+		Value: initFoliageRatio,
 		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Max Fungi: %d", int(math.Round(v)))
+			return fmt.Sprintf("F:%.0f%% Fu:%.0f%%", v*100, (1-v)*100)
 		},
-		OnChange: func(v float64) { sim.SetMaxFungi(int(math.Round(v))) },
-	})
+	}
+	ratioSlider.OnChange = func(v float64) {
+		ratioSlider.LabelColor = lerpFoodColor(v)
+		sim.SetMaxFoliage(int(math.Round(v * float64(foodTotal))))
+		sim.SetMaxFungi(foodTotal - int(math.Round(v*float64(foodTotal))))
+	}
+	d.addSlider(ratioSlider)
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
