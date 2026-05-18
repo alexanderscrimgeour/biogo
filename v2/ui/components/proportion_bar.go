@@ -21,7 +21,7 @@ type ProportionSegment struct {
 }
 
 func (b *ProportionBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
-	vector.FillRect(screen, x, y, b.Width, 6, color.RGBA{35, 35, 35, 255}, false)
+	vector.FillRect(screen, x, y, b.Width, 6, ColorBarBG, false)
 
 	total := float32(0)
 	for _, s := range b.Segments {

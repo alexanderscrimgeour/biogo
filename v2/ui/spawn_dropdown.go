@@ -18,7 +18,7 @@ func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simu
 	trackW := sw - trackOff
 	sliderH := float32(24)
 
-	d := newDropdown(font, trigger, "Cluster Spawn", color.RGBA{180, 100, 255, 255}, spawnPanelW)
+	d := newDropdown(font, trigger, "Cluster Spawn", ColorSpawnTitle, spawnPanelW)
 
 	enableBtn := &components.Button{
 		W: sw, H: 26,

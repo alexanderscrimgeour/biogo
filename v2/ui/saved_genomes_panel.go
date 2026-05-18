@@ -114,46 +114,49 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	p.panY = float32(sh/2 - sgPanH/2)
 	px, py := p.panX, p.panY
 
-	// Derive text heights from font metrics so positioning is resolution-independent.
+	// Derive button and text heights from font metrics.
 	m := fnt.Metrics()
-	textH := float32(m.HLineGap + m.HAscent + m.HDescent)
 	glyphH := float32(m.HAscent + m.HDescent)
+	textH := float32(m.HLineGap + m.HAscent + m.HDescent)
+	btnH := glyphH + 6 // button height sized to the glyph
+
 	// vertCenter returns the top offset that centres text of height textH inside boxH.
 	vertCenter := func(boxH float32) int { return int((boxH - textH) / 2) }
 
 	// Background + border
-	vector.FillRect(screen, px, py, sgPanW, sgPanH, color.RGBA{8, 10, 22, 248}, false)
-	vector.StrokeRect(screen, px, py, sgPanW, sgPanH, 2, color.RGBA{90, 90, 155, 255}, false)
+	vector.FillRect(screen, px, py, sgPanW, sgPanH, ColorModalBG, false)
+	vector.StrokeRect(screen, px, py, sgPanW, sgPanH, 2, ColorModalBorder, false)
 
 	// Title bar
-	vector.FillRect(screen, px, py, sgPanW, sgTitleH, color.RGBA{18, 18, 48, 255}, false)
-	drawText(screen, "SAVED GENOMES", fnt, int(px)+sgPad, int(py)+vertCenter(sgTitleH), color.RGBA{200, 200, 255, 255})
+	vector.FillRect(screen, px, py, sgPanW, sgTitleH, ColorModalTitleBar, false)
+	drawText(screen, "SAVED GENOMES", fnt, int(px)+sgPad, int(py)+vertCenter(sgTitleH), ColorModalTitle)
 
-	// Close [×]
-	cbx := px + sgPanW - 28
+	// Close [×] — width fixed at 24px (design choice), height from font
+	const closeBtnW = float32(24)
+	cbx := px + sgPanW - closeBtnW - 4
 	cby := py + 3
-	p.closeBtn = [4]float32{cbx, cby, 24, 22}
-	vector.FillRect(screen, cbx, cby, 24, 22, color.RGBA{160, 50, 50, 200}, false)
-	drawText(screen, "×", fnt, int(cbx)+6, int(cby)+vertCenter(22), color.White)
+	p.closeBtn = [4]float32{cbx, cby, closeBtnW, btnH}
+	vector.FillRect(screen, cbx, cby, closeBtnW, btnH, ColorBtnClose, false)
+	drawText(screen, "×", fnt, int(cbx)+6, int(cby)+vertCenter(btnH), color.White)
 
-	// Scroll arrows (always present)
-	arrowY := py + sgPanH - sgPad - 22
-	upBtnX := px + sgPanW/2 - 26
-	p.upBtn = [4]float32{upBtnX, arrowY, 24, 22}
-	p.downBtn = [4]float32{upBtnX + 28, arrowY, 24, 22}
+	// Scroll arrows — square buttons sized to btnH
+	arrowY := py + sgPanH - sgPad - btnH
+	upBtnX := px + sgPanW/2 - btnH - 2
+	p.upBtn = [4]float32{upBtnX, arrowY, btnH, btnH}
+	p.downBtn = [4]float32{upBtnX + btnH + 4, arrowY, btnH, btnH}
 
-	upClr := color.RGBA{60, 60, 100, 200}
+	upClr := ColorArrowDisabled
 	if p.scroll > 0 {
-		upClr = color.RGBA{80, 80, 160, 220}
+		upClr = ColorArrowEnabled
 	}
-	downClr := color.RGBA{60, 60, 100, 200}
+	downClr := ColorArrowDisabled
 	if p.scroll < len(p.genomes)-sgMaxRows {
-		downClr = color.RGBA{80, 80, 160, 220}
+		downClr = ColorArrowEnabled
 	}
 	vector.FillRect(screen, p.upBtn[0], p.upBtn[1], p.upBtn[2], p.upBtn[3], upClr, false)
-	drawText(screen, "▲", fnt, int(upBtnX)+4, int(arrowY)+vertCenter(22), color.White)
+	drawText(screen, "▲", fnt, int(upBtnX)+4, int(arrowY)+vertCenter(btnH), color.White)
 	vector.FillRect(screen, p.downBtn[0], p.downBtn[1], p.downBtn[2], p.downBtn[3], downClr, false)
-	drawText(screen, "▼", fnt, int(upBtnX)+32, int(arrowY)+vertCenter(22), color.White)
+	drawText(screen, "▼", fnt, int(p.downBtn[0])+4, int(arrowY)+vertCenter(btnH), color.White)
 
 	// Row area
 	listY := py + sgTitleH + sgPad
@@ -162,7 +165,7 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	// Empty state
 	if len(p.genomes) == 0 {
 		drawText(screen, "No saved genomes found in data/creatures/",
-			fnt, int(px)+sgPad, int(listY)+sgPad, color.RGBA{120, 120, 170, 200})
+			fnt, int(px)+sgPad, int(listY)+sgPad, ColorSavedSummary)
 		p.rowBounds = p.rowBounds[:0]
 		return
 	}
@@ -195,31 +198,30 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 		spawnBtnX := px + sgPanW - sgPad - sgBtnW
 		rowBg := color.RGBA{0, 0, 0, 0}
 		if cfx >= px+sgPad && cfx <= spawnBtnX-4 && cfy >= rowY && cfy <= rowY+sgRowH-2 {
-			rowBg = color.RGBA{30, 30, 60, 120}
+			rowBg = ColorSavedRowHover
 		}
 		if rowBg.A > 0 {
 			vector.FillRect(screen, px+sgPad, rowY, spawnBtnX-px-sgPad*2, sgRowH-2, rowBg, false)
 		}
 
 		// Separator
-		vector.FillRect(screen, px+sgPad, rowY+sgRowH-1, float32(sgPanW)-sgPad*2, 1, color.RGBA{35, 35, 60, 180}, false)
+		vector.FillRect(screen, px+sgPad, rowY+sgRowH-1, float32(sgPanW)-sgPad*2, 1, ColorSavedRowSep, false)
 
 		// Name + trait summary, vertically centred as a two-line block
-		nameClr := color.RGBA{200, 210, 255, 255}
-		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+rowLine1Off, nameClr)
+		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+rowLine1Off, ColorSavedName)
 		summary := fmt.Sprintf("Mass %d  Neurons %d  Genes %d  Gen %.1f",
 			ng.Genome.BodyMass, ng.Genome.CognitiveBreadth, len(ng.Genome.Brain), ng.Generation)
-		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+rowLine2Off, color.RGBA{120, 130, 160, 200})
+		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+rowLine2Off, ColorSavedSummary)
 
-		// Spawn button
+		// Spawn button — height from font metrics
 		sbx := spawnBtnX
-		sby := rowY + (sgRowH-22)/2
-		p.rowBounds = append(p.rowBounds, [4]float32{sbx, sby, sgBtnW, 22})
-		vector.FillRect(screen, sbx, sby, sgBtnW, 22, color.RGBA{40, 100, 60, 220}, false)
-		drawText(screen, "Spawn", fnt, int(sbx)+8, int(sby)+vertCenter(22), color.White)
+		sby := rowY + (sgRowH-btnH)/2
+		p.rowBounds = append(p.rowBounds, [4]float32{sbx, sby, sgBtnW, btnH})
+		vector.FillRect(screen, sbx, sby, sgBtnW, btnH, ColorBtnSave, false)
+		drawText(screen, "Spawn", fnt, int(sbx)+8, int(sby)+vertCenter(btnH), color.White)
 	}
 
 	// Scroll counter, aligned with the arrow buttons
 	drawText(screen, fmt.Sprintf("%d / %d", p.scroll+1, total), fnt,
-		int(px)+sgPad, int(arrowY)+vertCenter(22), color.RGBA{100, 100, 150, 200})
+		int(px)+sgPad, int(arrowY)+vertCenter(btnH), ColorScrollCount)
 }

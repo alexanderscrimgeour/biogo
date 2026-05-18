@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	gbBarW  = float32(55) // width of the value bar / swatch area
-	gbBarH  = float32(7)  // height of the bar
-	gbRowH  = float32(18) // total row height
+	gbBarW = float32(55) // width of the value bar / swatch area
+	gbBarH = float32(7)  // height of the bar
+	gbRowH = float32(18) // total row height
 )
 
 // GenomeBar renders a trait name + numeric value as text, plus a visual bar
@@ -42,21 +42,18 @@ func (b *GenomeBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) 
 
 	if b.Binary {
 		half := gbBarW / 2
-		asexualClr := color.RGBA{200, 80, 30, 180}
-		sexualClr := color.RGBA{60, 110, 210, 180}
-		dimClr := color.RGBA{25, 25, 50, 160}
 		if b.Val == 0 { // asexual
-			vector.FillRect(screen, barX, barY, half-1, gbBarH, asexualClr, false)
-			vector.FillRect(screen, barX+half, barY, half, gbBarH, dimClr, false)
+			vector.FillRect(screen, barX, barY, half-1, gbBarH, ColorGenomeBinAsexual, false)
+			vector.FillRect(screen, barX+half, barY, half, gbBarH, ColorGenomeBinDim, false)
 		} else { // sexual
-			vector.FillRect(screen, barX, barY, half-1, gbBarH, dimClr, false)
-			vector.FillRect(screen, barX+half, barY, half, gbBarH, sexualClr, false)
+			vector.FillRect(screen, barX, barY, half-1, gbBarH, ColorGenomeBinDim, false)
+			vector.FillRect(screen, barX+half, barY, half, gbBarH, ColorGenomeBinSexual, false)
 		}
 	} else {
-		vector.FillRect(screen, barX, barY, gbBarW, gbBarH, color.RGBA{20, 20, 45, 200}, false)
+		vector.FillRect(screen, barX, barY, gbBarW, gbBarH, ColorGenomeBarBG, false)
 		fillW := float32(b.Val) / 255 * gbBarW
 		if fillW > 0 {
-			vector.FillRect(screen, barX, barY, fillW, gbBarH, color.RGBA{55, 160, 210, 220}, false)
+			vector.FillRect(screen, barX, barY, fillW, gbBarH, ColorGenomeBarFill, false)
 		}
 	}
 

@@ -26,23 +26,26 @@ type SpawnParameters struct {
 	ClusterSize           int
 }
 
+type FountainParameters struct {
+	Count          int
+	DriftSpeed     float64
+	Radius         float64
+	RandomFraction float64
+}
+
 type FoodParameters struct {
-	MaxFoliage            int
-	MaxFungi              int
-	FoliageMass           float32
-	FungiMass             float32
-	MeatMass              float32
-	MeatDecayRate         float32
-	SpawnInterval         int
-	FoliageFountainCount  int
-	FungiFountainCount    int
-	FountainDriftSpeed    float64
-	FountainRadius        float64
-	FoliageRandomFraction float64
-	FungiRandomFraction   float64
-	FoliageEnergyDensity  float32 // energy yielded per unit of foliage mass digested
-	FungiEnergyDensity    float32 // energy yielded per unit of fungi mass digested
-	MeatEnergyDensity     float32 // energy yielded per unit of meat mass digested; higher than plants
+	MaxFoliage   int
+	MaxFungi     int
+	FoliageMass  float32
+	FungiMass    float32
+	MeatMass     float32
+	MeatDecayRate float32
+	SpawnInterval int
+	Foliage       FountainParameters
+	Fungi         FountainParameters
+	FoliageEnergyDensity float32 // energy yielded per unit of foliage mass digested
+	FungiEnergyDensity   float32 // energy yielded per unit of fungi mass digested
+	MeatEnergyDensity    float32 // energy yielded per unit of meat mass digested; higher than plants
 }
 
 type CreatureParameters struct {
@@ -154,19 +157,25 @@ func DefaultParams() *Parameters {
 			MaxFoliage:            250000,
 			MaxFungi:              100000,
 			FoliageMass:           10.0,
-			FungiMass:             15.0,
+			FungiMass:             50.0,
 			MeatMass:              100.0,
 			MeatDecayRate:         0.0001,
 			SpawnInterval:         10,
-			FoliageFountainCount:  14,
-			FungiFountainCount:    50,
-			FountainDriftSpeed:    0.01,
-			FountainRadius:        400.0,
-			FoliageRandomFraction: 0.01,
-			FungiRandomFraction:   0.01,
+			Foliage: FountainParameters{
+				Count:          6,
+				DriftSpeed:     0.01,
+				Radius:         400.0,
+				RandomFraction: 0.01,
+			},
+			Fungi: FountainParameters{
+				Count:          12,
+				DriftSpeed:     0.01,
+				Radius:         400.0,
+				RandomFraction: 0.01,
+			},
 			FoliageEnergyDensity:  10.0,
 			FungiEnergyDensity:    25.0,
-			MeatEnergyDensity:     50.0,
+			MeatEnergyDensity:     100.0,
 		},
 		Creature: CreatureParameters{
 			BaseMaxForce:      50,

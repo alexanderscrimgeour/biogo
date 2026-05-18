@@ -305,8 +305,13 @@ func (c *Creature) GrowMass(params *Parameters, temp float32) {
 	// If BMR (which scales with mass) reaches maximum energy, then less
 	// capacity to grow
 	somaticScale := c.Mass / c.SurvivalMass
-	const maxSomaticMultiplier float32 = 100.0
-	allocationFactor := float32(1.0) - (somaticScale / maxSomaticMultiplier)
+	// Scale Max size based on BodyMass gene
+	geneRatio := float32(c.Genome.BodyMass) / 255.0
+	progressiveScale := geneRatio * geneRatio
+	const minMultiplier float32 = 2.0
+	const maxPossibleMultiplier float32 = 200.0
+	dynamicMaxSomaticMultiplier := minMultiplier + (progressiveScale * (maxPossibleMultiplier - minMultiplier))
+	allocationFactor := float32(1.0) - (somaticScale / dynamicMaxSomaticMultiplier)
 	if allocationFactor < 0 {
 		allocationFactor = 0
 	}
@@ -398,10 +403,19 @@ func (c Creature) MetabolicRate(params *Parameters, temp float32) float32 {
 }
 
 // MaxAge returns the creature's maximum lifespan in ticks.
-// Larger creatures live longer (rate-of-living theory); higher metabolic gene shortens life.
+// Lifespan scales with sqrt of actual somatic growth (mass / survival floor), capped at 3x.
+// Higher metabolic gene shortens life (rate-of-living theory).
 func (c Creature) MaxAge(params *Parameters) int {
 	baseLife := float32(params.Creature.BaseMaxAge)
-	sizeMult := 0.5 + float32(c.Genome.BodyMass)/255.0 // [0.5, 1.5]
+	somaticScale := c.Mass / c.SurvivalMass
+	if somaticScale < 1 {
+		somaticScale = 1
+	}
+	sizeMult := float32(math.Sqrt(float64(somaticScale)))
+	const maxSizeBoost float32 = 3.0
+	if sizeMult > maxSizeBoost {
+		sizeMult = maxSizeBoost
+	}
 	metabolicGeneNorm := float32(c.Genome.MetabolicRate) / 255.0
 	metabolicPenalty := 0.75 + metabolicGeneNorm // [0.75, 1.75]
 	return int((baseLife * sizeMult) / metabolicPenalty)

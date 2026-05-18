@@ -477,11 +477,10 @@ func stepFountainSlice(w *World, positions []Position, angles []float64, driftSp
 	}
 }
 
-// StepFountains advances all foliage and fungi fountains by driftSpeed units
-// along their current angles, with small random angular perturbation each step.
-func (w *World) StepFountains(driftSpeed float64) {
-	stepFountainSlice(w, w.FoliageFountains, w.foliageFountainAngles, driftSpeed)
-	stepFountainSlice(w, w.FungiFountains, w.fungiFountainAngles, driftSpeed)
+// StepFountains advances foliage and fungi fountains by their respective drift speeds.
+func (w *World) StepFountains(foliageDriftSpeed, fungiDriftSpeed float64) {
+	stepFountainSlice(w, w.FoliageFountains, w.foliageFountainAngles, foliageDriftSpeed)
+	stepFountainSlice(w, w.FungiFountains, w.fungiFountainAngles, fungiDriftSpeed)
 }
 
 func spawnClustered(w *World, n int, sigma float64, mass float32, fountains []Position, addFn func(Position, float32) int) int {

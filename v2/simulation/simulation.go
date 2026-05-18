@@ -44,7 +44,7 @@ func (s *Simulation) initialiseWorld() {
 	s.World.TempMax = s.Params.Environment.TempMax
 	s.World.SpawnRandom(s.Params.Food.MaxFoliage/2, s.Params.Food.FoliageMass)
 	s.World.SpawnRandomFungi(s.Params.Food.MaxFungi/2, s.Params.Food.FungiMass)
-	s.World.InitFountains(s.Params.Food.FoliageFountainCount, s.Params.Food.FungiFountainCount)
+	s.World.InitFountains(s.Params.Food.Foliage.Count, s.Params.Food.Fungi.Count)
 }
 
 func (s *Simulation) initialisePopulation() {
@@ -111,7 +111,7 @@ func (s *Simulation) Update() {
 }
 
 func (s *Simulation) step() {
-	s.World.StepFountains(s.Params.Food.FountainDriftSpeed)
+	s.World.StepFountains(s.Params.Food.Foliage.DriftSpeed, s.Params.Food.Fungi.DriftSpeed)
 	if s.Tick%s.Params.Food.SpawnInterval == 0 {
 		deficit := s.Energy - s.TotalEnergy()
 		if deficit <= 0 {
@@ -134,10 +134,10 @@ func (s *Simulation) step() {
 			nFoliage = int((deficit / energyPerFoliage) + 0.5)
 		}
 		if nFoliage > 0 {
-			s.World.SpawnFoliage(nFoliage, s.Params.Food.FountainRadius, s.Params.Food.FoliageMass, s.Params.Food.FoliageRandomFraction)
+			s.World.SpawnFoliage(nFoliage, s.Params.Food.Foliage.Radius, s.Params.Food.FoliageMass, s.Params.Food.Foliage.RandomFraction)
 		}
 		if nFungi > 0 {
-			s.World.SpawnFungi(nFungi, s.Params.Food.FountainRadius, s.Params.Food.FungiMass, s.Params.Food.FungiRandomFraction)
+			s.World.SpawnFungi(nFungi, s.Params.Food.Fungi.Radius, s.Params.Food.FungiMass, s.Params.Food.Fungi.RandomFraction)
 		}
 	}
 
@@ -246,7 +246,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	// breaks down structural mass to keep itself alive — at lower efficiency than
 	// digestion. This burns through mass faster than food would imply, making
 	// prolonged starvation fatal even in a creature with mass to spare.
-	const catabolismThreshold float32 = 0.30
+	const catabolismThreshold float32 = 0.15
 	if c.Energy < c.MaxEnergy(s.Params)*catabolismThreshold {
 		const catabolismEfficiency float32 = 0.35
 		bmr := c.MetabolicRate(s.Params, temp)
@@ -604,12 +604,15 @@ func (s *Simulation) fountainLocation() (world.Position, bool) {
 	}
 	idx := rand.Intn(total)
 	var center world.Position
+	var radius float64
 	if idx < len(foliage) {
 		center = foliage[idx]
+		radius = s.Params.Food.Foliage.Radius
 	} else {
 		center = fungi[idx-len(foliage)]
+		radius = s.Params.Food.Fungi.Radius
 	}
-	pos := s.World.FindEmptyLocationNear(center, s.Params.Food.FountainRadius)
+	pos := s.World.FindEmptyLocationNear(center, radius)
 	return pos, true
 }
 
@@ -619,10 +622,12 @@ func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v 
 
 func (s *Simulation) SetMaxFoliage(v int)                { s.Params.Food.MaxFoliage = v }
 func (s *Simulation) SetMaxFungi(v int)                  { s.Params.Food.MaxFungi = v }
-func (s *Simulation) SetFoliageRandomFraction(v float64) { s.Params.Food.FoliageRandomFraction = v }
-func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.FungiRandomFraction = v }
-func (s *Simulation) SetFountainDriftSpeed(v float64)    { s.Params.Food.FountainDriftSpeed = v }
-func (s *Simulation) SetFountainRadius(v float64)        { s.Params.Food.FountainRadius = v }
+func (s *Simulation) SetFoliageRandomFraction(v float64) { s.Params.Food.Foliage.RandomFraction = v }
+func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.Fungi.RandomFraction = v }
+func (s *Simulation) SetFoliageDriftSpeed(v float64)     { s.Params.Food.Foliage.DriftSpeed = v }
+func (s *Simulation) SetFungiDriftSpeed(v float64)       { s.Params.Food.Fungi.DriftSpeed = v }
+func (s *Simulation) SetFoliageRadius(v float64)         { s.Params.Food.Foliage.Radius = v }
+func (s *Simulation) SetFungiRadius(v float64)           { s.Params.Food.Fungi.Radius = v }
 func (s *Simulation) SetWarmMetabolicMultiplier(v float32) {
 	s.Params.Environment.WarmMetabolicMultiplier = v
 }
@@ -642,7 +647,7 @@ func (s *Simulation) SetFoliageFountainCount(n int) {
 	if n < 0 {
 		n = 0
 	}
-	s.Params.Food.FoliageFountainCount = n
+	s.Params.Food.Foliage.Count = n
 	s.World.SetFoliageFountainCount(n)
 }
 
@@ -650,7 +655,7 @@ func (s *Simulation) SetFungiFountainCount(n int) {
 	if n < 0 {
 		n = 0
 	}
-	s.Params.Food.FungiFountainCount = n
+	s.Params.Food.Fungi.Count = n
 	s.World.SetFungiFountainCount(n)
 }
 

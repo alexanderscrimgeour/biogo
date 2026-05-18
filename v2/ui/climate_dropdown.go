@@ -3,7 +3,6 @@ package ui
 import (
 	"biogo/v2/ui/components"
 	"fmt"
-	"image/color"
 
 	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 )
@@ -17,12 +16,12 @@ func newClimateDropdown(font *textv2.GoXFace, trigger *components.Button, sim Si
 	trackW := sw - trackOff
 	sliderH := float32(24)
 
-	d := newDropdown(font, trigger, "Climate", color.RGBA{120, 200, 255, 255}, climatePanelW)
+	d := newDropdown(font, trigger, "Climate", ColorClimateCool, climatePanelW)
 
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.RGBA{120, 200, 255, 255},
+		Font: font, LabelColor: ColorClimateCool,
 		Min: 0, Max: 45,
 		Value: float64(p.Environment.TempMin),
 		FormatFunc: func(v float64) string {
@@ -34,7 +33,7 @@ func newClimateDropdown(font *textv2.GoXFace, trigger *components.Button, sim Si
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.RGBA{255, 120, 60, 255},
+		Font: font, LabelColor: ColorClimateHot,
 		Min: 5, Max: 100,
 		Value: float64(p.Environment.TempMax),
 		FormatFunc: func(v float64) string {
@@ -46,7 +45,7 @@ func newClimateDropdown(font *textv2.GoXFace, trigger *components.Button, sim Si
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.RGBA{100, 180, 255, 255},
+		Font: font, LabelColor: ColorClimateColdMp,
 		Min: 0.05, Max: 1.0,
 		Value: float64(p.Environment.ColdSpeedMultiplier),
 		FormatFunc: func(v float64) string {
@@ -58,7 +57,7 @@ func newClimateDropdown(font *textv2.GoXFace, trigger *components.Button, sim Si
 	d.addSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.RGBA{255, 160, 60, 255},
+		Font: font, LabelColor: ColorClimateWarmBMR,
 		Min: 1.0, Max: 10.0,
 		Value: float64(p.Environment.WarmMetabolicMultiplier),
 		FormatFunc: func(v float64) string {

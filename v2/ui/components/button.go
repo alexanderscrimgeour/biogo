@@ -8,13 +8,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-var (
-	ColorDefault       = color.RGBA{120, 144, 156, 100}
-	ColorButtonPressed = color.RGBA{144, 164, 174, 100}
-	ColorButtonGreen   = color.RGBA{76, 175, 80, 100}
-	ColorButtonRed     = color.RGBA{244, 67, 54, 100}
-)
-
 // Button is a clickable UI element. It stores its last drawn position
 // so IsClicked works without requiring absolute coordinates at construction time.
 type Button struct {

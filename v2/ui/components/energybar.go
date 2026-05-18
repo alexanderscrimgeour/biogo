@@ -16,7 +16,7 @@ type EnergyBar struct {
 }
 
 func (e *EnergyBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
-	vector.FillRect(screen, x, y, e.Width, 6, color.RGBA{35, 35, 35, 255}, false)
+	vector.FillRect(screen, x, y, e.Width, 6, ColorBarBG, false)
 
 	if e.Centered {
 		mid := x + e.Width/2

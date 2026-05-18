@@ -20,6 +20,7 @@ type Slider struct {
 	Label      string
 	Color      color.RGBA
 	LabelColor color.Color
+	FillColor  color.RGBA // overrides default track fill when A > 0
 	Min, Max   float64
 	Value      float64
 	Dragging   bool
@@ -36,8 +37,8 @@ func (s *Slider) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	trackX := x + s.TrackOffX
 	trackY := y + (s.H-6)/2
 
-	vector.FillRect(screen, x, y, s.W, s.H, color.RGBA{30, 30, 50, 220}, false)
-	vector.FillRect(screen, trackX, trackY, s.TrackW, 6, color.RGBA{60, 60, 80, 255}, false)
+	vector.FillRect(screen, x, y, s.W, s.H, ColorSliderBG, false)
+	vector.FillRect(screen, trackX, trackY, s.TrackW, 6, ColorTrackBG, false)
 
 	t := (s.Value - s.Min) / (s.Max - s.Min)
 	if t < 0 {
@@ -45,7 +46,11 @@ func (s *Slider) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	} else if t > 1 {
 		t = 1
 	}
-	vector.FillRect(screen, trackX, trackY, s.TrackW*float32(t), 6, color.RGBA{80, 140, 210, 255}, false)
+	fillClr := color.RGBA(ColorTrackFill)
+	if s.FillColor.A > 0 {
+		fillClr = s.FillColor
+	}
+	vector.FillRect(screen, trackX, trackY, s.TrackW*float32(t), 6, fillClr, false)
 
 	if s.Font != nil {
 		var lbl string

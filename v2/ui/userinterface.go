@@ -149,7 +149,7 @@ func NewUserInterface(
 		H:       menuBarH,
 		Padding: menuBarPad,
 		Spacing: menuBarSpacing,
-		Color:   color.RGBA{12, 14, 28, 220},
+		Color:   ColorMenuBar,
 	}
 	mb.AddButton(pauseBtn)
 	mb.AddButton(restartBtn)
@@ -180,13 +180,25 @@ func NewUserInterface(
 	ui.menuBar = mb
 
 	ui.foodDropdown = newFoodDropdown(font, foodBtn, sim)
-	foodBtn.OnClick = func() { ui.foodDropdown.Toggle() }
+	foodBtn.OnClick = func() {
+		ui.climateDropdown.Close()
+		ui.spawnDropdown.Close()
+		ui.foodDropdown.Toggle()
+	}
 
 	ui.climateDropdown = newClimateDropdown(font, climateBtn, sim)
-	climateBtn.OnClick = func() { ui.climateDropdown.Toggle() }
+	climateBtn.OnClick = func() {
+		ui.foodDropdown.Close()
+		ui.spawnDropdown.Close()
+		ui.climateDropdown.Toggle()
+	}
 
 	ui.spawnDropdown = newSpawnDropdown(font, spawnBtn, sim)
-	spawnBtn.OnClick = func() { ui.spawnDropdown.Toggle() }
+	spawnBtn.OnClick = func() {
+		ui.foodDropdown.Close()
+		ui.climateDropdown.Close()
+		ui.spawnDropdown.Toggle()
+	}
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
 	ui.leftStack = &LeftPanelStack{
@@ -375,9 +387,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 		mx, my := ebiten.CursorPosition()
 		cx, cy := float32(mx), float32(my)
 		const arm = float32(10)
-		vector.StrokeLine(screen, cx-arm, cy, cx+arm, cy, 1.5, color.RGBA{255, 220, 80, 220}, false)
-		vector.StrokeLine(screen, cx, cy-arm, cx, cy+arm, 1.5, color.RGBA{255, 220, 80, 220}, false)
-		vector.StrokeCircle(screen, cx, cy, arm*0.6, 1, color.RGBA{255, 220, 80, 160}, false)
+		vector.StrokeLine(screen, cx-arm, cy, cx+arm, cy, 1.5, ColorCrosshair, false)
+		vector.StrokeLine(screen, cx, cy-arm, cx, cy+arm, 1.5, ColorCrosshair, false)
+		vector.StrokeCircle(screen, cx, cy, arm*0.6, 1, ColorCrosshairCircle, false)
 	}
 
 	// Top-right stats
@@ -397,7 +409,7 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	// Save feedback
 	if ui.saveFeedback != "" && time.Since(ui.saveFeedbackAt) < 2*time.Second {
 		if ui.font != nil {
-			drawText(screen, ui.saveFeedback, ui.font, sw/2-30, sh-40, color.RGBA{100, 255, 120, 255})
+			drawText(screen, ui.saveFeedback, ui.font, sw/2-30, sh-40, ColorSaveFeedback)
 		}
 	}
 
@@ -421,15 +433,15 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 		W:         detailPanelW,
 		Padding:   detailPad,
 		Spacing:   detailSpacing,
-		BaseColor: color.RGBA{8, 10, 22, 215},
-		Border:    color.RGBA{90, 90, 150, 255},
+		BaseColor: ColorDetailPanelBG,
+		Border:    ColorDetailPanelBorder,
 	}
 
 	// Title
 	p.Add(&components.Label{
 		Text:  fmt.Sprintf("Creature #%d", d.ID),
 		Font:  ui.font,
-		Color: color.RGBA{255, 220, 80, 255},
+		Color: ColorLabelPrimary,
 	})
 
 	// Energy
@@ -441,13 +453,13 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    d.Energy,
 		Max:      d.MaxEnergy,
-		MaxColor: color.RGBA{55, 185, 55, 255},
-		MinColor: color.RGBA{190, 55, 55, 255},
+		MaxColor: ColorEnergyHigh,
+		MinColor: ColorEnergyLow,
 		Width:    innerW,
 	})
 
 	// Generation / Age
-	p.Add(&components.Label{Text: fmt.Sprintf("Generation: %.2f (Tier: %d)", d.Generation, d.Tier), Font: ui.font, Color: color.RGBA{180, 220, 255, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Generation: %.2f (Tier: %d)", d.Generation, d.Tier), Font: ui.font, Color: ColorLabelInfo})
 	juvenileStr := "Adult"
 	if d.IsJuvenile {
 		juvenileStr = fmt.Sprintf("Juvenile(%d)", d.JuvenilePeriod-d.Age)
@@ -458,7 +470,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.Label{
 		Text:  fmt.Sprintf("Actions: %s", d.LastAction),
 		Font:  ui.font,
-		Color: components.ColorButtonGreen,
+		Color: ColorLabelGreen,
 	})
 
 	// Mass
@@ -469,22 +481,22 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    float32(d.Stomach),
 		Max:      float32(d.StomachCapacity),
-		MaxColor: color.RGBA{55, 185, 55, 255},
-		MinColor: color.RGBA{190, 55, 55, 255},
+		MaxColor: ColorEnergyHigh,
+		MinColor: ColorEnergyLow,
 		Width:    innerW,
 	})
 
 	// Digestion Efficiency (proportional)
 	p.AddRow(
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: color.RGBA{55, 185, 55, 255}},
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}},
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: color.RGBA{215, 60, 60, 255}},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: ColorFoliage},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: ColorFungi},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: ColorMeat},
 	)
 	p.Add(&components.ProportionBar{
 		Segments: []components.ProportionSegment{
-			{Value: d.FoliageEfficiency, Color: color.RGBA{55, 185, 55, 255}},
-			{Value: d.FungiEfficiency, Color: color.RGBA{160, 80, 200, 255}},
-			{Value: d.MeatEfficiency, Color: color.RGBA{215, 60, 60, 255}},
+			{Value: d.FoliageEfficiency, Color: ColorFoliage},
+			{Value: d.FungiEfficiency, Color: ColorFungi},
+			{Value: d.MeatEfficiency, Color: ColorMeat},
 		},
 		Width: innerW,
 	})
@@ -494,8 +506,8 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    d.Dopamine,
 		Max:      float32(1.2),
-		MaxColor: color.RGBA{216, 27, 96, 255},
-		MinColor: color.RGBA{48, 63, 159, 255},
+		MaxColor: ColorDopamineHigh,
+		MinColor: ColorDopamineLow,
 		Width:    innerW,
 		Centered: true,
 	})
@@ -505,10 +517,9 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    d.Responsiveness,
 		Max:      float32(1),
-		MaxColor: color.RGBA{255, 180, 40, 255},
-		MinColor: color.RGBA{60, 60, 200, 255},
+		MaxColor: ColorResponHigh,
+		MinColor: ColorResponLow,
 		Width:    innerW,
-		Centered: true,
 	})
 
 	// Sight
@@ -527,10 +538,10 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 
 	// Reproduction
 	reproStr := "Asexual"
-	reproColor := color.RGBA{100, 180, 255, 255}
+	reproColor := color.Color(ColorReproAsexual)
 	if d.ReproductionType != 0 {
 		reproStr = "Sexual"
-		reproColor = color.RGBA{255, 120, 180, 255}
+		reproColor = ColorReproSexual
 	}
 	p.Add(&components.Label{
 		Text:  fmt.Sprintf("Reproduction: %s", reproStr),
@@ -557,7 +568,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	saveBtn := &components.Button{
 		W: innerW, H: 22,
 		Label:      "Save Genome",
-		Color:      color.RGBA{40, 100, 60, 220},
+		Color:      ColorBtnSave,
 		LabelColor: color.White,
 		Font:       ui.font,
 	}
@@ -578,7 +589,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	editBtn := &components.Button{
 		W: innerW, H: 22,
 		Label:      "Edit Genome",
-		Color:      color.RGBA{40, 60, 130, 220},
+		Color:      ColorBtnEdit,
 		LabelColor: color.White,
 		Font:       ui.font,
 	}
@@ -605,13 +616,13 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 		W:         detailPanelW,
 		Padding:   genomePad,
 		Spacing:   genomeSpacing,
-		BaseColor: color.RGBA{8, 10, 22, 215},
-		Border:    color.RGBA{90, 90, 150, 255},
+		BaseColor: ColorDetailPanelBG,
+		Border:    ColorDetailPanelBorder,
 	}
 	p.Add(&components.Label{
 		Text:  "Genome",
 		Font:  ui.font,
-		Color: color.RGBA{255, 220, 80, 255},
+		Color: ColorLabelPrimary,
 	})
 	g := d.Genome
 	barW := detailPanelW - genomePad*2
@@ -660,13 +671,13 @@ func (ui *UserInterface) buildHistStatsPanel() *components.Panel {
 		W:         histGraphW,
 		Padding:   histGraphPad,
 		Spacing:   2,
-		BaseColor: color.RGBA{8, 10, 22, 160},
-		Border:    color.RGBA{50, 60, 90, 180},
+		BaseColor: ColorStatPanelBG,
+		Border:    ColorStatPanelBorder,
 	}
-	p.Add(&components.Label{Text: fmt.Sprintf("Pop: %d", ui.sim.PopulationCount()), Font: ui.font, Color: color.RGBA{100, 180, 255, 255}})
-	p.Add(&components.Label{Text: fmt.Sprintf("Foliage: %.0f", ui.sim.FoliageEnergy()), Font: ui.font, Color: color.RGBA{80, 210, 100, 255}})
-	p.Add(&components.Label{Text: fmt.Sprintf("Fungi: %.0f", ui.sim.FungiEnergy()), Font: ui.font, Color: color.RGBA{160, 80, 200, 255}})
-	p.Add(&components.Label{Text: fmt.Sprintf("Meat: %.0f", ui.sim.MeatEnergy()), Font: ui.font, Color: color.RGBA{210, 90, 90, 255}})
-	p.Add(&components.Label{Text: fmt.Sprintf("Energy: %.2f%%", ui.sim.TotalEnergy()/ui.sim.TargetEnergy()*100), Font: ui.font, Color: color.RGBA{255, 230, 50, 255}})
+	p.Add(&components.Label{Text: fmt.Sprintf("Pop: %d", ui.sim.PopulationCount()), Font: ui.font, Color: ColorInfoBlue})
+	p.Add(&components.Label{Text: fmt.Sprintf("Foliage: %.0f", ui.sim.FoliageEnergy()), Font: ui.font, Color: ColorLabelGreen})
+	p.Add(&components.Label{Text: fmt.Sprintf("Fungi: %.0f", ui.sim.FungiEnergy()), Font: ui.font, Color: ColorFungi})
+	p.Add(&components.Label{Text: fmt.Sprintf("Meat: %.0f", ui.sim.MeatEnergy()), Font: ui.font, Color: ColorLabelMeatRed})
+	p.Add(&components.Label{Text: fmt.Sprintf("Energy: %.2f%%", ui.sim.TotalEnergy()/ui.sim.TargetEnergy()*100), Font: ui.font, Color: ColorLabelTargetE})
 	return p
 }
