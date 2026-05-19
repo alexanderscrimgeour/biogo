@@ -28,10 +28,11 @@ type SpawnParameters struct {
 }
 
 type FountainParameters struct {
-	Count          int
-	DriftSpeed     float64
-	Radius         float64
-	RandomFraction float64
+	Count                int
+	DriftSpeed           float64
+	Radius               float64
+	RandomFraction       float64
+	StationaryCount int
 }
 
 type FoodParameters struct {
@@ -70,6 +71,7 @@ type CreatureParameters struct {
 	MaxBirthMass      float64
 	MinVisionRadius   float64
 	MaxVisionRadius   float64
+	AttackRadius      float32
 	MinFieldOfView    float64
 	MaxFieldOfView    float64
 }
@@ -208,6 +210,7 @@ func DefaultParams() *Parameters {
 			MaxBirthMass:      1500,
 			MinVisionRadius:   50,
 			MaxVisionRadius:   500,
+			AttackRadius:      10,
 			MinFieldOfView:    10,
 			MaxFieldOfView:    180,
 		},
@@ -257,7 +260,7 @@ func DefaultParams() *Parameters {
 		Evolution: EvolutionParameters{
 			Tier1Generation: 2,
 			Tier2Generation: 5,
-			Tier3Generation: 75,
+			Tier3Generation: 25,
 		},
 		Spawn: SpawnParameters{
 			SavedGenomeProportion: 0.9,

@@ -5,13 +5,29 @@ import (
 	"math/rand"
 )
 
+const fountainWaveFreq = 0.002
+
 // FountainPoint is a single drifting spawn-centre with an associated drift angle.
 type FountainPoint struct {
-	Pos   Position
-	angle float64
+	Pos          Position
+	angle        float64
+	IsStationary bool
 }
 
-func initFountainSlice(w *World, n int) []FountainPoint {
+func recomputeStationary(fountains []FountainPoint, count int) {
+	n := len(fountains)
+	if count > n {
+		count = n
+	}
+	if count < 0 {
+		count = 0
+	}
+	for i := range fountains {
+		fountains[i].IsStationary = i < count
+	}
+}
+
+func initFountainSlice(w *World, n int, stationaryCount int) []FountainPoint {
 	out := make([]FountainPoint, n)
 	for i := range out {
 		pos, ok := w.FindEmptyLocation()
@@ -20,10 +36,11 @@ func initFountainSlice(w *World, n int) []FountainPoint {
 		}
 		out[i] = FountainPoint{Pos: pos, angle: rand.Float64() * 2 * math.Pi}
 	}
+	recomputeStationary(out, stationaryCount)
 	return out
 }
 
-func setFountainCount(w *World, fountains *[]FountainPoint, n int) {
+func setFountainCount(w *World, fountains *[]FountainPoint, n int, stationaryCount int) {
 	current := len(*fountains)
 	if n > current {
 		for i := current; i < n; i++ {
@@ -42,10 +59,14 @@ func setFountainCount(w *World, fountains *[]FountainPoint, n int) {
 	} else if n < current {
 		*fountains = (*fountains)[:n]
 	}
+	recomputeStationary(*fountains, stationaryCount)
 }
 
 func stepFountains(w *World, fountains []FountainPoint, driftSpeed float64) {
 	for i := range fountains {
+		if fountains[i].IsStationary {
+			continue
+		}
 		fountains[i].angle += (rand.Float64() - 0.5) * 0.1
 		newPos := Position{
 			X: fountains[i].Pos.X + float32(math.Cos(fountains[i].angle)*driftSpeed),
@@ -60,25 +81,40 @@ func stepFountains(w *World, fountains []FountainPoint, driftSpeed float64) {
 }
 
 // InitFountains places fountain points for foliage, fungi, and meat at random valid locations.
-func (w *World) InitFountains(foliageCount, fungiCount, meatCount int) {
-	w.FoliageFountains = initFountainSlice(w, foliageCount)
-	w.FungiFountains = initFountainSlice(w, fungiCount)
-	w.MeatFountains = initFountainSlice(w, meatCount)
+func (w *World) InitFountains(foliageCount, fungiCount, meatCount, foliageStationary, fungiStationary, meatStationary int) {
+	w.FoliageFountains = initFountainSlice(w, foliageCount, foliageStationary)
+	w.FungiFountains = initFountainSlice(w, fungiCount, fungiStationary)
+	w.MeatFountains = initFountainSlice(w, meatCount, meatStationary)
 }
 
 // SetFoliageFountainCount grows or shrinks the foliage fountain pool.
-func (w *World) SetFoliageFountainCount(n int) {
-	setFountainCount(w, &w.FoliageFountains, n)
+func (w *World) SetFoliageFountainCount(n, stationaryCount int) {
+	setFountainCount(w, &w.FoliageFountains, n, stationaryCount)
 }
 
 // SetFungiFountainCount grows or shrinks the fungi fountain pool.
-func (w *World) SetFungiFountainCount(n int) {
-	setFountainCount(w, &w.FungiFountains, n)
+func (w *World) SetFungiFountainCount(n, stationaryCount int) {
+	setFountainCount(w, &w.FungiFountains, n, stationaryCount)
 }
 
 // SetMeatFountainCount grows or shrinks the meat fountain pool.
-func (w *World) SetMeatFountainCount(n int) {
-	setFountainCount(w, &w.MeatFountains, n)
+func (w *World) SetMeatFountainCount(n, stationaryCount int) {
+	setFountainCount(w, &w.MeatFountains, n, stationaryCount)
+}
+
+// RecomputeFoliageStationary re-evaluates IsStationary for all foliage fountains.
+func (w *World) RecomputeFoliageStationary(count int) {
+	recomputeStationary(w.FoliageFountains, count)
+}
+
+// RecomputeFungiStationary re-evaluates IsStationary for all fungi fountains.
+func (w *World) RecomputeFungiStationary(count int) {
+	recomputeStationary(w.FungiFountains, count)
+}
+
+// RecomputeMeatStationary re-evaluates IsStationary for all meat fountains.
+func (w *World) RecomputeMeatStationary(count int) {
+	recomputeStationary(w.MeatFountains, count)
 }
 
 // StepFountains advances all fountain groups by their respective drift speeds.
@@ -88,25 +124,51 @@ func (w *World) StepFountains(foliageDriftSpeed, fungiDriftSpeed, meatDriftSpeed
 	stepFountains(w, w.MeatFountains, meatDriftSpeed)
 }
 
-func spawnClustered(w *World, n int, sigma float64, mass float32, fountains []FountainPoint, addFn func(Position, float32) int) int {
-	maxAttempts := n * 20
-	spawned := 0
-	for attempts := 0; spawned < n && attempts < maxAttempts; attempts++ {
-		center := fountains[rand.Intn(len(fountains))].Pos
-		pos := Position{
-			X: center.X + float32(rand.NormFloat64()*sigma),
-			Y: center.Y + float32(rand.NormFloat64()*sigma),
-		}
-		if w.IsInBounds(pos) && !w.IsWall(pos) {
-			addFn(pos, mass)
-			spawned++
+// waveMultipliers returns normalised per-fountain output weights using a sine wave
+// so each fountain peaks and troughs at different times, creating moving abundance patches.
+func waveMultipliers(fountains []FountainPoint, tick int) []float64 {
+	mults := make([]float64, len(fountains))
+	total := 0.0
+	for i := range fountains {
+		phase := float64(i) * 0.5
+		mults[i] = 0.5 + 0.5*math.Sin(float64(tick)*fountainWaveFreq+phase)
+		total += mults[i]
+	}
+	if total > 0 {
+		for i := range mults {
+			mults[i] /= total
 		}
 	}
-	return spawned
+	return mults
+}
+
+func spawnClustered(w *World, n int, sigma float64, mass float32, fountains []FountainPoint, tick int, addFn func(Position, float32) int) int {
+	total := 0
+	mults := waveMultipliers(fountains, tick)
+	for i, f := range fountains {
+		alloc := int(float64(n)*mults[i] + 0.5)
+		if alloc == 0 {
+			continue
+		}
+		maxAttempts := alloc * 20
+		got := 0
+		for attempts := 0; got < alloc && attempts < maxAttempts; attempts++ {
+			pos := Position{
+				X: f.Pos.X + float32(rand.NormFloat64()*sigma),
+				Y: f.Pos.Y + float32(rand.NormFloat64()*sigma),
+			}
+			if w.IsInBounds(pos) && !w.IsWall(pos) {
+				addFn(pos, mass)
+				got++
+			}
+		}
+		total += got
+	}
+	return total
 }
 
 func spawnFood(w *World, n int, sigma float64, mass float32, randomFraction float64,
-	fountains []FountainPoint, clustered func(int) int, random func(int)) {
+	fountains []FountainPoint, tick int, clustered func(int) int, random func(int)) {
 	if n <= 0 {
 		return
 	}
@@ -157,22 +219,22 @@ func (w *World) SpawnRandomMeat(n int, mass float32) {
 }
 
 // SpawnFoliage places n foliage items clustered around foliage fountains.
-func (w *World) SpawnFoliage(n int, sigma float64, mass float32, randomFraction float64) {
-	spawnFood(w, n, sigma, mass, randomFraction, w.FoliageFountains,
-		func(k int) int { return spawnClustered(w, k, sigma, mass, w.FoliageFountains, w.AddFoliage) },
+func (w *World) SpawnFoliage(n int, sigma float64, mass float32, randomFraction float64, tick int) {
+	spawnFood(w, n, sigma, mass, randomFraction, w.FoliageFountains, tick,
+		func(k int) int { return spawnClustered(w, k, sigma, mass, w.FoliageFountains, tick, w.AddFoliage) },
 		func(k int) { w.SpawnRandom(k, mass) })
 }
 
 // SpawnFungi places n fungi items clustered around fungi fountains.
-func (w *World) SpawnFungi(n int, sigma float64, mass float32, randomFraction float64) {
-	spawnFood(w, n, sigma, mass, randomFraction, w.FungiFountains,
-		func(k int) int { return spawnClustered(w, k, sigma, mass, w.FungiFountains, w.AddFungi) },
+func (w *World) SpawnFungi(n int, sigma float64, mass float32, randomFraction float64, tick int) {
+	spawnFood(w, n, sigma, mass, randomFraction, w.FungiFountains, tick,
+		func(k int) int { return spawnClustered(w, k, sigma, mass, w.FungiFountains, tick, w.AddFungi) },
 		func(k int) { w.SpawnRandomFungi(k, mass) })
 }
 
 // SpawnMeat places n meat items clustered around meat fountains.
-func (w *World) SpawnMeat(n int, sigma float64, mass float32, randomFraction float64) {
-	spawnFood(w, n, sigma, mass, randomFraction, w.MeatFountains,
-		func(k int) int { return spawnClustered(w, k, sigma, mass, w.MeatFountains, w.AddMeat) },
+func (w *World) SpawnMeat(n int, sigma float64, mass float32, randomFraction float64, tick int) {
+	spawnFood(w, n, sigma, mass, randomFraction, w.MeatFountains, tick,
+		func(k int) int { return spawnClustered(w, k, sigma, mass, w.MeatFountains, tick, w.AddMeat) },
 		func(k int) { w.SpawnRandomMeat(k, mass) })
 }

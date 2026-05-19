@@ -287,7 +287,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params) * float32(instruction.Level)
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.VisionRadius+c.Radius, c.SightCreatureBuffer)
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius+params.Creature.AttackRadius, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		var closestPreyDistSq float32 = math.MaxFloat32
@@ -326,47 +326,41 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		defenseFactor := float32(0.5) + 0.5*float32(math.Min(1.0, float64(sizeRatio)))
 		effectiveBite := bite * defenseFactor
 
+		damage := effectiveBite
+		if damage > target.Mass {
+			damage = target.Mass
+		}
+
 		meatEff := c.GetFoodEfficiency(world.FoodTypeMeat)
 		meatDensityRatio := params.Food.MeatEnergyDensity / params.Metabolism.EnergyPerFoodMass
 
-		eaten := effectiveBite
-		if eaten > target.Mass {
-			eaten = target.Mass
-		}
+		var eaten float32
 
-		stomachSpace = c.StomachCapacity(params) - c.Stomach
-		// stomachGain is in caloric units (density baked in)
-		stomachGain := eaten * meatEff * meatDensityRatio
-		if stomachGain > stomachSpace {
-			stomachGain = stomachSpace
-			if meatEff*meatDensityRatio > 0 {
-				eaten = stomachSpace / (meatEff * meatDensityRatio)
+		if meatEff > 0 && (meatEff*meatDensityRatio) > 0 {
+			maxDigestible := stomachSpace / (meatEff * meatDensityRatio)
+			eaten = damage
+			if eaten > maxDigestible {
+				eaten = maxDigestible
 			}
 		}
 
-		// Clamp the energy drain to what the target actually has; a near-dead target
-		// can't fund the full bite, so waste must reflect only what was actually taken.
-		energyToDrain := eaten * params.Metabolism.EnergyPerFoodMass
-		actualDrained := energyToDrain
-		if actualDrained > target.Energy {
-			actualDrained = target.Energy
-		}
-		// wasteMass: energy the target lost minus what attacker will gain from digestion,
-		// expressed as meat mass. Clamp to zero — a high-eff carnivore extracts more than
-		// EnergyPerFoodMass accounts for, which the spawn system compensates for.
-		attackerEventualGain := stomachGain * params.Metabolism.EnergyPerFoodMass
-		targetEnergyLost := eaten*params.Metabolism.EnergyPerFoodMass + actualDrained
-		var wasteMass float32
-		if energyForWaste := targetEnergyLost - attackerEventualGain; energyForWaste > 0 {
-			wasteMass = energyForWaste / params.Food.MeatEnergyDensity
-		}
+		stomachGain := eaten * meatEff * meatDensityRatio
 		c.Stomach += stomachGain
-		target.Mass -= eaten
-		target.UpdateRadius(params)
-		target.DrainEnergy(actualDrained)
-		if wasteMass > 0.01 {
-			w.AddMeat(target.Loc, wasteMass)
+
+		energyToDrain := damage * params.Metabolism.EnergyPerFoodMass
+		if energyToDrain > target.Energy {
+			energyToDrain = target.Energy
 		}
+
+		target.Mass -= damage
+		target.UpdateRadius(params)
+		target.DrainEnergy(energyToDrain)
+
+		droppedMeatMass := damage - eaten
+		if droppedMeatMass > 0.01 {
+			w.AddMeat(target.Loc, droppedMeatMass)
+		}
+		
 		struggleCost := params.Predation.AttackEnergyCost
 		if sizeRatio < 1.0 {
 			// Gradually increases cost as target gets larger, maxing at 1.5x

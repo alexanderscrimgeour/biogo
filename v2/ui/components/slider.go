@@ -1,6 +1,7 @@
 package components
 
 import (
+	"biogo/v2/ui/colors"
 	"fmt"
 	"image/color"
 
@@ -37,8 +38,8 @@ func (s *Slider) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	trackX := x + s.TrackOffX
 	trackY := y + (s.H-6)/2
 
-	vector.FillRect(screen, x, y, s.W, s.H, ColorSliderBG, false)
-	vector.FillRect(screen, trackX, trackY, s.TrackW, 6, ColorTrackBG, false)
+	vector.FillRect(screen, x, y, s.W, s.H, colors.ColorSliderBG, false)
+	vector.FillRect(screen, trackX, trackY, s.TrackW, 6, colors.ColorTrackBG, false)
 
 	t := (s.Value - s.Min) / (s.Max - s.Min)
 	if t < 0 {
@@ -46,7 +47,7 @@ func (s *Slider) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	} else if t > 1 {
 		t = 1
 	}
-	fillClr := color.RGBA(ColorTrackFill)
+	fillClr := color.RGBA(colors.ColorTrackFill)
 	if s.FillColor.A > 0 {
 		fillClr = s.FillColor
 	}

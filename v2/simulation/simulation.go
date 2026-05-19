@@ -42,7 +42,10 @@ func (s *Simulation) initialiseWorld() {
 	s.World = world.NewWorld(s.Params.World.Width, s.Params.World.Height, 1)
 	s.World.TempMin = s.Params.Environment.TempMin
 	s.World.TempMax = s.Params.Environment.TempMax
-	s.World.InitFountains(s.Params.Food.Foliage.Count, s.Params.Food.Fungi.Count, s.Params.Food.Meat.Count)
+	s.World.InitFountains(
+		s.Params.Food.Foliage.Count, s.Params.Food.Fungi.Count, s.Params.Food.Meat.Count,
+		s.Params.Food.Foliage.StationaryCount, s.Params.Food.Fungi.StationaryCount, s.Params.Food.Meat.StationaryCount,
+	)
 	s.spawnInitialFood()
 }
 
@@ -595,13 +598,13 @@ func (s *Simulation) spawnInitialFood() {
 	epu2 := float64(p.FungiMass) * float64(p.FungiEnergyDensity)
 	epm := float64(p.MeatMass) * float64(p.MeatEnergyDensity)
 	if nFoliage := int(epu*fp/epf + 0.5); nFoliage > 0 {
-		s.World.SpawnFoliage(nFoliage, p.Foliage.Radius, p.FoliageMass, p.Foliage.RandomFraction)
+		s.World.SpawnFoliage(nFoliage, p.Foliage.Radius, p.FoliageMass, p.Foliage.RandomFraction, s.Tick)
 	}
 	if nFungi := int(epu*funp/epu2 + 0.5); nFungi > 0 {
-		s.World.SpawnFungi(nFungi, p.Fungi.Radius, p.FungiMass, p.Fungi.RandomFraction)
+		s.World.SpawnFungi(nFungi, p.Fungi.Radius, p.FungiMass, p.Fungi.RandomFraction, s.Tick)
 	}
 	if nMeat := int(epu*mp/epm + 0.5); nMeat > 0 {
-		s.World.SpawnMeat(nMeat, p.Meat.Radius, p.MeatMass, p.Meat.RandomFraction)
+		s.World.SpawnMeat(nMeat, p.Meat.Radius, p.MeatMass, p.Meat.RandomFraction, s.Tick)
 	}
 }
 
@@ -616,13 +619,13 @@ func (s *Simulation) spawnDeficit(deficit float64) {
 	epu2 := float64(p.FungiMass) * float64(p.FungiEnergyDensity)
 	epm := float64(p.MeatMass) * float64(p.MeatEnergyDensity)
 	if nFoliage := int(deficit*fp/epf + 0.5); nFoliage > 0 {
-		s.World.SpawnFoliage(nFoliage, p.Foliage.Radius, p.FoliageMass, p.Foliage.RandomFraction)
+		s.World.SpawnFoliage(nFoliage, p.Foliage.Radius, p.FoliageMass, p.Foliage.RandomFraction, s.Tick)
 	}
 	if nFungi := int(deficit*funp/epu2 + 0.5); nFungi > 0 {
-		s.World.SpawnFungi(nFungi, p.Fungi.Radius, p.FungiMass, p.Fungi.RandomFraction)
+		s.World.SpawnFungi(nFungi, p.Fungi.Radius, p.FungiMass, p.Fungi.RandomFraction, s.Tick)
 	}
 	if nMeat := int(deficit*mp/epm + 0.5); nMeat > 0 {
-		s.World.SpawnMeat(nMeat, p.Meat.Radius, p.MeatMass, p.Meat.RandomFraction)
+		s.World.SpawnMeat(nMeat, p.Meat.Radius, p.MeatMass, p.Meat.RandomFraction, s.Tick)
 	}
 }
 
@@ -643,18 +646,19 @@ func normProportions(fo, fu, me float64, hasMeatFountains bool) (float64, float6
 func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled = v }
 func (s *Simulation) SetClusterInterval(v int) { s.Params.Spawn.ClusterInterval = v }
 func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v }
+func (s *Simulation) SetBaseMutationRate(v float32) { s.Params.Neurology.BaseMutationRate = v }
 
-func (s *Simulation) SetFoliageProportion(v float64) { s.Params.Food.FoliageProportion = v }
-func (s *Simulation) SetFungiProportion(v float64)   { s.Params.Food.FungiProportion = v }
-func (s *Simulation) SetMeatProportion(v float64)    { s.Params.Food.MeatProportion = v }
+func (s *Simulation) SetFoliageProportion(v float64)     { s.Params.Food.FoliageProportion = v }
+func (s *Simulation) SetFungiProportion(v float64)       { s.Params.Food.FungiProportion = v }
+func (s *Simulation) SetMeatProportion(v float64)        { s.Params.Food.MeatProportion = v }
 func (s *Simulation) SetFoliageRandomFraction(v float64) { s.Params.Food.Foliage.RandomFraction = v }
-func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.Fungi.RandomFraction = v }
-func (s *Simulation) SetMeatRandomFraction(v float64)    { s.Params.Food.Meat.RandomFraction = v }
 func (s *Simulation) SetFoliageDriftSpeed(v float64)     { s.Params.Food.Foliage.DriftSpeed = v }
-func (s *Simulation) SetMeatDriftSpeed(v float64)        { s.Params.Food.Meat.DriftSpeed = v }
-func (s *Simulation) SetFungiDriftSpeed(v float64)       { s.Params.Food.Fungi.DriftSpeed = v }
 func (s *Simulation) SetFoliageRadius(v float64)         { s.Params.Food.Foliage.Radius = v }
+func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.Fungi.RandomFraction = v }
+func (s *Simulation) SetFungiDriftSpeed(v float64)       { s.Params.Food.Fungi.DriftSpeed = v }
 func (s *Simulation) SetFungiRadius(v float64)           { s.Params.Food.Fungi.Radius = v }
+func (s *Simulation) SetMeatRandomFraction(v float64)    { s.Params.Food.Meat.RandomFraction = v }
+func (s *Simulation) SetMeatDriftSpeed(v float64)        { s.Params.Food.Meat.DriftSpeed = v }
 func (s *Simulation) SetMeatRadius(v float64)            { s.Params.Food.Meat.Radius = v }
 func (s *Simulation) SetWarmMetabolicMultiplier(v float32) {
 	s.Params.Environment.WarmMetabolicMultiplier = v
@@ -676,7 +680,7 @@ func (s *Simulation) SetFoliageFountainCount(n int) {
 		n = 0
 	}
 	s.Params.Food.Foliage.Count = n
-	s.World.SetFoliageFountainCount(n)
+	s.World.SetFoliageFountainCount(n, s.Params.Food.Foliage.StationaryCount)
 }
 
 func (s *Simulation) SetFungiFountainCount(n int) {
@@ -684,7 +688,7 @@ func (s *Simulation) SetFungiFountainCount(n int) {
 		n = 0
 	}
 	s.Params.Food.Fungi.Count = n
-	s.World.SetFungiFountainCount(n)
+	s.World.SetFungiFountainCount(n, s.Params.Food.Fungi.StationaryCount)
 }
 
 func (s *Simulation) SetMeatFountainCount(n int) {
@@ -692,7 +696,22 @@ func (s *Simulation) SetMeatFountainCount(n int) {
 		n = 0
 	}
 	s.Params.Food.Meat.Count = n
-	s.World.SetMeatFountainCount(n)
+	s.World.SetMeatFountainCount(n, s.Params.Food.Meat.StationaryCount)
+}
+
+func (s *Simulation) SetFoliageStationaryCount(v int) {
+	s.Params.Food.Foliage.StationaryCount = v
+	s.World.RecomputeFoliageStationary(v)
+}
+
+func (s *Simulation) SetFungiStationaryCount(v int) {
+	s.Params.Food.Fungi.StationaryCount = v
+	s.World.RecomputeFungiStationary(v)
+}
+
+func (s *Simulation) SetMeatStationaryCount(v int) {
+	s.Params.Food.Meat.StationaryCount = v
+	s.World.RecomputeMeatStationary(v)
 }
 
 // SpawnAt creates a new random creature at the given world-space position.

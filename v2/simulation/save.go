@@ -225,7 +225,8 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 	nFun := wdto.FountainCounts[1]
 	nMeat := wdto.FountainCounts[2]
 	// InitFountains creates slices with random positions; we overwrite immediately.
-	s.World.InitFountains(nFol, nFun, nMeat)
+	s.World.InitFountains(nFol, nFun, nMeat,
+		params.Food.Foliage.StationaryCount, params.Food.Fungi.StationaryCount, params.Food.Meat.StationaryCount)
 	off := 0
 	for i := 0; i < nFol && off < len(wdto.FountainX); i++ {
 		s.World.FoliageFountains[i].Pos = world.Position{X: wdto.FountainX[off], Y: wdto.FountainY[off]}

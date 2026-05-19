@@ -248,6 +248,58 @@ func (g *Genome) generateTierExpansionGene(pBreadth, cBreadth, pSensors, cSensor
 	return gene
 }
 
+// connIdx encodes (SourceType, SourceID, SinkType, SinkID) as an 18-bit index into a flat bitmask.
+// SinkType is normalised: NEURON(0)→0, ACTION(2)→1 (bit 8); max index = 2^18-1 = 262143.
+func connIdx(sourceType, sourceID, sinkType, sinkID byte) uint {
+	return uint(sourceType)<<17 | uint(sourceID)<<9 | uint(sinkType>>1)<<8 | uint(sinkID)
+}
+
+const connBitmaskWords = 1 << 12 // 4096 uint64s
+
+// ConnBitmask tracks which (SourceType, SourceID, SinkType, SinkID) tuples are occupied.
+// Fixed-size so the compiler knows its extent; allocate via new(ConnBitmask) to keep it on the heap.
+type ConnBitmask [connBitmaskWords]uint64
+
+func connSet(m *ConnBitmask, sourceType, sourceID, sinkType, sinkID byte) {
+	i := connIdx(sourceType, sourceID, sinkType, sinkID)
+	m[i>>6] |= 1 << (i & 63)
+}
+
+func connTest(m *ConnBitmask, sourceType, sourceID, sinkType, sinkID byte) bool {
+	i := connIdx(sourceType, sourceID, sinkType, sinkID)
+	return m[i>>6]>>(i&63)&1 == 1
+}
+
+func connClear(m *ConnBitmask, sourceType, sourceID, sinkType, sinkID byte) {
+	i := connIdx(sourceType, sourceID, sinkType, sinkID)
+	m[i>>6] &^= 1 << (i & 63)
+}
+
+// makeUniqueRandomGene generates a gene whose topology is not already set in bitmask.
+// Returns false if no unique connection is found within maxAttempts tries.
+func makeUniqueRandomGene(allowedSensors, allowedActions, cognitiveBreadth byte, bitmask *ConnBitmask) (Gene, bool) {
+	const maxAttempts = 32
+	for i := 0; i < maxAttempts; i++ {
+		gene := MakeRandomGene(allowedSensors, allowedActions, cognitiveBreadth)
+		if !connTest(bitmask, gene.SourceType, gene.SourceID, gene.SinkType, gene.SinkID) {
+			return gene, true
+		}
+	}
+	return Gene{}, false
+}
+
+// tryGenerateUniqueTierExpansionGene wraps generateTierExpansionGene with uniqueness checking.
+func (g *Genome) tryGenerateUniqueTierExpansionGene(pBreadth, cBreadth, pSensors, cSensors, pActions, cActions byte, bitmask *ConnBitmask) (Gene, bool) {
+	const maxAttempts = 16
+	for i := 0; i < maxAttempts; i++ {
+		gene := g.generateTierExpansionGene(pBreadth, cBreadth, pSensors, cSensors, pActions, cActions)
+		if !connTest(bitmask, gene.SourceType, gene.SourceID, gene.SinkType, gene.SinkID) {
+			return gene, true
+		}
+	}
+	return Gene{}, false
+}
+
 // MakeRandomGene creates a random gene
 func MakeRandomGene(allowedSensors, allowedActions, cognitiveBreadth byte) Gene {
 	sourceType := byte(SENSOR)
@@ -330,8 +382,13 @@ func MakeRandomGenome(p *Parameters, tier byte) *Genome {
 	allowedSensors := getAllowedSensorCount(g.CognitiveBreadth)
 	allowedActions := getAllowedActionCount(g.CognitiveBreadth)
 
+	bitmask := new(ConnBitmask)
 	for i := byte(0); i < g.SynapticDensity; i++ {
-		gene := MakeRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth)
+		gene, ok := makeUniqueRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth, bitmask)
+		if !ok {
+			break
+		}
+		connSet(bitmask, gene.SourceType, gene.SourceID, gene.SinkType, gene.SinkID)
 		g.Brain = append(g.Brain, gene)
 	}
 	g.recomputeBytes()
@@ -430,53 +487,82 @@ func Mutate(g *Genome, p *Parameters, isArtificial bool, mutationMult float32, c
 	allowedSensors := getAllowedSensorCount(g.CognitiveBreadth)
 	allowedActions := getAllowedActionCount(g.CognitiveBreadth)
 
+	bitmask := new(ConnBitmask)
+	for _, gene := range g.Brain {
+		connSet(bitmask, gene.SourceType, gene.SourceID, gene.SinkType, gene.SinkID)
+	}
+
 	for j := 0; j < len(g.Brain); j++ {
 		if rand.Float32() < mutationRate {
 			chance := rand.Float32()
+			gene := g.Brain[j]
 			switch {
 			case chance < 0.05:
-				g.Brain[j].SourceType ^= 1
+				gene.SourceType ^= 1
 			case chance < 0.10:
-				if g.Brain[j].SinkType == 2 {
-					g.Brain[j].SinkType = 0
+				if gene.SinkType == 2 {
+					gene.SinkType = 0
 				} else {
-					g.Brain[j].SinkType = 2
+					gene.SinkType = 2
 				}
 			case chance < 0.15:
 				// Protected mapping using parent boundaries
-				if g.Brain[j].SourceType == 1 && parentBreadth > 0 {
-					g.Brain[j].SourceID = utils.MakeRandomByte() % parentBreadth
+				if gene.SourceType == 1 && parentBreadth > 0 {
+					gene.SourceID = utils.MakeRandomByte() % parentBreadth
 				} else {
-					g.Brain[j].SourceID = utils.MakeRandomByte() % parentSensors
+					gene.SourceID = utils.MakeRandomByte() % parentSensors
 				}
 			case chance < 0.20:
-				if g.Brain[j].SinkType == 1 && parentBreadth > 0 {
-					g.Brain[j].SinkID = utils.MakeRandomByte() % parentBreadth
+				if gene.SinkType == 1 && parentBreadth > 0 {
+					gene.SinkID = utils.MakeRandomByte() % parentBreadth
 				} else {
-					g.Brain[j].SinkID = utils.MakeRandomByte() % parentActions
+					gene.SinkID = utils.MakeRandomByte() % parentActions
 				}
 			default:
 				g.Brain[j].Weight = nudgeByte(g.Brain[j].Weight, 25)
+				continue
 			}
+
+			// Structural mutation: skip if the new topology is already occupied.
+			if connTest(bitmask, gene.SourceType, gene.SourceID, gene.SinkType, gene.SinkID) {
+				continue
+			}
+			orig := g.Brain[j]
+			connClear(bitmask, orig.SourceType, orig.SourceID, orig.SinkType, orig.SinkID)
+			connSet(bitmask, gene.SourceType, gene.SourceID, gene.SinkType, gene.SinkID)
+			g.Brain[j] = gene
 		}
 	}
 
-	// Brain expansion padding loop: fills vacant structural space when SynapticDensity scales upwards.
+	// Brain expansion: fill new capacity with unique connections; prune randomly if shrinking.
 	diff := int(g.SynapticDensity) - len(g.Brain)
 	if diff > 0 {
 		for i := 0; i < diff; i++ {
 			var newGene Gene
+			var ok bool
 
 			// Allocate 75% of new connections directly to newly discovered tier capabilities
 			if (g.CognitiveBreadth > parentBreadth || allowedSensors > parentSensors || allowedActions > parentActions) && rand.Float32() < 0.75 {
-				newGene = g.generateTierExpansionGene(parentBreadth, g.CognitiveBreadth, parentSensors, allowedSensors, parentActions, allowedActions)
+				newGene, ok = g.tryGenerateUniqueTierExpansionGene(parentBreadth, g.CognitiveBreadth, parentSensors, allowedSensors, parentActions, allowedActions, bitmask)
+				if !ok {
+					newGene, ok = makeUniqueRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth, bitmask)
+				}
 			} else {
-				// 25% is random connection
-				newGene = MakeRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth)
+				newGene, ok = makeUniqueRandomGene(allowedSensors, allowedActions, g.CognitiveBreadth, bitmask)
 			}
 
-			g.Brain = append(g.Brain, newGene)
+			if ok {
+				connSet(bitmask, newGene.SourceType, newGene.SourceID, newGene.SinkType, newGene.SinkID)
+				g.Brain = append(g.Brain, newGene)
+			}
 		}
+	} else if diff < 0 {
+		target := int(g.SynapticDensity)
+		for i := 0; i < target; i++ {
+			j := i + rand.Intn(len(g.Brain)-i)
+			g.Brain[i], g.Brain[j] = g.Brain[j], g.Brain[i]
+		}
+		g.Brain = g.Brain[:target]
 	}
 	g.recomputeBytes()
 }
@@ -574,7 +660,7 @@ func Crossover(g1, g2 *Genome, p *Parameters, mutationMult float32, childGenerat
 	// Align SynapticDensity with the actual brain length so Mutate does not
 	// immediately re-grow the brain beyond what crossover intended.
 	child.SynapticDensity = byte(targetLen)
-	mutationChance := 0.01 * mutationMult
+	mutationChance := p.Neurology.BaseMutationRate * mutationMult
 	if rand.Float32() < mutationChance {
 		Mutate(child, p, false, mutationMult, childGeneration)
 	}

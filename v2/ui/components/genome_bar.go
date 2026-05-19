@@ -1,6 +1,7 @@
 package components
 
 import (
+	"biogo/v2/ui/colors"
 	"fmt"
 	"image/color"
 
@@ -43,17 +44,17 @@ func (b *GenomeBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) 
 	if b.Binary {
 		half := gbBarW / 2
 		if b.Val == 0 { // asexual
-			vector.FillRect(screen, barX, barY, half-1, gbBarH, ColorGenomeBinAsexual, false)
-			vector.FillRect(screen, barX+half, barY, half, gbBarH, ColorGenomeBinDim, false)
+			vector.FillRect(screen, barX, barY, half-1, gbBarH, colors.ColorGenomeBinAsexual, false)
+			vector.FillRect(screen, barX+half, barY, half, gbBarH, colors.ColorGenomeBinDim, false)
 		} else { // sexual
-			vector.FillRect(screen, barX, barY, half-1, gbBarH, ColorGenomeBinDim, false)
-			vector.FillRect(screen, barX+half, barY, half, gbBarH, ColorGenomeBinSexual, false)
+			vector.FillRect(screen, barX, barY, half-1, gbBarH, colors.ColorGenomeBinDim, false)
+			vector.FillRect(screen, barX+half, barY, half, gbBarH, colors.ColorGenomeBinSexual, false)
 		}
 	} else {
-		vector.FillRect(screen, barX, barY, gbBarW, gbBarH, ColorGenomeBarBG, false)
+		vector.FillRect(screen, barX, barY, gbBarW, gbBarH, colors.ColorGenomeBarBG, false)
 		fillW := float32(b.Val) / 255 * gbBarW
 		if fillW > 0 {
-			vector.FillRect(screen, barX, barY, fillW, gbBarH, ColorGenomeBarFill, false)
+			vector.FillRect(screen, barX, barY, fillW, gbBarH, colors.ColorGenomeBarFill, false)
 		}
 	}
 

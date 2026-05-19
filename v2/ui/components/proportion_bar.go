@@ -3,6 +3,8 @@ package components
 import (
 	"image/color"
 
+	"biogo/v2/ui/colors"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
@@ -21,7 +23,7 @@ type ProportionSegment struct {
 }
 
 func (b *ProportionBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
-	vector.FillRect(screen, x, y, b.Width, 6, ColorBarBG, false)
+	vector.FillRect(screen, x, y, b.Width, 6, colors.ColorBarBG, false)
 
 	total := float32(0)
 	for _, s := range b.Segments {

@@ -2,7 +2,9 @@ package ui
 
 import (
 	"biogo/v2/simulation"
+	"biogo/v2/ui/colors"
 	"biogo/v2/ui/components"
+	"biogo/v2/ui/views"
 	"fmt"
 	"image/color"
 	"time"
@@ -45,7 +47,7 @@ type UserInterface struct {
 
 	menuBar      *components.MenuBar
 	leftStack    *LeftPanelStack
-	histGraph    *HistoryGraph
+	histGraph    *views.HistoryGraph
 	histStatsIdx int
 	histIdx      int
 
@@ -56,8 +58,8 @@ type UserInterface struct {
 	currentEditBtn   *components.Button
 	currentSaveInput *components.TextInputField
 
-	genomeEditor      *GenomeEditor
-	savedGenomesPanel *SavedGenomesPanel
+	genomeEditor      *views.GenomeEditor
+	savedGenomesPanel *views.SavedGenomesPanel
 
 	saveFeedback     string
 	saveFeedbackAt   time.Time
@@ -65,15 +67,17 @@ type UserInterface struct {
 	saveNameFocused  bool
 	saveCreatureID   int
 
-	foodDropdown     *Dropdown
-	climateDropdown  *Dropdown
-	spawnDropdown    *Dropdown
-	saveGameDropdown *Dropdown
+	foodDropdown     *components.Dropdown
+	climateDropdown  *components.Dropdown
+	spawnDropdown    *components.Dropdown
+	saveGameDropdown *components.Dropdown
+	paramsDropdown   *components.Dropdown
 
 	foodBtn     *components.Button
 	climateBtn  *components.Button
 	spawnBtn    *components.Button
 	saveGameBtn *components.Button
+	paramsBtn   *components.Button
 
 	saveGameNameInput   *components.TextInputField
 	saveGameName        string
@@ -110,19 +114,19 @@ func NewUserInterface(
 	}
 
 	// ── Menu bar buttons ─────────────────────────────────────────────────────
-	pauseBtn := &components.Button{W: 80, H: 24, Label: "Pause", Color: components.ColorButtonRed, LabelColor: color.White, Font: font}
+	pauseBtn := &components.Button{W: 80, H: 24, Label: "Pause", Color: colors.ColorButtonRed, LabelColor: color.White, Font: font}
 	pauseBtn.OnClick = func() {
 		game.paused = !game.paused
 		if game.paused {
 			pauseBtn.Label = "Resume"
-			pauseBtn.Color = components.ColorButtonGreen
+			pauseBtn.Color = colors.ColorButtonGreen
 		} else {
 			pauseBtn.Label = "Pause"
-			pauseBtn.Color = components.ColorButtonRed
+			pauseBtn.Color = colors.ColorButtonRed
 		}
 	}
 	// ── Save Game button + dropdown ───────────────────────────────────────────
-	saveGameBtn := &components.Button{W: 100, H: 24, Label: "Worlds", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	saveGameBtn := &components.Button{W: 100, H: 24, Label: "Worlds", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	ui.saveGameBtn = saveGameBtn
 	ui.saveGameNameInput = &components.TextInputField{
 		W: saveGamePanelW - ddPad*2, H: 24,
@@ -135,6 +139,7 @@ func NewUserInterface(
 		ui.foodDropdown.Close()
 		ui.climateDropdown.Close()
 		ui.spawnDropdown.Close()
+		ui.paramsDropdown.Close()
 		if !ui.saveGameDropdown.IsOpen() {
 			// Refresh save list on every open.
 			saves := game.sim.ListSavedGames()
@@ -167,10 +172,10 @@ func NewUserInterface(
 					ui.saveGameDropdown.Close()
 					ui.saveGameNameFocused = false
 					game.selectedCreatureID = -1
-					game.histHead = 0
-					game.histCount = 0
+					game.resetHistory()
 					game.currentSnapshot = nil
 					game.world.ResetAnimations()
+					ui.rebuildParamDropdowns()
 				},
 				func(path string) {
 					// Overwrite
@@ -186,46 +191,47 @@ func NewUserInterface(
 		ui.saveGameDropdown.Toggle()
 	}
 
-	restartBtn := &components.Button{W: 90, H: 24, Label: "Restart", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	restartBtn := &components.Button{W: 90, H: 24, Label: "Restart", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	restartBtn.OnClick = func() {
 		game.sim.Reset()
 		game.world.ResetAnimations()
 		game.selectedCreatureID = -1
-		game.histHead = 0
-		game.histCount = 0
+		game.resetHistory()
 		game.currentSnapshot = nil
 	}
-	themeBtn := &components.Button{W: 100, H: 24, Label: "Theme", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	themeBtn := &components.Button{W: 100, H: 24, Label: "Theme", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	themeBtn.OnClick = func() { game.world.ToggleDark() }
 
-	spawnRandomBtn := &components.Button{W: 130, H: 24, Label: "Spawn Random", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	spawnRandomBtn := &components.Button{W: 130, H: 24, Label: "Spawn Random", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	spawnRandomBtn.OnClick = func() {
 		game.spawnPlacing = !game.spawnPlacing
 	}
 	game.spawnRandomBtn = spawnRandomBtn
 
-	createGenomeBtn := &components.Button{W: 130, H: 24, Label: "Create Genome", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	createGenomeBtn := &components.Button{W: 130, H: 24, Label: "Create Genome", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	createGenomeBtn.OnClick = func() {
 		game.genomeEditor.Open(nil, game.sim.GetParams())
 	}
 
-	tierBtn := &components.Button{W: 90, H: 24, Label: "Tier: All", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	tierBtn := &components.Button{W: 90, H: 24, Label: "Tier: All", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	tierBtn.OnClick = func() {
 		tierBtn.Label = game.world.CycleTierFilter()
 	}
 
-	foodBtn := &components.Button{W: 60, H: 24, Label: "Food", Color: components.ColorDefault, LabelColor: color.White, Font: font}
-	climateBtn := &components.Button{W: 80, H: 24, Label: "Climate", Color: components.ColorDefault, LabelColor: color.White, Font: font}
-	spawnBtn := &components.Button{W: 80, H: 24, Label: "Spawning", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	foodBtn := &components.Button{W: 60, H: 24, Label: "Food", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
+	climateBtn := &components.Button{W: 80, H: 24, Label: "Climate", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
+	spawnBtn := &components.Button{W: 80, H: 24, Label: "Spawning", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
+	paramsBtn := &components.Button{W: 80, H: 24, Label: "Params", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	ui.foodBtn = foodBtn
 	ui.climateBtn = climateBtn
 	ui.spawnBtn = spawnBtn
+	ui.paramsBtn = paramsBtn
 
 	mb := &components.MenuBar{
 		H:       menuBarH,
 		Padding: menuBarPad,
 		Spacing: menuBarSpacing,
-		Color:   ColorMenuBar,
+		Color:   colors.ColorMenuBar,
 	}
 	mb.AddButton(pauseBtn)
 	mb.AddButton(saveGameBtn)
@@ -237,32 +243,18 @@ func NewUserInterface(
 	mb.AddButton(foodBtn)
 	mb.AddButton(climateBtn)
 	mb.AddButton(spawnBtn)
+	mb.AddButton(paramsBtn)
 
 	// Speed controls (right-aligned): < [speed] >
-	speedDownBtn := &components.Button{W: 24, H: 24, Label: "<", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	speedDownBtn := &components.Button{W: 24, H: 24, Label: "<", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	speedDownBtn.OnClick = func() {
 		game.simStepsPerTick = nextSimRate(game.simStepsPerTick, -1)
 	}
 	speedLabelBtn := &components.Button{W: 52, H: 24, Label: "1x", Color: color.RGBA{0, 0, 0, 0}, LabelColor: color.White, Font: font}
-	speedUpBtn := &components.Button{W: 24, H: 24, Label: ">", Color: components.ColorDefault, LabelColor: color.White, Font: font}
+	speedUpBtn := &components.Button{W: 24, H: 24, Label: ">", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	speedUpBtn.OnClick = func() {
 		game.simStepsPerTick = nextSimRate(game.simStepsPerTick, 1)
 	}
-	// Target Energy slider (right-aligned, left of speed controls).
-	// TrackOffX wide enough for "Tgt E: 30000k" (~95px); TrackW wider for easier dragging.
-	targetESlider := &components.Slider{
-		W: 270, H: 24,
-		TrackOffX: 100, TrackW: 170,
-		Font: font, LabelColor: ColorLabelTargetE,
-		Min: 0, Max: 30_000_000,
-		Value: sim.TargetEnergy(),
-		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Tgt E: %.0fk", v/1000)
-		},
-		OnChange: func(v float64) { sim.SetTargetEnergy(v) },
-	}
-	mb.AddSliderRight(targetESlider)
-
 	mb.AddButtonRight(speedDownBtn)
 	mb.AddButtonRight(speedLabelBtn)
 	mb.AddButtonRight(speedUpBtn)
@@ -275,6 +267,7 @@ func NewUserInterface(
 		ui.climateDropdown.Close()
 		ui.spawnDropdown.Close()
 		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Close()
 		ui.foodDropdown.Toggle()
 	}
 
@@ -283,18 +276,30 @@ func NewUserInterface(
 		ui.foodDropdown.Close()
 		ui.spawnDropdown.Close()
 		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Close()
 		ui.climateDropdown.Toggle()
 	}
 
-	ui.spawnDropdown = newSpawnDropdown(font, spawnBtn, sim, func() {
+	ui.onSpawnSaved = func() {
 		ui.spawnDropdown.Close()
 		game.savedGenomesPanel.Open()
-	})
+	}
+	ui.spawnDropdown = newSpawnDropdown(font, spawnBtn, sim, ui.onSpawnSaved)
 	spawnBtn.OnClick = func() {
 		ui.foodDropdown.Close()
 		ui.climateDropdown.Close()
 		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Close()
 		ui.spawnDropdown.Toggle()
+	}
+
+	ui.paramsDropdown = newParamsDropdown(font, paramsBtn, sim)
+	paramsBtn.OnClick = func() {
+		ui.foodDropdown.Close()
+		ui.climateDropdown.Close()
+		ui.spawnDropdown.Close()
+		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Toggle()
 	}
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
@@ -306,10 +311,10 @@ func NewUserInterface(
 
 	ui.histStatsIdx = ui.leftStack.Register(nil) // stats panel, set each frame in Draw
 
-	histGraph := &HistoryGraph{
-		getCount:  func() int { return game.histCount },
-		getHead:   func() int { return game.histHead },
-		getSample: func(i int) histSample { return game.history[i] },
+	histGraph := &views.HistoryGraph{
+		GetCount:  func() int { return game.histCount() },
+		GetHead:   func() int { return game.histHead() },
+		GetSample: func(i int) views.HistSample { return game.histSample(i) },
 	}
 	ui.histGraph = histGraph
 	ui.histIdx = ui.leftStack.Register(histGraph)
@@ -317,26 +322,36 @@ func NewUserInterface(
 	ui.nnIdx = ui.leftStack.Register(nil)
 
 	// ── Modals ────────────────────────────────────────────────────────────────
-	ui.genomeEditor = newGenomeEditor(font, smallFont, func(genome *simulation.Genome, name string) {
+	ui.genomeEditor = views.NewGenomeEditor(font, smallFont, func(genome *simulation.Genome, name string) {
 		game.sim.SpawnGenome(genome, 1.0)
 		simulation.SaveCreatureToFileNamed(genome, 1.0, name) //nolint:errcheck
 	})
 	game.genomeEditor = ui.genomeEditor
 
-	ui.savedGenomesPanel = newSavedGenomesPanel(func(genome *simulation.Genome, generation float32) {
+	ui.savedGenomesPanel = views.NewSavedGenomesPanel(func(genome *simulation.Genome, generation float32) {
 		game.sim.SpawnGenome(genome, generation)
 	})
 	game.savedGenomesPanel = ui.savedGenomesPanel
 
 	// Wire load-from-saved: opens the saved genomes panel in load mode, result goes into the editor.
-	ui.genomeEditor.onLoadSaved = func() {
+	ui.genomeEditor.OnLoadSaved = func() {
 		ui.savedGenomesPanel.OpenForLoad(func(g *simulation.Genome, _ float32) {
 			ui.genomeEditor.LoadGenome(g)
-			ui.savedGenomesPanel.visible = false
+			ui.savedGenomesPanel.Visible = false
 		})
 	}
 
 	return ui
+}
+
+// rebuildParamDropdowns recreates the food, climate, and spawn dropdowns from
+// the current sim params. Call this after loading a saved game so slider values
+// reflect the restored parameters.
+func (ui *UserInterface) rebuildParamDropdowns() {
+	ui.foodDropdown = newFoodDropdown(ui.font, ui.foodBtn, ui.sim)
+	ui.climateDropdown = newClimateDropdown(ui.font, ui.climateBtn, ui.sim)
+	ui.spawnDropdown = newSpawnDropdown(ui.font, ui.spawnBtn, ui.sim, ui.onSpawnSaved)
+	ui.paramsDropdown = newParamsDropdown(ui.font, ui.paramsBtn, ui.sim)
 }
 
 // AnySliderDragging reports whether any non-menubar slider is currently being dragged.
@@ -344,7 +359,8 @@ func (ui *UserInterface) AnySliderDragging() bool {
 	return (ui.foodDropdown != nil && ui.foodDropdown.AnyDragging()) ||
 		(ui.climateDropdown != nil && ui.climateDropdown.AnyDragging()) ||
 		(ui.spawnDropdown != nil && ui.spawnDropdown.AnyDragging()) ||
-		(ui.saveGameDropdown != nil && ui.saveGameDropdown.AnyDragging())
+		(ui.saveGameDropdown != nil && ui.saveGameDropdown.AnyDragging()) ||
+		(ui.paramsDropdown != nil && ui.paramsDropdown.AnyDragging())
 }
 
 // HandleClick processes a mouse-down event; returns true if consumed.
@@ -362,6 +378,9 @@ func (ui *UserInterface) HandleClick(mx, my int) bool {
 		return true
 	}
 	if ui.saveGameDropdown != nil && ui.saveGameDropdown.HandleClick(mx, my) {
+		return true
+	}
+	if ui.paramsDropdown != nil && ui.paramsDropdown.HandleClick(mx, my) {
 		return true
 	}
 	// Save name input field
@@ -401,6 +420,9 @@ func (ui *UserInterface) HandleContinuousInput() {
 		if ui.saveGameDropdown != nil {
 			ui.saveGameDropdown.HandleDrag(mx)
 		}
+		if ui.paramsDropdown != nil {
+			ui.paramsDropdown.HandleDrag(mx)
+		}
 	} else {
 		ui.menuBar.HandleRelease()
 		if ui.foodDropdown != nil {
@@ -414,6 +436,9 @@ func (ui *UserInterface) HandleContinuousInput() {
 		}
 		if ui.saveGameDropdown != nil {
 			ui.saveGameDropdown.HandleRelease()
+		}
+		if ui.paramsDropdown != nil {
+			ui.paramsDropdown.HandleRelease()
 		}
 	}
 }
@@ -459,7 +484,7 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 
 			genomePanel = ui.buildGenomePanel(detail)
 
-			nnGraph := &NeuralNetGraph{Font: ui.font, Data: detail}
+			nnGraph := &views.NeuralNetGraph{Font: ui.font, Data: detail}
 			ui.leftStack.Set(ui.nnIdx, nnGraph, true)
 		} else {
 			ui.leftStack.Set(ui.detailIdx, nil, false)
@@ -493,6 +518,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	if ui.saveGameBtn != nil {
 		ui.saveGameBtn.Active = ui.saveGameDropdown != nil && ui.saveGameDropdown.IsOpen()
 	}
+	if ui.paramsBtn != nil {
+		ui.paramsBtn.Active = ui.paramsDropdown != nil && ui.paramsDropdown.IsOpen()
+	}
 	ui.menuBar.Draw(screen)
 	ui.leftStack.Draw(screen)
 	// Dropdowns drawn after leftStack so they render on top of all panels.
@@ -507,6 +535,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	}
 	if ui.saveGameDropdown != nil {
 		ui.saveGameDropdown.Draw(screen)
+	}
+	if ui.paramsDropdown != nil {
+		ui.paramsDropdown.Draw(screen)
 	}
 
 	// Genome panel — drawn to the right of the detail panel.
@@ -530,9 +561,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 		mx, my := ebiten.CursorPosition()
 		cx, cy := float32(mx), float32(my)
 		const arm = float32(10)
-		vector.StrokeLine(screen, cx-arm, cy, cx+arm, cy, 1.5, ColorCrosshair, false)
-		vector.StrokeLine(screen, cx, cy-arm, cx, cy+arm, 1.5, ColorCrosshair, false)
-		vector.StrokeCircle(screen, cx, cy, arm*0.6, 1, ColorCrosshairCircle, false)
+		vector.StrokeLine(screen, cx-arm, cy, cx+arm, cy, 1.5, colors.ColorCrosshair, false)
+		vector.StrokeLine(screen, cx, cy-arm, cx, cy+arm, 1.5, colors.ColorCrosshair, false)
+		vector.StrokeCircle(screen, cx, cy, arm*0.6, 1, colors.ColorCrosshairCircle, false)
 	}
 
 	// Top-right stats — start below the menu bar using font metrics for spacing.
@@ -560,13 +591,13 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	// Save feedback (creature genome)
 	if ui.saveFeedback != "" && time.Since(ui.saveFeedbackAt) < 2*time.Second {
 		if ui.font != nil {
-			drawText(screen, ui.saveFeedback, ui.font, sw/2-30, sh-40, ColorSaveFeedback)
+			drawText(screen, ui.saveFeedback, ui.font, sw/2-30, sh-40, colors.ColorSaveFeedback)
 		}
 	}
 	// Save game feedback
 	if ui.saveGameFeedback != "" && time.Since(ui.saveGameFeedbackAt) < 2*time.Second {
 		if ui.font != nil {
-			drawText(screen, ui.saveGameFeedback, ui.font, sw/2-40, sh-60, ColorSaveFeedback)
+			drawText(screen, ui.saveGameFeedback, ui.font, sw/2-40, sh-60, colors.ColorSaveFeedback)
 		}
 	}
 
@@ -590,15 +621,15 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 		W:         detailPanelW,
 		Padding:   detailPad,
 		Spacing:   detailSpacing,
-		BaseColor: ColorDetailPanelBG,
-		Border:    ColorDetailPanelBorder,
+		BaseColor: colors.ColorDetailPanelBG,
+		Border:    colors.ColorDetailPanelBorder,
 	}
 
 	// Title
 	p.Add(&components.Label{
 		Text:  fmt.Sprintf("Creature #%d", d.ID),
 		Font:  ui.font,
-		Color: ColorLabelPrimary,
+		Color: colors.ColorLabelPrimary,
 	})
 
 	// Energy
@@ -610,13 +641,13 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    d.Energy,
 		Max:      d.MaxEnergy,
-		MaxColor: ColorEnergyHigh,
-		MinColor: ColorEnergyLow,
+		MaxColor: colors.ColorEnergyHigh,
+		MinColor: colors.ColorEnergyLow,
 		Width:    innerW,
 	})
 
 	// Generation / Age
-	p.Add(&components.Label{Text: fmt.Sprintf("Generation: %.2f (Tier: %d)", d.Generation, d.Tier), Font: ui.font, Color: ColorLabelInfo})
+	p.Add(&components.Label{Text: fmt.Sprintf("Generation: %.2f (Tier: %d)", d.Generation, d.Tier), Font: ui.font, Color: colors.ColorLabelInfo})
 	juvenileStr := "Adult"
 	if d.IsJuvenile {
 		juvenileStr = fmt.Sprintf("Juvenile(%d)", d.JuvenilePeriod-d.Age)
@@ -627,7 +658,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.Label{
 		Text:  fmt.Sprintf("Actions: %s", d.LastAction),
 		Font:  ui.font,
-		Color: ColorLabelGreen,
+		Color: colors.ColorLabelGreen,
 	})
 
 	// Mass
@@ -638,22 +669,22 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    float32(d.Stomach),
 		Max:      float32(d.StomachCapacity),
-		MaxColor: ColorEnergyHigh,
-		MinColor: ColorEnergyLow,
+		MaxColor: colors.ColorEnergyHigh,
+		MinColor: colors.ColorEnergyLow,
 		Width:    innerW,
 	})
 
 	// Digestion Efficiency (proportional)
 	p.AddRow(
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: ColorFoliage},
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: ColorFungi},
-		&components.Label{Text: fmt.Sprintf("%.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: ColorMeat},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FoliageEfficiency*100), Font: ui.font, Color: colors.ColorFoliage},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.FungiEfficiency*100), Font: ui.font, Color: colors.ColorFungi},
+		&components.Label{Text: fmt.Sprintf("%.0f%%", d.MeatEfficiency*100), Font: ui.font, Color: colors.ColorMeat},
 	)
 	p.Add(&components.ProportionBar{
 		Segments: []components.ProportionSegment{
-			{Value: d.FoliageEfficiency, Color: ColorFoliage},
-			{Value: d.FungiEfficiency, Color: ColorFungi},
-			{Value: d.MeatEfficiency, Color: ColorMeat},
+			{Value: d.FoliageEfficiency, Color: colors.ColorFoliage},
+			{Value: d.FungiEfficiency, Color: colors.ColorFungi},
+			{Value: d.MeatEfficiency, Color: colors.ColorMeat},
 		},
 		Width: innerW,
 	})
@@ -663,8 +694,8 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    d.Dopamine,
 		Max:      float32(1.2),
-		MaxColor: ColorDopamineHigh,
-		MinColor: ColorDopamineLow,
+		MaxColor: colors.ColorDopamineHigh,
+		MinColor: colors.ColorDopamineLow,
 		Width:    innerW,
 		Centered: true,
 	})
@@ -674,8 +705,8 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	p.Add(&components.EnergyBar{
 		Value:    d.Responsiveness,
 		Max:      float32(1),
-		MaxColor: ColorResponHigh,
-		MinColor: ColorResponLow,
+		MaxColor: colors.ColorResponseHigh,
+		MinColor: colors.ColorResponseLow,
 		Width:    innerW,
 	})
 
@@ -695,10 +726,10 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 
 	// Reproduction
 	reproStr := "Asexual"
-	reproColor := color.Color(ColorReproAsexual)
+	reproColor := color.Color(colors.ColorReproAsexual)
 	if d.ReproductionType != 0 {
 		reproStr = "Sexual"
-		reproColor = ColorReproSexual
+		reproColor = colors.ColorReproSexual
 	}
 	p.Add(&components.Label{
 		Text:  fmt.Sprintf("Reproduction: %s", reproStr),
@@ -707,7 +738,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	})
 
 	// Phenotype chart
-	p.Add(&PhenotypeChart{Font: ui.font, Data: d})
+	p.Add(&views.PhenotypeChart{Font: ui.font, Data: d})
 
 	// Save name input
 	saveInput := &components.TextInputField{
@@ -725,7 +756,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	saveBtn := &components.Button{
 		W: innerW, H: 22,
 		Label:      "Save Genome",
-		Color:      ColorBtnSave,
+		Color:      colors.ColorBtnSave,
 		LabelColor: color.White,
 		Font:       ui.font,
 	}
@@ -746,7 +777,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	editBtn := &components.Button{
 		W: innerW, H: 22,
 		Label:      "Edit Genome",
-		Color:      ColorBtnEdit,
+		Color:      colors.ColorBtnEdit,
 		LabelColor: color.White,
 		Font:       ui.font,
 	}
@@ -773,13 +804,13 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 		W:         detailPanelW,
 		Padding:   genomePad,
 		Spacing:   genomeSpacing,
-		BaseColor: ColorDetailPanelBG,
-		Border:    ColorDetailPanelBorder,
+		BaseColor: colors.ColorDetailPanelBG,
+		Border:    colors.ColorDetailPanelBorder,
 	}
 	p.Add(&components.Label{
 		Text:  "Genome",
 		Font:  ui.font,
-		Color: ColorLabelPrimary,
+		Color: colors.ColorLabelPrimary,
 	})
 	g := d.Genome
 	barW := detailPanelW - genomePad*2
@@ -821,6 +852,13 @@ func (ui *UserInterface) buildGenomePanel(d simulation.CreatureDetailView) *comp
 	return p
 }
 
+// TODO(): Organise constants and stop double defining
+const (
+	histGraphW   = float32(220)
+	histGraphH   = float32(120)
+	histGraphPad = float32(4)
+)
+
 // buildHistStatsPanel constructs a compact Panel showing current world stats.
 // Rebuilt each frame so values stay current.
 func (ui *UserInterface) buildHistStatsPanel() *components.Panel {
@@ -828,13 +866,13 @@ func (ui *UserInterface) buildHistStatsPanel() *components.Panel {
 		W:         histGraphW,
 		Padding:   histGraphPad,
 		Spacing:   2,
-		BaseColor: ColorStatPanelBG,
-		Border:    ColorStatPanelBorder,
+		BaseColor: colors.ColorStatPanelBG,
+		Border:    colors.ColorStatPanelBorder,
 	}
-	p.Add(&components.Label{Text: fmt.Sprintf("Pop: %d", ui.sim.PopulationCount()), Font: ui.font, Color: ColorInfoBlue})
-	p.Add(&components.Label{Text: fmt.Sprintf("Foliage: %.0f", ui.sim.FoliageEnergy()), Font: ui.font, Color: ColorLabelGreen})
-	p.Add(&components.Label{Text: fmt.Sprintf("Fungi: %.0f", ui.sim.FungiEnergy()), Font: ui.font, Color: ColorFungi})
-	p.Add(&components.Label{Text: fmt.Sprintf("Meat: %.0f", ui.sim.MeatEnergy()), Font: ui.font, Color: ColorLabelMeatRed})
-	p.Add(&components.Label{Text: fmt.Sprintf("Energy: %.2f%%", ui.sim.TotalEnergy()/ui.sim.TargetEnergy()*100), Font: ui.font, Color: ColorLabelTargetE})
+	p.Add(&components.Label{Text: fmt.Sprintf("Pop: %d", ui.sim.PopulationCount()), Font: ui.font, Color: colors.ColorInfoBlue})
+	p.Add(&components.Label{Text: fmt.Sprintf("Foliage: %.0f", ui.sim.FoliageEnergy()), Font: ui.font, Color: colors.ColorLabelGreen})
+	p.Add(&components.Label{Text: fmt.Sprintf("Fungi: %.0f", ui.sim.FungiEnergy()), Font: ui.font, Color: colors.ColorFungi})
+	p.Add(&components.Label{Text: fmt.Sprintf("Meat: %.0f", ui.sim.MeatEnergy()), Font: ui.font, Color: colors.ColorLabelMeatRed})
+	p.Add(&components.Label{Text: fmt.Sprintf("Energy: %.2f%%", ui.sim.TotalEnergy()/ui.sim.TargetEnergy()*100), Font: ui.font, Color: colors.ColorLabelTargetE})
 	return p
 }

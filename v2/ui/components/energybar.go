@@ -3,6 +3,8 @@ package components
 import (
 	"image/color"
 
+	"biogo/v2/ui/colors"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
@@ -16,7 +18,7 @@ type EnergyBar struct {
 }
 
 func (e *EnergyBar) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
-	vector.FillRect(screen, x, y, e.Width, 6, ColorBarBG, false)
+	vector.FillRect(screen, x, y, e.Width, 6, colors.ColorBarBG, false)
 
 	if e.Centered {
 		mid := x + e.Width/2
