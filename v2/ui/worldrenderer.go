@@ -440,7 +440,6 @@ func (wr *WorldRenderer) TrySelectCreature(mx, my, sw, sh int, currentSelected i
 	}
 	return bestID
 }
-
 func (wr *WorldRenderer) drawTemperatureBackground(sw, sh int, camGeoM ebiten.GeoM) {
 	totalWorldH := float64(int(wr.sim.WorldHeight()) * UnitSize)
 
@@ -483,21 +482,26 @@ func (wr *WorldRenderer) drawTemperatureBackground(sw, sh int, camGeoM ebiten.Ge
 	if screenRadX > 0 {
 		rw := float32(math.Min(screenRadX, float64(sw)))
 		const strips = 16
+		var lastX float32 = 0
 		for i := 0; i < strips; i++ {
+			nextFrac := float32(i+1) / float32(strips)
+			nextX := float32(math.Round(float64(nextFrac * rw)))
+			x := lastX
+			w := nextX - lastX
+
 			frac := float32(i) / float32(strips)
-			x := frac * rw
-			w := rw / float32(strips)
-			// quadratic ramp: nearly invisible at world edge, visible near boundary
-			alpha := uint8(5 + frac*frac*55)
-			vector.FillRect(wr.worldLayer, x, 0, w, float32(sh), color.RGBA{140, 230, 40, alpha}, false)
+			alpha := uint8(1 + frac*frac*8)
+
+			if w > 0 {
+				vector.FillRect(wr.worldLayer, x, 0, w, float32(sh), color.NRGBA{100, 200, 30, alpha}, false)
+			}
+			lastX = nextX
 		}
 	}
 	if screenRadX > 0 && screenRadX < float64(sw) {
 		rx := float32(screenRadX)
-		// outer glow pass
-		vector.StrokeLine(wr.worldLayer, rx, 0, rx, float32(sh), 10, color.RGBA{160, 255, 60, 25}, false)
-		// inner bright core
-		vector.StrokeLine(wr.worldLayer, rx, 0, rx, float32(sh), 2, color.RGBA{170, 255, 70, 200}, false)
+		vector.StrokeLine(wr.worldLayer, rx, 0, rx, float32(sh), 10, color.NRGBA{140, 240, 50, 8}, false)
+		vector.StrokeLine(wr.worldLayer, rx, 0, rx, float32(sh), 1.5, color.NRGBA{150, 250, 60, 15}, false)
 	}
 
 	worldW := float64(int(wr.sim.WorldWidth()) * UnitSize)
