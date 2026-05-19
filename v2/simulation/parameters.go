@@ -28,10 +28,11 @@ type SpawnParameters struct {
 }
 
 type FountainParameters struct {
-	Count          int
-	DriftSpeed     float64
-	Radius         float64
-	RandomFraction float64
+	Count                int
+	DriftSpeed           float64
+	Radius               float64
+	RandomFraction       float64
+	StationaryCount int
 }
 
 type FoodParameters struct {
@@ -259,7 +260,7 @@ func DefaultParams() *Parameters {
 		Evolution: EvolutionParameters{
 			Tier1Generation: 2,
 			Tier2Generation: 5,
-			Tier3Generation: 75,
+			Tier3Generation: 25,
 		},
 		Spawn: SpawnParameters{
 			SavedGenomeProportion: 0.9,

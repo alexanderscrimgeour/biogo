@@ -660,7 +660,7 @@ func Crossover(g1, g2 *Genome, p *Parameters, mutationMult float32, childGenerat
 	// Align SynapticDensity with the actual brain length so Mutate does not
 	// immediately re-grow the brain beyond what crossover intended.
 	child.SynapticDensity = byte(targetLen)
-	mutationChance := 0.01 * mutationMult
+	mutationChance := p.Neurology.BaseMutationRate * mutationMult
 	if rand.Float32() < mutationChance {
 		Mutate(child, p, false, mutationMult, childGeneration)
 	}

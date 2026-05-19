@@ -35,24 +35,24 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 	))
 
 	d.AddFountainPanel(newFountainPanel(font, sw, trackOff, trackW, sliderH,
-		"Foliage", colors.ColorFoliage, p.Food.Foliage.Count, p.Food.Foliage.DriftSpeed,
-		p.Food.Foliage.Radius, p.Food.Foliage.RandomFraction,
-		sim.SetFoliageFountainCount, sim.SetFoliageDriftSpeed,
-		sim.SetFoliageRadius, sim.SetFoliageRandomFraction,
+		"Foliage", colors.ColorFoliage, p.Food.Foliage.Count, p.Food.Foliage.StationaryCount,
+		p.Food.Foliage.DriftSpeed, p.Food.Foliage.Radius, p.Food.Foliage.RandomFraction,
+		sim.SetFoliageFountainCount, sim.SetFoliageStationaryCount,
+		sim.SetFoliageDriftSpeed, sim.SetFoliageRadius, sim.SetFoliageRandomFraction,
 	))
 
 	d.AddFountainPanel(newFountainPanel(font, sw, trackOff, trackW, sliderH,
-		"Fungi", colors.ColorFungi, p.Food.Fungi.Count, p.Food.Fungi.DriftSpeed,
-		p.Food.Fungi.Radius, p.Food.Fungi.RandomFraction,
-		sim.SetFungiFountainCount, sim.SetFungiDriftSpeed,
-		sim.SetFungiRadius, sim.SetFungiRandomFraction,
+		"Fungi", colors.ColorFungi, p.Food.Fungi.Count, p.Food.Fungi.StationaryCount,
+		p.Food.Fungi.DriftSpeed, p.Food.Fungi.Radius, p.Food.Fungi.RandomFraction,
+		sim.SetFungiFountainCount, sim.SetFungiStationaryCount,
+		sim.SetFungiDriftSpeed, sim.SetFungiRadius, sim.SetFungiRandomFraction,
 	))
 
 	d.AddFountainPanel(newFountainPanel(font, sw, trackOff, trackW, sliderH,
-		"Meat", colors.ColorMeat, p.Food.Meat.Count, p.Food.Meat.DriftSpeed,
-		p.Food.Meat.Radius, p.Food.Meat.RandomFraction,
-		sim.SetMeatFountainCount, sim.SetMeatDriftSpeed,
-		sim.SetMeatRadius, sim.SetMeatRandomFraction,
+		"Meat", colors.ColorMeat, p.Food.Meat.Count, p.Food.Meat.StationaryCount,
+		p.Food.Meat.DriftSpeed, p.Food.Meat.Radius, p.Food.Meat.RandomFraction,
+		sim.SetMeatFountainCount, sim.SetMeatStationaryCount,
+		sim.SetMeatDriftSpeed, sim.SetMeatRadius, sim.SetMeatRandomFraction,
 	))
 
 	return d
@@ -62,8 +62,8 @@ func newFountainPanel(
 	font *textv2.GoXFace,
 	sw, trackOff, trackW, sliderH float32,
 	label string, labelColor color.Color,
-	initCount int, initDrift, initRadius, initRandom float64,
-	onCount func(int), onDrift, onRadius, onRandom func(float64),
+	initCount, initStationary int, initDrift, initRadius, initRandom float64,
+	onCount, onStationary func(int), onDrift, onRadius, onRandom func(float64),
 ) *components.FountainPanel {
 	count := &components.Slider{
 		W: sw, H: sliderH,
@@ -109,5 +109,16 @@ func newFountainPanel(
 		},
 		OnChange: onRandom,
 	}
-	return components.NewFountainPanel(label, labelColor, font, count, drift, radius, random)
+	stationary := &components.Slider{
+		W: sw, H: sliderH,
+		TrackOffX: trackOff, TrackW: trackW,
+		Font: font, LabelColor: labelColor,
+		Min: 0, Max: 50,
+		Value: float64(initStationary),
+		FormatFunc: func(v float64) string {
+			return fmt.Sprintf("Fixed: %d", int(math.Round(v)))
+		},
+		OnChange: func(v float64) { onStationary(int(math.Round(v))) },
+	}
+	return components.NewFountainPanel(label, labelColor, font, count, drift, radius, random, stationary)
 }
