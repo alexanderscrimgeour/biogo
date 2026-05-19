@@ -65,6 +65,28 @@ func (mb *MenuBar) AddButtonRight(b *Button) *MenuBar {
 	return mb
 }
 
+// AddSliderRight appends a slider aligned to the right edge of the menu bar.
+func (mb *MenuBar) AddSliderRight(s *Slider) *MenuBar {
+	mb.rightItems = append(mb.rightItems, menuBarItem{
+		comp: s,
+		onClick: func(mx, my int) bool {
+			if s.InBounds(mx, my) {
+				s.Dragging = true
+				s.UpdateValue(mx)
+				return true
+			}
+			return false
+		},
+		onDrag: func(mx int) {
+			if s.Dragging {
+				s.UpdateValue(mx)
+			}
+		},
+		onRelease: func() { s.Dragging = false },
+	})
+	return mb
+}
+
 // AddSlider appends a slider. Drag state is managed by HandleDrag/HandleRelease.
 func (mb *MenuBar) AddSlider(s *Slider) *MenuBar {
 	mb.items = append(mb.items, menuBarItem{

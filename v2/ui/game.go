@@ -37,16 +37,21 @@ type SimulationState interface {
 	TargetEnergy() float64
 	SetTargetEnergy(v float64)
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
+	SetFoliageProportion(v float64)
+	SetFungiProportion(v float64)
+	SetMeatProportion(v float64)
 	SetFoliageRandomFraction(v float64)
 	SetFungiRandomFraction(v float64)
+	SetMeatRandomFraction(v float64)
 	SetFoliageFountainCount(n int)
 	SetFungiFountainCount(n int)
-	SetMaxFoliage(n int)
-	SetMaxFungi(n int)
+	SetMeatFountainCount(n int)
 	SetFoliageDriftSpeed(v float64)
 	SetFungiDriftSpeed(v float64)
+	SetMeatDriftSpeed(v float64)
 	SetFoliageRadius(v float64)
 	SetFungiRadius(v float64)
+	SetMeatRadius(v float64)
 	SetTempMin(v float32)
 	SetTempMax(v float32)
 	SetWarmMetabolicMultiplier(v float32)
@@ -61,6 +66,10 @@ type SimulationState interface {
 	GetParams() *simulation.Parameters
 	GetSnapshot() simulation.StateSnapshot
 	FillSnapshot(dst *simulation.StateSnapshot)
+	SaveGame(name string) error
+	SaveGameTo(path string) error
+	LoadGame(path string) error
+	ListSavedGames() []simulation.SavedGame
 }
 
 const historyLen = 5000
@@ -164,6 +173,11 @@ func (g *Game) Update() error {
 		} else {
 			g.genomeEditor.HandleRelease()
 		}
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight) {
+			g.genomeEditor.HandleRightDrag(mx, my)
+		} else {
+			g.genomeEditor.HandleRightRelease()
+		}
 	} else {
 		g.world.HandleContinuousInput(sliderDragging)
 		g.ui.HandleContinuousInput()
@@ -171,12 +185,17 @@ func (g *Game) Update() error {
 
 	// Mouse-down
 	mx, my := ebiten.CursorPosition()
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		if g.genomeEditor != nil && g.genomeEditor.visible {
-			g.genomeEditor.HandleInput(mx, my)
-			g.uiConsumedClick = true
-		} else if g.savedGenomesPanel != nil && g.savedGenomesPanel.visible {
+			g.genomeEditor.HandleRightClick(mx, my)
+		}
+	}
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if g.savedGenomesPanel != nil && g.savedGenomesPanel.visible {
 			g.savedGenomesPanel.HandleInput(mx, my)
+			g.uiConsumedClick = true
+		} else if g.genomeEditor != nil && g.genomeEditor.visible {
+			g.genomeEditor.HandleInput(mx, my)
 			g.uiConsumedClick = true
 		} else if g.ui.HandleClick(mx, my) {
 			g.uiConsumedClick = true

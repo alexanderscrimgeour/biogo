@@ -80,6 +80,17 @@ func (d *Dropdown) addButton(b *components.Button) {
 	})
 }
 
+func (d *Dropdown) addProportionSliders(ps *components.ProportionSliders) {
+	d.items = append(d.items, ddItem{
+		h:        ps.H,
+		draw:     func(screen *ebiten.Image, x, y float32) { ps.Draw(screen, x, y) },
+		onDown:   ps.HandleDown,
+		onDrag:   ps.HandleDrag,
+		release:  ps.Release,
+		dragging: ps.IsDragging,
+	})
+}
+
 func (d *Dropdown) addFountainPanel(fp *components.FountainPanel) {
 	d.items = append(d.items, ddItem{
 		h:        fp.H,
@@ -102,8 +113,9 @@ func (d *Dropdown) addRangeSlider(s *components.RangeSlider) {
 	})
 }
 
-func (d *Dropdown) Toggle() { d.open = !d.open }
-func (d *Dropdown) Close()  { d.open = false }
+func (d *Dropdown) Toggle()  { d.open = !d.open }
+func (d *Dropdown) Close()   { d.open = false }
+func (d *Dropdown) IsOpen() bool { return d.open }
 
 func (d *Dropdown) AnyDragging() bool {
 	for _, item := range d.items {

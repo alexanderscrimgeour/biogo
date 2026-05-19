@@ -35,15 +35,24 @@ type FountainParameters struct {
 }
 
 type FoodParameters struct {
-	MaxFoliage   int
-	MaxFungi     int
-	FoliageMass  float32
-	FungiMass    float32
-	MeatMass     float32
-	MeatDecayRate float32
-	SpawnInterval int
-	Foliage       FountainParameters
-	Fungi         FountainParameters
+	// InitialEnergy is the total food energy seeded at world start. The same
+	// value is used as the ongoing TargetEnergy unless the user overrides it.
+	InitialEnergy float64
+
+	// Proportions control how the energy deficit is split among food types.
+	// They are automatically normalised to sum to 1 by the simulation.
+	FoliageProportion float64
+	FungiProportion   float64
+	MeatProportion    float64
+
+	FoliageMass          float32
+	FungiMass            float32
+	MeatMass             float32
+	MeatDecayRate        float32
+	SpawnInterval        int
+	Foliage              FountainParameters
+	Fungi                FountainParameters
+	Meat                 FountainParameters
 	FoliageEnergyDensity float32 // energy yielded per unit of foliage mass digested
 	FungiEnergyDensity   float32 // energy yielded per unit of fungi mass digested
 	MeatEnergyDensity    float32 // energy yielded per unit of meat mass digested; higher than plants
@@ -85,8 +94,8 @@ type MetabolismParameters struct {
 	MaxStomachSize         float64
 	DigestionRate          float64
 	BaseBMR                float32
-	MetabolicReferenceMass float32  // mass at which BaseBMR applies exactly; Kleiber scaling is normalised to this
-	refMassEffect          float32  // cached: MetabolicReferenceMass^0.75
+	MetabolicReferenceMass float32 // mass at which BaseBMR applies exactly; Kleiber scaling is normalised to this
+	refMassEffect          float32 // cached: MetabolicReferenceMass^0.75
 	EnergyCapacityPerMass  float32 // MaxEnergy = Mass * this; tunes how much energy a body can store
 	EnergyPerFoodMass      float32 // energy gained per unit of digested food mass; tunes food richness
 	BiosynthesisEfficiency float32 // fraction of EnergyPerFoodMass that becomes structural mass; EnergyCostToBuildMass = EnergyPerFoodMass / this
@@ -156,28 +165,36 @@ func DefaultParams() *Parameters {
 			Initial: 1000,
 		},
 		Food: FoodParameters{
-			MaxFoliage:            250000,
-			MaxFungi:              100000,
-			FoliageMass:           10.0,
-			FungiMass:             50.0,
-			MeatMass:              100.0,
-			MeatDecayRate:         0.0001,
-			SpawnInterval:         10,
+			InitialEnergy:     3_000_000,
+			FoliageProportion: 0.6,
+			FungiProportion:   0.4,
+			MeatProportion:    0.0,
+			FoliageMass:       10.0,
+			FungiMass:         50.0,
+			MeatMass:          100.0,
+			MeatDecayRate:     0.0001,
+			SpawnInterval:     10,
 			Foliage: FountainParameters{
 				Count:          6,
-				DriftSpeed:     0.01,
-				Radius:         400.0,
-				RandomFraction: 0.01,
+				DriftSpeed:     0,
+				Radius:         500.0,
+				RandomFraction: 0.00,
 			},
 			Fungi: FountainParameters{
-				Count:          12,
+				Count:          9,
 				DriftSpeed:     0.01,
-				Radius:         400.0,
+				Radius:         200.0,
 				RandomFraction: 0.01,
 			},
-			FoliageEnergyDensity:  10.0,
-			FungiEnergyDensity:    25.0,
-			MeatEnergyDensity:     100.0,
+			Meat: FountainParameters{
+				Count:          0,
+				DriftSpeed:     0,
+				Radius:         300.0,
+				RandomFraction: 0.00,
+			},
+			FoliageEnergyDensity: 10.0,
+			FungiEnergyDensity:   25.0,
+			MeatEnergyDensity:    100.0,
 		},
 		Creature: CreatureParameters{
 			BaseMaxForce:      50,
@@ -213,7 +230,7 @@ func DefaultParams() *Parameters {
 			EnergyCapacityPerMass:  4.0,
 			EnergyPerFoodMass:      10.0,
 			BiosynthesisEfficiency: 0.2, // EnergyPerFoodMass(10) / 0.2 = 50 energy per mass unit built
-			MoveCostMultiplier:     0.0007,
+			MoveCostMultiplier:     0.0008,
 			GrowthEnergyCostFactor: 0.2,
 		},
 		Reproduction: ReproductionParameters{
@@ -230,7 +247,7 @@ func DefaultParams() *Parameters {
 			TempMin:                 0.0,
 			TempMax:                 50.0,
 			WarmMetabolicMultiplier: 4.0,
-			ColdSpeedMultiplier:     0.3,
+			ColdSpeedMultiplier:     0.01,
 			Radiation: RadiationParameters{
 				ZoneWidth:          0.2,
 				MutationMultiplier: 25.0,
@@ -239,22 +256,29 @@ func DefaultParams() *Parameters {
 		},
 		Evolution: EvolutionParameters{
 			Tier1Generation: 2,
-			Tier2Generation: 10,
+			Tier2Generation: 5,
 			Tier3Generation: 75,
 		},
 		Spawn: SpawnParameters{
-			SavedGenomeProportion: 0.1,
-			ClusterEnabled:        false,
-			ClusterInterval:       500,
-			ClusterSize:           10,
+			SavedGenomeProportion: 0.9,
+			ClusterEnabled:        true,
+			ClusterInterval:       100,
+			ClusterSize:           5,
 		},
 	}
 	if err := p.Validate(); err != nil {
 		panic(err)
 	}
+	p.recomputeCachedFields()
+	return p
+}
+
+// recomputeCachedFields rebuilds unexported computed fields from exported values.
+// Gob encoding skips unexported fields, so this must be called after decoding
+// saved parameters (see restoreState in save.go).
+func (p *Parameters) recomputeCachedFields() {
 	sqrtRef := math.Sqrt(float64(p.Metabolism.MetabolicReferenceMass))
 	p.Metabolism.refMassEffect = float32(math.Sqrt(float64(p.Metabolism.MetabolicReferenceMass) * sqrtRef))
-	return p
 }
 
 func (p *Parameters) Validate() error {

@@ -11,7 +11,7 @@ import (
 
 const spawnPanelW = float32(300)
 
-func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState) *Dropdown {
+func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState, onSpawnSaved func()) *Dropdown {
 	p := sim.GetParams()
 	sw := spawnPanelW - ddPad*2
 	trackOff := float32(155)
@@ -19,6 +19,16 @@ func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simu
 	sliderH := float32(24)
 
 	d := newDropdown(font, trigger, "Cluster Spawn", ColorSpawnTitle, spawnPanelW)
+
+	spawnSavedBtn := &components.Button{
+		W: sw, H: 26,
+		Label:      "Spawn Saved Genome",
+		Color:      components.ColorDefault,
+		LabelColor: color.White,
+		Font:       font,
+	}
+	spawnSavedBtn.OnClick = onSpawnSaved
+	d.addButton(spawnSavedBtn)
 
 	enableBtn := &components.Button{
 		W: sw, H: 26,

@@ -20,51 +20,18 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 
 	d := newDropdown(font, trigger, "Food Spawning", ColorLabelPrimary, foodPanelW)
 
-	d.addSlider(&components.Slider{
-		W: sw, H: sliderH,
-		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: ColorLabelTargetE,
-		Min: 0, Max: 30000000,
-		Value: sim.TargetEnergy(),
-		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Target E: %.0fk", v/1000)
+	// Three linked proportion sliders — always sum to 100%.
+	d.addProportionSliders(components.NewProportionSliders(
+		sw, trackOff, trackW, sliderH, font,
+		[3]string{"Foliage", "Fungi", "Meat"},
+		[3]color.Color{ColorFoliage, ColorFungi, ColorMeat},
+		[3]float64{p.Food.FoliageProportion, p.Food.FungiProportion, p.Food.MeatProportion},
+		func(fo, fu, me float64) {
+			sim.SetFoliageProportion(fo)
+			sim.SetFungiProportion(fu)
+			sim.SetMeatProportion(me)
 		},
-		OnChange: func(v float64) { sim.SetTargetEnergy(v) },
-	})
-
-	// Ratio of energy deficit allocated to foliage vs fungi.
-	foodTotal := p.Food.MaxFoliage + p.Food.MaxFungi
-	var initFoliageRatio float64
-	if foodTotal > 0 {
-		initFoliageRatio = float64(p.Food.MaxFoliage) / float64(foodTotal)
-	}
-
-	lerpFoodColor := func(t float64) color.RGBA {
-		return color.RGBA{
-			R: uint8(float64(ColorFungi.R) + t*(float64(ColorFoliage.R)-float64(ColorFungi.R))),
-			G: uint8(float64(ColorFungi.G) + t*(float64(ColorFoliage.G)-float64(ColorFungi.G))),
-			B: uint8(float64(ColorFungi.B) + t*(float64(ColorFoliage.B)-float64(ColorFungi.B))),
-			A: 255,
-		}
-	}
-
-	ratioSlider := &components.Slider{
-		W: sw, H: sliderH,
-		TrackOffX: trackOff, TrackW: trackW,
-		Font: font, LabelColor: color.White,
-		FillColor: lerpFoodColor(initFoliageRatio),
-		Min:       0, Max: 1,
-		Value: initFoliageRatio,
-		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Fo:%.0f%% Fu:%.0f%%", v*100, (1-v)*100)
-		},
-	}
-	ratioSlider.OnChange = func(v float64) {
-		ratioSlider.FillColor = lerpFoodColor(v)
-		sim.SetMaxFoliage(int(math.Round(v * float64(foodTotal))))
-		sim.SetMaxFungi(foodTotal - int(math.Round(v*float64(foodTotal))))
-	}
-	d.addSlider(ratioSlider)
+	))
 
 	d.addFountainPanel(newFountainPanel(font, sw, trackOff, trackW, sliderH,
 		"Foliage", ColorFoliage, p.Food.Foliage.Count, p.Food.Foliage.DriftSpeed,
@@ -78,6 +45,13 @@ func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simul
 		p.Food.Fungi.Radius, p.Food.Fungi.RandomFraction,
 		sim.SetFungiFountainCount, sim.SetFungiDriftSpeed,
 		sim.SetFungiRadius, sim.SetFungiRandomFraction,
+	))
+
+	d.addFountainPanel(newFountainPanel(font, sw, trackOff, trackW, sliderH,
+		"Meat", ColorMeat, p.Food.Meat.Count, p.Food.Meat.DriftSpeed,
+		p.Food.Meat.Radius, p.Food.Meat.RandomFraction,
+		sim.SetMeatFountainCount, sim.SetMeatDriftSpeed,
+		sim.SetMeatRadius, sim.SetMeatRandomFraction,
 	))
 
 	return d
