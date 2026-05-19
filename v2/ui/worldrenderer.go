@@ -482,10 +482,22 @@ func (wr *WorldRenderer) drawTemperatureBackground(sw, sh int, camGeoM ebiten.Ge
 	screenRadX, _ := camGeoM.Apply(radZoneWorldX, 0)
 	if screenRadX > 0 {
 		rw := float32(math.Min(screenRadX, float64(sw)))
-		vector.FillRect(wr.worldLayer, 0, 0, rw, float32(sh), color.RGBA{100, 130, 50, 18}, false)
+		const strips = 16
+		for i := 0; i < strips; i++ {
+			frac := float32(i) / float32(strips)
+			x := frac * rw
+			w := rw / float32(strips)
+			// quadratic ramp: nearly invisible at world edge, visible near boundary
+			alpha := uint8(5 + frac*frac*55)
+			vector.FillRect(wr.worldLayer, x, 0, w, float32(sh), color.RGBA{140, 230, 40, alpha}, false)
+		}
 	}
 	if screenRadX > 0 && screenRadX < float64(sw) {
-		vector.StrokeLine(wr.worldLayer, float32(screenRadX), 0, float32(screenRadX), float32(sh), 2, color.RGBA{100, 200, 70, 40}, false)
+		rx := float32(screenRadX)
+		// outer glow pass
+		vector.StrokeLine(wr.worldLayer, rx, 0, rx, float32(sh), 10, color.RGBA{160, 255, 60, 25}, false)
+		// inner bright core
+		vector.StrokeLine(wr.worldLayer, rx, 0, rx, float32(sh), 2, color.RGBA{170, 255, 70, 200}, false)
 	}
 
 	worldW := float64(int(wr.sim.WorldWidth()) * UnitSize)
