@@ -16,6 +16,13 @@ In the above GIF, we can see two dominant species that have evolved to monopolis
 
 Details for a selected creature are shown on the left. While it has optimised for digesting green food, a look at its neural network reveals that it is actually surviving purely by luck. Its neurology forces it to spin in a constant circle; it simply happened to be born in a dense patch of food it can efficiently digest. Over time, as food drifts across the world, creatures that can actively sense their environment will outcompete and outlive passive organisms like this one.
 
+
+![Simulation early days, two clear separate strategies.](./images/generation-5.6.gif)
+
+At ~ generation 5.6, creatures have evolved to have a strict diet. Their neurology has begun to become more complex; the selected creature is now no longer surviving by chance, but by finding food it can eat. It has developed more complex sensors for this, and has even developed the ability to sense prey ahead of it. This creature is part of the first wave of creatures to develop the ability to attack, and some of these creatures have re-developed the ability to process meat as a result. Not shown in this gif is the divergence of creatures; those that are in warmer climates are more prone to resting and conserving energy than those in optimal ones.
+
+
+
 ## Features
 
 ### Body & Growth
