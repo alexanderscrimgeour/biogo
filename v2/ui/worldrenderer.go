@@ -319,9 +319,10 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 
 	bs := float64(UnitSize)
 	if snapshot != nil {
-		// Plant colour: muted green. Meat colour: dark red.
+		// Foliage: muted green. Meat: dark red. Fungi: purple.
 		const pr, pg, pb, pa = float32(65) / 255, float32(140) / 255, float32(55) / 255, float32(125) / 255
 		const mr, mg, mb, ma = float32(180) / 255, float32(30) / 255, float32(30) / 255, float32(180) / 255
+		const fr, fg, fb, fa = float32(150) / 255, float32(50) / 255, float32(190) / 255, float32(140) / 255
 
 		wr.foodVs = wr.foodVs[:0]
 		wr.nFoodCircles = 0
@@ -340,9 +341,12 @@ func (wr *WorldRenderer) Draw(screen *ebiten.Image, snapshot *simulation.StateSn
 			cx, cy := float32(scx), float32(scy)
 			r := float32(fv.Radius*bs) * zoom
 			var cr, cg, cb, ca float32
-			if fv.Type == world.FoodTypePlant {
+			switch fv.Type {
+			case world.FoodTypeFoliage:
 				cr, cg, cb, ca = pr, pg, pb, pa
-			} else {
+			case world.FoodTypeFungi:
+				cr, cg, cb, ca = fr, fg, fb, fa
+			default:
 				cr, cg, cb, ca = mr, mg, mb, ma
 			}
 			base := len(wr.foodVs)
@@ -426,7 +430,7 @@ func (wr *WorldRenderer) TrySelectCreature(mx, my, sw, sh int, currentSelected i
 	for id, anim := range wr.animByID {
 		dx, dy := clickX-(anim.curX+half), clickY-(anim.curY+half)
 		dist := math.Sqrt(dx*dx + dy*dy)
-		hitRadius := float64(anim.radius) + float64(UnitSize)*3
+		hitRadius := float64(anim.radius) + 15.0/wr.camera.Zoom
 		if dist < hitRadius && dist < bestDist {
 			bestDist, bestID = dist, id
 		}
@@ -478,10 +482,10 @@ func (wr *WorldRenderer) drawTemperatureBackground(sw, sh int, camGeoM ebiten.Ge
 	screenRadX, _ := camGeoM.Apply(radZoneWorldX, 0)
 	if screenRadX > 0 {
 		rw := float32(math.Min(screenRadX, float64(sw)))
-		vector.FillRect(wr.worldLayer, 0, 0, rw, float32(sh), color.RGBA{100, 130, 50, 40}, false)
+		vector.FillRect(wr.worldLayer, 0, 0, rw, float32(sh), color.RGBA{100, 130, 50, 18}, false)
 	}
 	if screenRadX > 0 && screenRadX < float64(sw) {
-		vector.StrokeLine(wr.worldLayer, float32(screenRadX), 0, float32(screenRadX), float32(sh), 2, color.RGBA{100, 255, 70, 60}, false)
+		vector.StrokeLine(wr.worldLayer, float32(screenRadX), 0, float32(screenRadX), float32(sh), 2, color.RGBA{100, 200, 70, 40}, false)
 	}
 
 	worldW := float64(int(wr.sim.WorldWidth()) * UnitSize)
@@ -506,7 +510,7 @@ func (wr *WorldRenderer) drawFOVCones(img *ebiten.Image, views map[int]simulatio
 		}
 		scx, scy := camGeoM.Apply(float64(worldCX), float64(worldCY))
 		cx, cy := float32(scx), float32(scy)
-		r := float32(cv.VisionRadius) * float32(UnitSize) * zoom
+		r := float32(cv.VisionRadius+cv.Radius) * float32(UnitSize) * zoom
 		halfFOV := float64(cv.FieldOfView) / 2.0 * math.Pi / 180.0
 		var path vector.Path
 		path.MoveTo(cx, cy)

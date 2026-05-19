@@ -398,26 +398,26 @@ func convertGenesToNeuronIDs(genes []Gene, cognitiveBreadth byte) []Gene {
 
 func getAllowedSensorCount(breadth byte) byte {
 	if breadth < 64 {
-		return MaxTier1Sensor + 1
+		return MaxTier0Sensor + 1
 	}
 	if breadth < 128 {
-		return MaxTier2Sensor + 1
+		return MaxTier1Sensor + 1
 	}
 	if breadth < 192 {
-		return MaxTier3Sensor + 1
+		return MaxTier2Sensor + 1
 	}
 	return SENSOR_COUNT
 }
 
 func getAllowedActionCount(breadth byte) byte {
 	if breadth < 64 {
-		return MaxTier1Action + 1
+		return MaxTier0Action + 1
 	}
 	if breadth < 128 {
-		return MaxTier2Action + 1
+		return MaxTier1Action + 1
 	}
 	if breadth < 192 {
-		return MaxTier3Action + 1
+		return MaxTier2Action + 1
 	}
 	return ACTION_COUNT
 }

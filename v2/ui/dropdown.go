@@ -10,17 +10,17 @@ import (
 )
 
 const (
-	ddPad      = float32(8)
-	ddTitleH   = float32(20)
+	ddPad       = float32(8)
+	ddTitleH    = float32(20)
 	ddSliderGap = float32(6)
 )
 
 type ddItem struct {
-	h       float32
-	draw    func(screen *ebiten.Image, x, y float32)
-	onDown  func(mx, my int)
-	onDrag  func(mx int)
-	release func()
+	h        float32
+	draw     func(screen *ebiten.Image, x, y float32)
+	onDown   func(mx, my int)
+	onDrag   func(mx int)
+	release  func()
 	dragging func() bool
 }
 
@@ -55,9 +55,50 @@ func (d *Dropdown) addSlider(s *components.Slider) {
 				s.UpdateValue(mx)
 			}
 		},
-		onDrag:   func(mx int) { if s.Dragging { s.UpdateValue(mx) } },
+		onDrag:   func(mx int) {
+			if s.Dragging {
+				s.UpdateValue(mx)
+			}
+		},
 		release:  func() { s.Dragging = false },
 		dragging: func() bool { return s.Dragging },
+	})
+}
+
+func (d *Dropdown) addButton(b *components.Button) {
+	d.items = append(d.items, ddItem{
+		h:    b.H,
+		draw: func(screen *ebiten.Image, x, y float32) { b.Draw(screen, x, y) },
+		onDown: func(mx, my int) {
+			if b.IsClicked(mx, my) && b.OnClick != nil {
+				b.OnClick()
+			}
+		},
+		onDrag:   func(mx int) {},
+		release:  func() {},
+		dragging: func() bool { return false },
+	})
+}
+
+func (d *Dropdown) addProportionSliders(ps *components.ProportionSliders) {
+	d.items = append(d.items, ddItem{
+		h:        ps.H,
+		draw:     func(screen *ebiten.Image, x, y float32) { ps.Draw(screen, x, y) },
+		onDown:   ps.HandleDown,
+		onDrag:   ps.HandleDrag,
+		release:  ps.Release,
+		dragging: ps.IsDragging,
+	})
+}
+
+func (d *Dropdown) addFountainPanel(fp *components.FountainPanel) {
+	d.items = append(d.items, ddItem{
+		h:        fp.H,
+		draw:     func(screen *ebiten.Image, x, y float32) { fp.Draw(screen, x, y) },
+		onDown:   fp.HandleDown,
+		onDrag:   fp.HandleDrag,
+		release:  fp.Release,
+		dragging: fp.IsDragging,
 	})
 }
 
@@ -72,7 +113,9 @@ func (d *Dropdown) addRangeSlider(s *components.RangeSlider) {
 	})
 }
 
-func (d *Dropdown) Toggle() { d.open = !d.open }
+func (d *Dropdown) Toggle()  { d.open = !d.open }
+func (d *Dropdown) Close()   { d.open = false }
+func (d *Dropdown) IsOpen() bool { return d.open }
 
 func (d *Dropdown) AnyDragging() bool {
 	for _, item := range d.items {
@@ -127,8 +170,8 @@ func (d *Dropdown) Draw(screen *ebiten.Image) {
 		return
 	}
 	px, py, pw, ph := d.panelBounds()
-	vector.FillRect(screen, px, py, pw, ph, color.RGBA{12, 14, 28, 235}, false)
-	vector.StrokeRect(screen, px, py, pw, ph, 1, color.RGBA{90, 90, 150, 255}, false)
+	vector.FillRect(screen, px, py, pw, ph, ColorDropdownBG, false)
+	vector.StrokeRect(screen, px, py, pw, ph, 1, ColorDropdownBorder, false)
 
 	if d.font != nil {
 		m := d.font.Metrics()
@@ -138,7 +181,7 @@ func (d *Dropdown) Draw(screen *ebiten.Image) {
 		op.GeoM.Translate(float64(px+ddPad), ty)
 		tc := d.titleColor
 		if tc == nil {
-			tc = color.RGBA{255, 220, 80, 255}
+			tc = ColorLabelPrimary
 		}
 		op.ColorScale.ScaleWithColor(tc)
 		textv2.Draw(screen, d.title, d.font, op)

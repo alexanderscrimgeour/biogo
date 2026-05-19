@@ -9,12 +9,13 @@ import (
 
 func TestDoNothingReducesMetabolicCost(t *testing.T) {
 	p := defaultParams()
-	p.BaseBMR = 5
-	p.MoveCost = 0
-	p.MinPopulation = 0
-	p.MaxPopulation = 1
-	p.MaxFood = 0
-	p.StartingPopulation = 1
+	p.Metabolism.BaseBMR = 5
+	p.Metabolism.MoveCost = 0
+	p.Population.Min = 0
+	p.Population.Max = 1
+	p.Food.MaxFoliage = 0
+	p.Food.MaxFungi = 0
+	p.Population.Initial = 1
 
 	sim := simulation.New(p)
 
@@ -26,7 +27,7 @@ func TestDoNothingReducesMetabolicCost(t *testing.T) {
 		}
 	}
 	c.Genome.MetabolicRate = 127
-	c.Energy = float32(c.Mass) * p.EnergyPerMassUnit // start at full MaxEnergy
+	c.Energy = float32(c.Mass) * p.Metabolism.EnergyCapacityPerMass // start at full MaxEnergy
 	energyBefore := c.Energy
 
 	// Wire OSC1 (=1.0 at step 0 with OscPeriod=1) into REST so it always fires.
@@ -62,14 +63,14 @@ func TestDoNothingIsEnabled(t *testing.T) {
 
 func TestPassivePredation_TakesBiteFromNearbyMeat(t *testing.T) {
 	params := defaultParams()
-	params.FoodInteractionRadius = 3.0
-	params.MaxFood = 0
+	params.Food.MaxFoliage = 0
+	params.Food.MaxFungi = 0
 
 	w := grid.NewWorld(20, 20, 0)
 
 	predGenome := simulation.MakeRandomGenome(params, 0)
-	predGenome.Mass = 128
-	predGenome.MinMass = 10
+	predGenome.BodyMass = 128
+	predGenome.SurvivalMass = 10
 	predGenome.FieldOfView = 180
 	predGenome.StomachSize = 255
 

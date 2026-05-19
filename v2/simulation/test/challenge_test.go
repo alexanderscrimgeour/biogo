@@ -12,11 +12,12 @@ func makeSimulation(p *simulation.Parameters) *simulation.Simulation {
 
 func TestPassedSurvivalCriteriaAllSurvive(t *testing.T) {
 	p := defaultParams()
-	p.StartingPopulation = 1
-	p.MaxPopulation = 1
-	p.WorldWidth = 20
-	p.WorldHeight = 20
-	p.MaxFood = 100
+	p.Population.Initial = 1
+	p.Population.Max = 1
+	p.World.Width = 20
+	p.World.Height = 20
+	p.Food.MaxFoliage = 100
+	p.Food.MaxFungi = 0
 	sim := makeSimulation(p)
 
 	for _, c := range sim.Population.Creatures {
@@ -28,11 +29,11 @@ func TestPassedSurvivalCriteriaAllSurvive(t *testing.T) {
 
 func TestPassedSurvivalCriteriaLeftSurvive(t *testing.T) {
 	p := defaultParams()
-	p.WorldWidth = 20
-	p.WorldHeight = 20
-	p.StartingPopulation = 0
-	p.MaxPopulation = 0
-	p.MinPopulation = 0
+	p.World.Width = 20
+	p.World.Height = 20
+	p.Population.Initial = 0
+	p.Population.Max = 0
+	p.Population.Min = 0
 	sim := makeSimulation(p)
 
 	genome := simulation.MakeRandomGenome(p, 0)
@@ -49,11 +50,11 @@ func TestPassedSurvivalCriteriaLeftSurvive(t *testing.T) {
 
 func TestPassedSurvivalCriteriaRightSurvive(t *testing.T) {
 	p := defaultParams()
-	p.WorldWidth = 20
-	p.WorldHeight = 20
-	p.StartingPopulation = 0
-	p.MaxPopulation = 0
-	p.MinPopulation = 0
+	p.World.Width = 20
+	p.World.Height = 20
+	p.Population.Initial = 0
+	p.Population.Max = 0
+	p.Population.Min = 0
 	sim := makeSimulation(p)
 
 	genome := simulation.MakeRandomGenome(p, 0)
@@ -70,11 +71,11 @@ func TestPassedSurvivalCriteriaRightSurvive(t *testing.T) {
 
 func TestPassedSurvivalCriteriaCenter(t *testing.T) {
 	p := defaultParams()
-	p.WorldWidth = 200
-	p.WorldHeight = 200
-	p.StartingPopulation = 0
-	p.MaxPopulation = 0
-	p.MinPopulation = 0
+	p.World.Width = 200
+	p.World.Height = 200
+	p.Population.Initial = 0
+	p.Population.Max = 0
+	p.Population.Min = 0
 	sim := makeSimulation(p)
 
 	genome := simulation.MakeRandomGenome(p, 0)

@@ -1,0 +1,6 @@
+./data/games/*
+./data/creatures/*
+
+./pprof_top.txt
+./biogo_debug.exe
+./crash.txt

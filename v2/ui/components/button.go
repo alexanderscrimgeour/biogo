@@ -8,13 +8,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-var (
-	ColorDefault       = color.RGBA{120, 144, 156, 100}
-	ColorButtonPressed = color.RGBA{144, 164, 174, 100}
-	ColorButtonGreen   = color.RGBA{76, 175, 80, 100}
-	ColorButtonRed     = color.RGBA{244, 67, 54, 100}
-)
-
 // Button is a clickable UI element. It stores its last drawn position
 // so IsClicked works without requiring absolute coordinates at construction time.
 type Button struct {
@@ -24,6 +17,7 @@ type Button struct {
 	LabelColor color.Color
 	Font       *textv2.GoXFace
 	OnClick    func()
+	Active     bool // when true the button renders with a highlighted (pressed) appearance
 	lastX      float32
 	lastY      float32
 }
@@ -32,10 +26,14 @@ type Button struct {
 func (b *Button) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	b.lastX, b.lastY = x, y
 	displayColor := b.Color
-	mx, my := ebiten.CursorPosition()
-	isHovered := float32(mx) >= x && float32(mx) <= x+b.W && float32(my) >= y && float32(my) <= y+b.H
-	if isHovered && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-		displayColor = lighten(b.Color, 0.1)
+	if b.Active {
+		displayColor = lighten(b.Color, 0.25)
+	} else {
+		mx, my := ebiten.CursorPosition()
+		isHovered := float32(mx) >= x && float32(mx) <= x+b.W && float32(my) >= y && float32(my) <= y+b.H
+		if isHovered && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			displayColor = lighten(b.Color, 0.1)
+		}
 	}
 
 	vector.FillRect(screen, x, y, b.W, b.H, displayColor, false)

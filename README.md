@@ -4,7 +4,7 @@ Inspired by https://github.com/davidrmiller/biosim4/tree/main/src
 
 This project is an emergent ecosystem simulation driven by genetic evolution and neural networks. 
 
-'Creatures' compete for survival in a real-time environment closed-energy system, where "plant" food is spawned to replenish energy
+'Creatures' compete for survival in a real-time environment closed-energy system, where "foliage" food is spawned to replenish energy
 lost through metabolic proceses. The world (as of writing) contains a temperature gradient, which affects the metabolic rate and speed of creatures. 
 
 Creatures are defined by their Genome, a series of bytes that determine their characteristics, such as mass, how far they can see, their reproductive type, how much mass they donate to their offspring when reproducing. The genome also defines a brain - a series of sensors to read from the world, and a series of actions to affect it. These are connected into a neural network, the size and complexity of which is again defined genetically. As creatures reproduce, their offspring have a chance to undergo genetic mutation, which will slightly alter the genetic makeup, shifting traits in one direction or another, or even redefining the size and wiring of the brain itself, leading to emergent behaviour.

@@ -1,74 +1,50 @@
 package ui
 
 import (
-	"fmt"
 	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	textv2 "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 const (
-	histGraphW     = float32(220)
-	histGraphH     = float32(220)
-	histGraphTextH = float32(97)
-	histGraphPad   = float32(4)
+	histGraphW   = float32(220)
+	histGraphH   = float32(120)
+	histGraphPad = float32(4)
 )
 
-// HistoryGraph is a Component that renders population/food/energy time-series.
+// HistoryGraph renders population/food/energy time-series as a line chart.
 // It reads game state via closures set at construction time.
 type HistoryGraph struct {
-	Font      *textv2.GoXFace
 	getCount  func() int
 	getHead   func() int
 	getSample func(i int) histSample
-	sim       interface {
-		PopulationCount() int
-		PlantEnergy() float64
-		MeatEnergy() float64
-		TotalEnergy() float64
-		TargetEnergy() float64
-	}
 	maxEnergy float64
 }
 
-// Draw renders the history graph panel at (x, y).
+// Draw renders the line graph panel at (x, y).
 func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
 	count := hg.getCount()
-	if count < 2 {
-		// Draw empty panel placeholder
-		vector.FillRect(screen, x, y, histGraphW, histGraphH, color.RGBA{8, 10, 22, 160}, false)
-		vector.StrokeRect(screen, x, y, histGraphW, histGraphH, 1, color.RGBA{50, 60, 90, 180}, false)
-		return histGraphW, histGraphH
-	}
-
 	panelFill := color.RGBA{8, 10, 22, 160}
 	panelStroke := color.RGBA{50, 60, 90, 180}
 	vector.FillRect(screen, x, y, histGraphW, histGraphH, panelFill, false)
 	vector.StrokeRect(screen, x, y, histGraphW, histGraphH, 1, panelStroke, false)
 
+	if count < 2 {
+		return histGraphW, histGraphH
+	}
+
 	popColor := color.RGBA{100, 180, 255, 255}
-	foodColor := color.RGBA{80, 210, 100, 255}
+	foliageColor := color.RGBA{80, 210, 100, 255}
+	fungiColor := color.RGBA{150, 50, 190, 255}
 	meatColor := color.RGBA{210, 90, 90, 255}
 	energyColor := color.RGBA{255, 230, 50, 255}
 
-	if hg.Font != nil {
-		drawText(screen, fmt.Sprintf("Pop: %d", hg.sim.PopulationCount()), hg.Font,
-			int(x+histGraphPad), int(y+15), popColor)
-		drawText(screen, fmt.Sprintf("Plants: %.0f", hg.sim.PlantEnergy()), hg.Font,
-			int(x+histGraphPad), int(y+31), foodColor)
-		drawText(screen, fmt.Sprintf("Meat: %.0f", hg.sim.MeatEnergy()), hg.Font,
-			int(x+histGraphPad), int(y+47), meatColor)
-		drawText(screen, fmt.Sprintf("Energy: %.2f%%", hg.sim.TotalEnergy()/hg.sim.TargetEnergy()*100), hg.Font,
-			int(x+histGraphPad), int(y+63), energyColor)
-	}
-
 	gx := x + histGraphPad
-	gy := y + histGraphTextH
+	gy := y + histGraphPad
 	gw := histGraphW - histGraphPad*2
-	gh := histGraphH - histGraphTextH - histGraphPad
+	gh := histGraphH - histGraphPad*2
 
 	head := hg.getHead()
 	popMax := 1
@@ -79,8 +55,11 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 		if s.pop > popMax {
 			popMax = s.pop
 		}
-		if s.plantEnergy > foodEnergyMax {
-			foodEnergyMax = s.plantEnergy
+		if s.foliageEnergy > foodEnergyMax {
+			foodEnergyMax = s.foliageEnergy
+		}
+		if s.fungiEnergy > foodEnergyMax {
+			foodEnergyMax = s.fungiEnergy
 		}
 		if s.meatEnergy > foodEnergyMax {
 			foodEnergyMax = s.meatEnergy
@@ -96,8 +75,10 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 	}
 
 	foodEnergyScale := int(foodEnergyMax * 2)
-	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, foodColor,
-		func(s histSample) int { return int(s.plantEnergy) })
+	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, foliageColor,
+		func(s histSample) int { return int(s.foliageEnergy) })
+	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, fungiColor,
+		func(s histSample) int { return int(s.fungiEnergy) })
 	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, meatColor,
 		func(s histSample) int { return int(s.meatEnergy) })
 	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, popMax*2, popColor,
@@ -139,7 +120,7 @@ func (hg *HistoryGraph) drawLine(screen *ebiten.Image, gx, gy, gw, gh float32, s
 	vector.StrokePath(screen, &path, &vector.StrokeOptions{Width: 1.5}, &vector.DrawPathOptions{ColorScale: cs})
 }
 
-// Size returns the fixed dimensions of the history graph panel.
+// Size returns the fixed dimensions of the history line graph panel.
 func (hg *HistoryGraph) Size() (float32, float32) {
 	return histGraphW, histGraphH
 }

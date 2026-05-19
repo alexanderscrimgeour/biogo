@@ -32,6 +32,15 @@ type NeuralNetGraph struct {
 	Data simulation.CreatureDetailView
 }
 
+// footerHeight returns the height reserved at the panel bottom for the footer row.
+func (ng *NeuralNetGraph) footerHeight() float32 {
+	if ng.Font == nil {
+		return nnFooterH
+	}
+	m := ng.Font.Metrics()
+	return float32(m.HAscent+m.HDescent) + nnPadding
+}
+
 // computeHeight returns the panel height given the current neural net data.
 func (ng *NeuralNetGraph) computeHeight() float32 {
 	nn := ng.Data.NeuralNet
@@ -93,7 +102,7 @@ func (ng *NeuralNetGraph) computeHeight() float32 {
 			maxCount = len(ns)
 		}
 	}
-	h := (nnTitleH + nnPadding) + float32(maxCount)*nnNodeSpY + nnPadding + nnFooterH
+	h := (nnTitleH + nnPadding) + float32(maxCount)*nnNodeSpY + nnPadding + ng.footerHeight()
 	if h < 40 {
 		h = 40
 	}
@@ -125,6 +134,28 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 	sensors := sortedKeys(sensorSet)
 	actions := sortedKeys(actionSet)
 	neurons := nn.HiddenNeuronIDs
+
+	// Derive column positions from the longest active label in each column.
+	sensorNodeX := float32(nnColSensor)
+	actionNodeX := float32(nnColAction)
+	if ng.Font != nil {
+		var maxSLW, maxALW float32
+		for _, s := range sensors {
+			w, _ := textv2.Measure(nnSensorName(s), ng.Font, 0)
+			if float32(w) > maxSLW {
+				maxSLW = float32(w)
+			}
+		}
+		for _, a := range actions {
+			w, _ := textv2.Measure(nnActionName(a), ng.Font, 0)
+			if float32(w) > maxALW {
+				maxALW = float32(w)
+			}
+		}
+		sensorNodeX = nnPadding + nnBarMaxW + nnPadding + maxSLW + nnNodeR + nnPadding
+		actionNodeX = nnPanelW - nnPadding - nnBarMaxW - nnPadding - maxALW - nnNodeR - nnPadding
+	}
+	footerH := ng.footerHeight()
 
 	const maxLayerDepth = 8
 	neuronDepth := map[byte]int{}
@@ -171,8 +202,8 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 	}
 
 	neuronColX := map[byte]float32{}
-	innerLeft := nnColSensor + nnInnerPadX
-	innerRight := nnColAction - nnInnerPadX
+	innerLeft := sensorNodeX + nnInnerPadX
+	innerRight := actionNodeX - nnInnerPadX
 	innerSpan := innerRight - innerLeft
 	for id, dep := range neuronDepth {
 		frac := float32(dep+1) / float32(numDepths+1)
@@ -188,7 +219,7 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 			maxCount = len(ns)
 		}
 	}
-	panelH := (nnTitleH + nnPadding) + float32(maxCount)*nnNodeSpY + nnPadding + nnFooterH
+	panelH := (nnTitleH + nnPadding) + float32(maxCount)*nnNodeSpY + nnPadding + footerH
 	if panelH < 40 {
 		panelH = 40
 	}
@@ -200,7 +231,7 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 	}
 
 	contentTop := y + nnTitleH + nnPadding
-	contentH := panelH - (nnTitleH + nnPadding*2) - nnFooterH
+	contentH := panelH - (nnTitleH + nnPadding*2) - footerH
 
 	nodeY := func(count, i int) float32 {
 		if count == 0 {
@@ -229,7 +260,7 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 		var srcX, srcY, dstX, dstY float32
 		switch e.SourceType {
 		case simulation.SENSOR:
-			srcX = x + nnColSensor
+			srcX = x + sensorNodeX
 			srcY = sensorY[e.SourceID]
 		case simulation.NEURON:
 			srcX = x + neuronColX[e.SourceID]
@@ -240,7 +271,7 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 			dstX = x + neuronColX[e.SinkID]
 			dstY = neuronY[e.SinkID]
 		case simulation.ACTION:
-			dstX = x + nnColAction
+			dstX = x + actionNodeX
 			dstY = actionY[e.SinkID]
 		}
 		if e.SourceType == simulation.NEURON && e.SinkType == simulation.NEURON && e.SourceID == e.SinkID {
@@ -258,25 +289,19 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 	}
 
 	for _, s := range sensors {
-		nx := x + nnColSensor
+		nx := x + sensorNodeX
 		ny := sensorY[s]
 		vector.FillCircle(screen, nx, ny, nnNodeR, color.RGBA{80, 150, 220, 255}, false)
 
 		lbl := nnSensorName(s)
 
 		if ng.Font != nil {
-			metrics := ng.Font.Metrics()
-			textHeight := float32(metrics.HAscent + metrics.HDescent)
-
+			m := ng.Font.Metrics()
+			textH := float32(m.HAscent + m.HDescent)
 			tw, _ := textv2.Measure(lbl, ng.Font, 0)
-			lblW := float32(tw)
-
-			labelX := (nx - 10) - lblW
-			if labelX < x+4 {
-				labelX = x + 4
-			}
-
-			drawText(screen, lbl, ng.Font, int(labelX), int(ny-textHeight/2), color.RGBA{160, 180, 220, 255})
+			// Right-align all labels flush against the node, with padding gap.
+			labelX := nx - nnNodeR - nnPadding - float32(tw)
+			drawText(screen, lbl, ng.Font, int(labelX), int(ny-textH/2), color.RGBA{160, 180, 220, 255})
 		}
 
 		if val, ok := nn.SensorValues[s]; ok {
@@ -316,13 +341,13 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 		vector.FillCircle(screen, nx, ny, nnNodeR, color.RGBA{200, 180, 80, 255}, false)
 	}
 	for _, a := range actions {
-		ax := x + nnColAction
+		ax := x + actionNodeX
 		ay := actionY[a]
 		vector.FillCircle(screen, ax, ay, nnNodeR, color.RGBA{220, 100, 80, 255}, false)
 		if ng.Font != nil {
-			metrics := ng.Font.Metrics()
-			textHeight := float32(metrics.HAscent + metrics.HDescent)
-			drawText(screen, nnActionName(a), ng.Font, int(ax)+10, int(ay-textHeight/2), color.RGBA{220, 160, 150, 255})
+			m := ng.Font.Metrics()
+			textH := float32(m.HAscent + m.HDescent)
+			drawText(screen, nnActionName(a), ng.Font, int(ax+nnNodeR+nnPadding), int(ay-textH/2), color.RGBA{220, 160, 150, 255})
 		}
 		if val, ok := nn.ActionValues[a]; ok {
 			barX := x + nnPanelW - nnPadding - nnBarMaxW
@@ -351,7 +376,7 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 	}
 
 	const baseNeuroplasticity = 0.01
-	footerY := int(y + panelH - nnFooterH)
+	footerY := int(y + panelH - footerH)
 	if ng.Font != nil {
 		drawText(screen, fmt.Sprintf("Learning Rate: %.4f", baseNeuroplasticity*ng.Data.Dopamine), ng.Font,
 			int(x+nnPadding), footerY, color.RGBA{120, 120, 180, 220})
@@ -385,11 +410,12 @@ func nnEdgeColor(w float32) color.RGBA {
 
 func nnSensorName(id byte) string {
 	names := [...]string{
-		"Bias", "Energy", "NearFoodAngle",
-		"NearFoodDist", "NearMeatAngle",
-		"NearMeatDist", "Age", "LocX", "LocY",
-		"Heading", "Velocity", "Osc1", "BlockedFwd",
-		"WallProx", "PlantFwd", "MeatFwd", "PreyFwd",
+		"Bias", "Energy", "NearFoliageAngle",
+		"NearFoliageDist", "NearMeatAngle",
+		"NearMeatDist", "NearFungiAngle", "NearFungiDist",
+		"Age", "LocX", "LocY",
+		"Heading", "Speed", "Osc1", "BlockedFwd",
+		"WallProx", "FoliageFwd", "MeatFwd", "PreyFwd",
 		"NearPreyAngle", "ThreatFwd", "NearThreatAngle",
 		"Mass %", "Juvenile", "Satiation", "StomachRate",
 		"LocalCOM", "LocalDensity", "LocalHeading",
@@ -406,7 +432,7 @@ func nnSensorName(id byte) string {
 func nnActionName(id byte) string {
 	names := [...]string{
 		"Accelerate", "Rotate", "SetOsc",
-		"Rest", "Attack", "Reproduce",
+		"Rest", "Reproduce", "Attack",
 		"Feed", "SetResp",
 		"SetLearn", "Reward", "Punish",
 	}

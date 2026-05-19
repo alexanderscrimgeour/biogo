@@ -32,7 +32,6 @@ func TestNewPopulation(t *testing.T) {
 
 func TestProcessMoveQueue(t *testing.T) {
 	params := defaultParams()
-	params.FoodInteractionRadius = 0.1
 
 	w := grid.NewWorld(20, 20, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
@@ -59,12 +58,11 @@ func TestProcessMoveQueue(t *testing.T) {
 
 func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	params := defaultParams()
-	params.FoodInteractionRadius = 2.0
 
 	w := grid.NewWorld(20, 20, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 100
-	genome.MinMass = 10
+	genome.BodyMass =100
+	genome.SurvivalMass =10
 
 	startPos := grid.Position{X: 5, Y: 5}
 	destPos := grid.Position{X: 6, Y: 5}
@@ -74,7 +72,7 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 	creature := simulation.NewCreature(id, startPos, genome, params)
 	creature.Heading = 0 // east, so food at (7,5) is in the forward cone
 	// Start at 50% of MaxEnergy so the creature is hungry enough to eat.
-	creature.Energy = float32(creature.Mass) * params.EnergyPerMassUnit * 0.5
+	creature.Energy = float32(creature.Mass) * params.Metabolism.EnergyCapacityPerMass * 0.5
 
 	w.AddPlant(foodPos, 10)
 
@@ -125,7 +123,7 @@ func TestDeathSpawnsMeatMatchingMass(t *testing.T) {
 	w := grid.NewWorld(20, 20, 0)
 
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 120
+	genome.BodyMass =120
 	loc := grid.Position{X: 10, Y: 10}
 	id := w.AddCreature(loc)
 	creature := simulation.NewAdultCreature(id, loc, genome, params)
@@ -204,18 +202,18 @@ func TestGeneticDiversity(t *testing.T) {
 
 func TestReproductionCreatesOffspring(t *testing.T) {
 	params := defaultParams()
-	params.MaxPopulation = 100
+	params.Population.Max = 100
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 200
-	genome.MinMass = 10
+	genome.BodyMass =200
+	genome.SurvivalMass =10
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	// Start at full energy so reproduction threshold is met.
-	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.Metabolism.EnergyCapacityPerMass
 
 	pop := simulation.NewPopulation(params)
 	pop.SetCreature(parentID, parent)
@@ -230,18 +228,18 @@ func TestReproductionCreatesOffspring(t *testing.T) {
 
 func TestReproductionHalvesParentMass(t *testing.T) {
 	params := defaultParams()
-	params.MaxPopulation = 100
+	params.Population.Max = 100
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 100
-	genome.MinMass = 10
+	genome.BodyMass =100
+	genome.SurvivalMass =10
 	genome.MassSplitRatio = 255 // maximum split → 50%
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
-	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.Metabolism.EnergyCapacityPerMass
 
 	pop := simulation.NewPopulation(params)
 	pop.SetCreature(parentID, parent)
@@ -249,7 +247,7 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 	pop.QueueForReproduction(parent)
 	pop.ProcessReproductionQueue(w, params)
 
-	wantMass := float32(genome.Mass) / 2
+	wantMass := float32(genome.BodyMass) / 2
 	if parent.Mass != wantMass {
 		t.Errorf("parent Mass after reproduction: got %f, want %f", parent.Mass, wantMass)
 	}
@@ -257,19 +255,19 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 
 func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 	params := defaultParams()
-	params.MaxPopulation = 100
+	params.Population.Max = 100
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 100
-	genome.MinMass = 10
+	genome.BodyMass =100
+	genome.SurvivalMass =10
 	genome.MutationRate = 0     // suppress mutations so child inherits same Mass
 	genome.MassSplitRatio = 255 // maximum split → 50%
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
-	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.Metabolism.EnergyCapacityPerMass
 
 	pop := simulation.NewPopulation(params)
 	pop.SetCreature(parentID, parent)
@@ -288,7 +286,7 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 		child = c
 		break
 	}
-	wantMass := float32(genome.Mass) / 2
+	wantMass := float32(genome.BodyMass) / 2
 	if child.Mass != wantMass {
 		t.Errorf("child Mass at birth: got %f, want %f", child.Mass, wantMass)
 	}
@@ -296,18 +294,18 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 
 func TestReproductionSkipsWhenEnergyBelowThreshold(t *testing.T) {
 	params := defaultParams()
-	params.MaxPopulation = 100
+	params.Population.Max = 100
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 200
-	genome.MinMass = 10
+	genome.BodyMass =200
+	genome.SurvivalMass =10
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
 	// Set energy just below the reproduction threshold.
-	parent.Energy = params.ReproductionEnergyThreshold*float32(genome.Mass)*params.EnergyPerMassUnit - 1
+	parent.Energy = params.Reproduction.EnergyThreshold*float32(genome.BodyMass)*params.Metabolism.EnergyCapacityPerMass - 1
 
 	pop := simulation.NewPopulation(params)
 	pop.SetCreature(parentID, parent)
@@ -322,17 +320,17 @@ func TestReproductionSkipsWhenEnergyBelowThreshold(t *testing.T) {
 
 func TestReproductionSkipsWhenMinMassConstraintViolated(t *testing.T) {
 	params := defaultParams()
-	params.MaxPopulation = 100
+	params.Population.Max = 100
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.Mass = 10
-	genome.MinMass = 6 // 6*2=12 >= 10: violates MinMass < Mass/2
+	genome.BodyMass =10
+	genome.SurvivalMass =6 // 6*2=12 >= 10: violates MinMass < Mass/2
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
 	parent := simulation.NewAdultCreature(parentID, parentPos, genome, params)
-	parent.Energy = float32(parent.Mass) * params.EnergyPerMassUnit
+	parent.Energy = float32(parent.Mass) * params.Metabolism.EnergyCapacityPerMass
 
 	pop := simulation.NewPopulation(params)
 	pop.SetCreature(parentID, parent)

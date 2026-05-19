@@ -120,7 +120,7 @@ func TestGetFoodInRadius(t *testing.T) {
 
 func TestSpawnPlant(t *testing.T) {
 	w := world.NewWorld(200, 200, 0)
-	w.InitFountains(2)
+	w.InitFountains(2, 0)
 	w.SpawnPlant(10, 30.0, 10, 0.05)
 	if w.PlantCount() != 10 {
 		t.Errorf("SpawnPlant(10) should place exactly 10 items, got %d", w.PlantCount())
@@ -150,17 +150,16 @@ func TestFindEmptyLocation(t *testing.T) {
 	}
 }
 
-func TestIsWall_CrossWall(t *testing.T) {
+func TestIsWall_NoWallsByDefault(t *testing.T) {
 	w := world.NewWorld(200, 200, 1)
-	// Center of the world should be inside a wall segment.
+	// NewWorld currently initialises no walls regardless of wallType.
 	center := world.Position{X: 100, Y: 100}
-	if !w.IsWall(center) {
-		t.Error("center of cross-wall world should be a wall")
+	if w.IsWall(center) {
+		t.Error("no walls are initialised, center should not be a wall")
 	}
-	// Corner should be free.
 	corner := world.Position{X: 10, Y: 10}
 	if w.IsWall(corner) {
-		t.Error("corner should not be a wall")
+		t.Error("no walls are initialised, corner should not be a wall")
 	}
 }
 

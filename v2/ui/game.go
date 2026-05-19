@@ -15,31 +15,50 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
+// simRates are the allowed discrete simulation speed multipliers.
+var simRates = []int{1, 5, 25, 50, 100}
+
 // SimulationState is the interface the UI requires from the simulation.
 type SimulationState interface {
 	Update()
 	WorldWidth() float64
 	WorldHeight() float64
 	PopulationCount() int
-	PlantCount() int
-	PlantEnergy() float64
+	FoliageCount() int
+	FoliageEnergy() float64
+	FungiCount() int
+	FungiEnergy() float64
 	MeatEnergy() float64
 	AverageAge() float64
 	AverageGeneration() float64
-	CreatureMinMass() byte
-	CreatureMaxMass() float64
 	SaveCreature(id int, name string) error
 	Reset()
 	TotalEnergy() float64
 	TargetEnergy() float64
+	SetTargetEnergy(v float64)
 	CreatureDetail(id int) (simulation.CreatureDetailView, bool)
-	SetFoodRandomFraction(v float64)
-	SetFountainCount(n int)
-	SetMaxFood(n int)
-	SetFountainDriftSpeed(v float64)
-	SetFountainRadius(v float64)
-	SetColdMetabolicMultiplier(v float32)
+	SetFoliageProportion(v float64)
+	SetFungiProportion(v float64)
+	SetMeatProportion(v float64)
+	SetFoliageRandomFraction(v float64)
+	SetFungiRandomFraction(v float64)
+	SetMeatRandomFraction(v float64)
+	SetFoliageFountainCount(n int)
+	SetFungiFountainCount(n int)
+	SetMeatFountainCount(n int)
+	SetFoliageDriftSpeed(v float64)
+	SetFungiDriftSpeed(v float64)
+	SetMeatDriftSpeed(v float64)
+	SetFoliageRadius(v float64)
+	SetFungiRadius(v float64)
+	SetMeatRadius(v float64)
+	SetTempMin(v float32)
+	SetTempMax(v float32)
 	SetWarmMetabolicMultiplier(v float32)
+	SetColdSpeedMultiplier(v float32)
+	SetClusterEnabled(v bool)
+	SetClusterInterval(v int)
+	SetClusterSize(v int)
 	SpawnAt(x, y float64) bool
 	SpawnClusterAt(x, y float64, count int) bool
 	SpawnGenome(g *simulation.Genome, generation float32) bool
@@ -47,15 +66,20 @@ type SimulationState interface {
 	GetParams() *simulation.Parameters
 	GetSnapshot() simulation.StateSnapshot
 	FillSnapshot(dst *simulation.StateSnapshot)
+	SaveGame(name string) error
+	SaveGameTo(path string) error
+	LoadGame(path string) error
+	ListSavedGames() []simulation.SavedGame
 }
 
 const historyLen = 5000
 
 type histSample struct {
-	pop         int
-	plantEnergy float64
-	meatEnergy  float64
-	totalEnergy float64
+	pop           int
+	foliageEnergy float64
+	fungiEnergy   float64
+	meatEnergy    float64
+	totalEnergy   float64
 }
 
 // UnitSize is the pixel size of one simulation unit.
@@ -149,6 +173,11 @@ func (g *Game) Update() error {
 		} else {
 			g.genomeEditor.HandleRelease()
 		}
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight) {
+			g.genomeEditor.HandleRightDrag(mx, my)
+		} else {
+			g.genomeEditor.HandleRightRelease()
+		}
 	} else {
 		g.world.HandleContinuousInput(sliderDragging)
 		g.ui.HandleContinuousInput()
@@ -156,12 +185,17 @@ func (g *Game) Update() error {
 
 	// Mouse-down
 	mx, my := ebiten.CursorPosition()
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		if g.genomeEditor != nil && g.genomeEditor.visible {
-			g.genomeEditor.HandleInput(mx, my)
-			g.uiConsumedClick = true
-		} else if g.savedGenomesPanel != nil && g.savedGenomesPanel.visible {
+			g.genomeEditor.HandleRightClick(mx, my)
+		}
+	}
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if g.savedGenomesPanel != nil && g.savedGenomesPanel.visible {
 			g.savedGenomesPanel.HandleInput(mx, my)
+			g.uiConsumedClick = true
+		} else if g.genomeEditor != nil && g.genomeEditor.visible {
+			g.genomeEditor.HandleInput(mx, my)
 			g.uiConsumedClick = true
 		} else if g.ui.HandleClick(mx, my) {
 			g.uiConsumedClick = true
@@ -194,10 +228,10 @@ func (g *Game) Update() error {
 		g.spawnPlacing = false
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
-		g.simStepsPerTick++
+		g.simStepsPerTick = nextSimRate(g.simStepsPerTick, 1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) && g.simStepsPerTick > 1 {
-		g.simStepsPerTick--
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
+		g.simStepsPerTick = nextSimRate(g.simStepsPerTick, -1)
 	}
 
 	if !g.paused {
@@ -208,10 +242,11 @@ func (g *Game) Update() error {
 		g.sim.Update()
 
 		g.history[g.histHead] = histSample{
-			pop:         g.sim.PopulationCount(),
-			plantEnergy: g.sim.PlantEnergy(),
-			meatEnergy:  g.sim.MeatEnergy(),
-			totalEnergy: g.sim.TotalEnergy(),
+			pop:           g.sim.PopulationCount(),
+			foliageEnergy: g.sim.FoliageEnergy(),
+			fungiEnergy:   g.sim.FungiEnergy(),
+			meatEnergy:    g.sim.MeatEnergy(),
+			totalEnergy:   g.sim.TotalEnergy(),
 		}
 		g.histHead = (g.histHead + 1) % historyLen
 		if g.histCount < historyLen {
@@ -247,6 +282,23 @@ func drawText(dst *ebiten.Image, str string, face *textv2.GoXFace, x, y int, clr
 	op.GeoM.Translate(float64(x), float64(y))
 	op.ColorScale.ScaleWithColor(clr)
 	textv2.Draw(dst, str, face, op)
+}
+
+// nextSimRate returns the next allowed sim rate in the given direction (+1 or -1).
+// If current is not in simRates, it snaps to the nearest valid value.
+func nextSimRate(current, dir int) int {
+	for i, r := range simRates {
+		if r == current {
+			next := i + dir
+			if next < 0 {
+				next = 0
+			} else if next >= len(simRates) {
+				next = len(simRates) - 1
+			}
+			return simRates[next]
+		}
+	}
+	return simRates[0]
 }
 
 // clamp restricts v to [0, 1].
