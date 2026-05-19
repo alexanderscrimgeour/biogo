@@ -106,7 +106,7 @@ func (s *RangeSlider) HandleDrag(mx int) {
 	}
 }
 
-func (s *RangeSlider) Release()     { s.draggingLo = false; s.draggingHi = false }
+func (s *RangeSlider) Release()         { s.draggingLo = false; s.draggingHi = false }
 func (s *RangeSlider) IsDragging() bool { return s.draggingLo || s.draggingHi }
 
 func rsClamp01(t float64) float64 {

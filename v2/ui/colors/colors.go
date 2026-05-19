@@ -1,4 +1,4 @@
-package ui
+package colors
 
 import "image/color"
 
@@ -36,8 +36,8 @@ var (
 	// Specialised stat bars
 	ColorDopamineHigh = color.RGBA{216, 27, 96, 255}
 	ColorDopamineLow  = color.RGBA{48, 63, 159, 255}
-	ColorResponHigh   = color.RGBA{255, 180, 40, 255}
-	ColorResponLow    = color.RGBA{60, 60, 200, 255}
+	ColorResponseHigh = color.RGBA{255, 180, 40, 255}
+	ColorResponseLow  = color.RGBA{60, 60, 200, 255}
 
 	// Text / labels
 	ColorLabelPrimary   = color.RGBA{255, 220, 80, 255}
@@ -119,11 +119,32 @@ var (
 	ColorSaveFeedback = color.RGBA{100, 255, 120, 255}
 
 	// Climate dropdown
-	ColorClimateCool   = color.RGBA{120, 200, 255, 255}
-	ColorClimateHot    = color.RGBA{255, 120, 60, 255}
-	ColorClimateColdMp = color.RGBA{100, 180, 255, 255}
+	ColorClimateCool    = color.RGBA{120, 200, 255, 255}
+	ColorClimateHot     = color.RGBA{255, 120, 60, 255}
+	ColorClimateColdMp  = color.RGBA{100, 180, 255, 255}
 	ColorClimateWarmBMR = color.RGBA{255, 160, 60, 255}
 
 	// Spawn dropdown
 	ColorSpawnTitle = color.RGBA{180, 100, 255, 255}
+
+	// Button states
+	ColorDefault       = color.RGBA{120, 144, 156, 100}
+	ColorButtonPressed = color.RGBA{144, 164, 174, 100}
+	ColorButtonGreen   = color.RGBA{76, 175, 80, 100}
+	ColorButtonRed     = color.RGBA{244, 67, 54, 100}
+
+	// Slider
+	ColorSliderBG  = color.RGBA{30, 30, 50, 220}
+	ColorTrackBG   = color.RGBA{60, 60, 80, 255}
+	ColorTrackFill = color.RGBA{80, 140, 210, 255}
+
+	// Bars (energy, proportion)
+	ColorBarBG = color.RGBA{35, 35, 35, 255}
+
+	// GenomeBar
+	ColorGenomeBarBG      = color.RGBA{20, 20, 45, 200}
+	ColorGenomeBarFill    = color.RGBA{55, 160, 210, 220}
+	ColorGenomeBinAsexual = color.RGBA{200, 80, 30, 180}
+	ColorGenomeBinSexual  = color.RGBA{60, 110, 210, 180}
+	ColorGenomeBinDim     = color.RGBA{25, 25, 50, 160}
 )

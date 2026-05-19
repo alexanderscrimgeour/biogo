@@ -1,7 +1,8 @@
-package ui
+package views
 
 import (
 	"biogo/v2/simulation"
+	"biogo/v2/ui/colors"
 	"biogo/v2/ui/components"
 	"fmt"
 	"image/color"
@@ -16,14 +17,14 @@ import (
 // ── Panel geometry ────────────────────────────────────────────────────────────
 
 const (
-	gePanW  = 900
-	gePanH  = 780 // extra height accommodates the filter section below traits
-	geTitleH = 28
+	gePanW    = 900
+	gePanH    = 780 // extra height accommodates the filter section below traits
+	geTitleH  = 28
 	geFooterH = 80
-	gePad    = 10
+	gePad     = 10
 
 	geTraitW       = 240
-	geNNSectionX   = gePad + geTraitW + 16         // start of NN section within panel
+	geNNSectionX   = gePad + geTraitW + 16 // start of NN section within panel
 	geNNW          = gePanW - geNNSectionX - gePad
 	geNNSubtitleH  = 22
 	geNNControlH   = 72
@@ -208,7 +209,7 @@ type edgeMidPoint struct {
 
 // GenomeEditor is the full-screen modal panel for creating and editing genomes.
 type GenomeEditor struct {
-	visible bool
+	Visible bool
 	genome  *simulation.Genome
 	params  *simulation.Parameters
 	onSave  func(*simulation.Genome, string)
@@ -235,8 +236,8 @@ type GenomeEditor struct {
 	edgeMidPts []edgeMidPoint
 
 	// Sensor / action filter (which nodes to display in the NN graph)
-	sensorFilter      [simulation.SENSOR_COUNT]bool
-	actionFilter      [simulation.ACTION_COUNT]bool
+	sensorFilter       [simulation.SENSOR_COUNT]bool
+	actionFilter       [simulation.ACTION_COUNT]bool
 	filterSensorScroll int
 	// Bounds for filter checkboxes (populated each frame by drawFilterSection)
 	filterSensorBounds          [][4]float32 // visible sensor rows [x,y,w,h]
@@ -265,7 +266,7 @@ type GenomeEditor struct {
 	closeBtn     *components.Button
 	loadSavedBtn *components.Button
 
-	onLoadSaved func() // called when user clicks "Load Genome" button
+	OnLoadSaved func() // called when user clicks "Load Genome" button
 
 	font      *textv2.GoXFace
 	smallFont *textv2.GoXFace
@@ -273,7 +274,7 @@ type GenomeEditor struct {
 	draggingWeight bool
 }
 
-func newGenomeEditor(font, smallFont *textv2.GoXFace, onSave func(*simulation.Genome, string)) *GenomeEditor {
+func NewGenomeEditor(font, smallFont *textv2.GoXFace, onSave func(*simulation.Genome, string)) *GenomeEditor {
 	e := &GenomeEditor{
 		traitDefs:        makeTraitDefs(),
 		draggingTrait:    -1,
@@ -284,14 +285,14 @@ func newGenomeEditor(font, smallFont *textv2.GoXFace, onSave func(*simulation.Ge
 		font:             font,
 		smallFont:        smallFont,
 		neuronPos:        make(map[int][2]float32),
-		closeBtn:         &components.Button{W: 24, H: 22, Label: "×", Color: ColorBtnClose, LabelColor: color.White, Font: font},
-		cancelBtn:        &components.Button{W: 100, H: 26, Label: "Cancel", Color: ColorBtnCancel, LabelColor: color.White, Font: font},
-		saveBtn:          &components.Button{W: 130, H: 26, Label: "Save Genome", Color: ColorBtnSave, LabelColor: color.White, Font: font},
-		addNeuronBtn:     &components.Button{W: 32, H: 22, Label: "+N", Color: ColorBtnAddNeuron, LabelColor: color.White, Font: font},
-		remNeuronBtn:     &components.Button{W: 32, H: 22, Label: "-N", Color: ColorBtnRemNeuron, LabelColor: color.White, Font: font},
-		delNeuronBtn:     &components.Button{W: 76, H: 22, Label: "Del Neuron", Color: ColorBtnRemNeuron, LabelColor: color.White, Font: font},
-		delEdgeBtn:       &components.Button{W: 76, H: 22, Label: "Del Edge", Color: ColorBtnDelEdge, LabelColor: color.White, Font: font},
-		loadSavedBtn:     &components.Button{W: 130, H: 26, Label: "Load Genome", Color: ColorBtnEdit, LabelColor: color.White, Font: font},
+		closeBtn:         &components.Button{W: 24, H: 22, Label: "×", Color: colors.ColorBtnClose, LabelColor: color.White, Font: font},
+		cancelBtn:        &components.Button{W: 100, H: 26, Label: "Cancel", Color: colors.ColorBtnCancel, LabelColor: color.White, Font: font},
+		saveBtn:          &components.Button{W: 130, H: 26, Label: "Save Genome", Color: colors.ColorBtnSave, LabelColor: color.White, Font: font},
+		addNeuronBtn:     &components.Button{W: 32, H: 22, Label: "+N", Color: colors.ColorBtnAddNeuron, LabelColor: color.White, Font: font},
+		remNeuronBtn:     &components.Button{W: 32, H: 22, Label: "-N", Color: colors.ColorBtnRemNeuron, LabelColor: color.White, Font: font},
+		delNeuronBtn:     &components.Button{W: 76, H: 22, Label: "Del Neuron", Color: colors.ColorBtnRemNeuron, LabelColor: color.White, Font: font},
+		delEdgeBtn:       &components.Button{W: 76, H: 22, Label: "Del Edge", Color: colors.ColorBtnDelEdge, LabelColor: color.White, Font: font},
+		loadSavedBtn:     &components.Button{W: 130, H: 26, Label: "Load Genome", Color: colors.ColorBtnEdit, LabelColor: color.White, Font: font},
 	}
 	e.initFilters()
 	return e
@@ -326,22 +327,22 @@ func (e *GenomeEditor) Open(g *simulation.Genome, p *simulation.Parameters) {
 		e.genome = g.Copy()
 	} else {
 		e.genome = &simulation.Genome{
-			Brain:            make([]simulation.Gene, 0),
-			SynapticDensity:  0,
-			CognitiveBreadth: 0,
-			BodyMass:         byte(15),
-			SurvivalMass:     byte(10),
-			ReproductionType: 0,
-			MassSplitRatio:   127,
-			MetabolicRate:    127,
-			VisionRadius:     127,
-			FieldOfView:      127,
-			OscPeriod:        127,
-			JuvenilePeriod:   127,
-			MutationRate:     20,
-			Responsiveness:   127,
-			StomachSize:      127,
-			Neuroplasticity:  127,
+			Brain:             make([]simulation.Gene, 0),
+			SynapticDensity:   0,
+			CognitiveBreadth:  0,
+			BodyMass:          byte(15),
+			SurvivalMass:      byte(10),
+			ReproductionType:  0,
+			MassSplitRatio:    127,
+			MetabolicRate:     127,
+			VisionRadius:      127,
+			FieldOfView:       127,
+			OscPeriod:         127,
+			JuvenilePeriod:    127,
+			MutationRate:      20,
+			Responsiveness:    127,
+			StomachSize:       127,
+			Neuroplasticity:   127,
 			LearningThreshold: 127,
 		}
 	}
@@ -356,19 +357,19 @@ func (e *GenomeEditor) Open(g *simulation.Genome, p *simulation.Parameters) {
 	e.nameInputFocused = false
 	e.filterSensorScroll = 0
 	e.initFilters()
-	e.visible = true
+	e.Visible = true
 }
 
 // ── Input handling ────────────────────────────────────────────────────────────
 
 func (e *GenomeEditor) HandleInput(mx, my int) bool {
-	if !e.visible {
+	if !e.Visible {
 		return false
 	}
 	fx, fy := float32(mx), float32(my)
 
 	if e.closeBtn.IsClicked(mx, my) || e.cancelBtn.IsClicked(mx, my) {
-		e.visible = false
+		e.Visible = false
 		return true
 	}
 
@@ -377,13 +378,13 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 		if e.onSave != nil {
 			e.onSave(e.genome, e.name)
 		}
-		e.visible = false
+		e.Visible = false
 		return true
 	}
 
 	if e.loadSavedBtn.IsClicked(mx, my) {
-		if e.onLoadSaved != nil {
-			e.onLoadSaved()
+		if e.OnLoadSaved != nil {
+			e.OnLoadSaved()
 		}
 		return true
 	}
@@ -570,7 +571,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 }
 
 func (e *GenomeEditor) HandleKeyInput() {
-	if !e.visible || !e.nameInputFocused {
+	if !e.Visible || !e.nameInputFocused {
 		return
 	}
 	runes := ebiten.AppendInputChars([]rune(e.name))
@@ -585,7 +586,7 @@ func (e *GenomeEditor) HandleKeyInput() {
 }
 
 func (e *GenomeEditor) HandleDrag(mx, my int) {
-	if !e.visible {
+	if !e.Visible {
 		return
 	}
 	if e.draggingTrait >= 0 {
@@ -602,7 +603,7 @@ func (e *GenomeEditor) HandleRelease() {
 }
 
 func (e *GenomeEditor) HandleRightClick(mx, my int) bool {
-	if !e.visible {
+	if !e.Visible {
 		return false
 	}
 	fx, fy := float32(mx), float32(my)
@@ -622,7 +623,7 @@ func (e *GenomeEditor) HandleRightClick(mx, my int) bool {
 }
 
 func (e *GenomeEditor) HandleRightDrag(mx, my int) {
-	if !e.visible || e.draggingNeuronID < 0 {
+	if !e.Visible || e.draggingNeuronID < 0 {
 		return
 	}
 	e.neuronPos[e.draggingNeuronID] = [2]float32{
@@ -722,7 +723,7 @@ func (e *GenomeEditor) applyWeightDrag(mx int) {
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
 func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
-	if !e.visible {
+	if !e.Visible {
 		return
 	}
 
@@ -731,15 +732,15 @@ func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	e.panY = float32(sh/2 - gePanH/2)
 	px, py := e.panX, e.panY
 
-	vector.FillRect(screen, px, py, gePanW, gePanH, ColorModalBG, false)
-	vector.StrokeRect(screen, px, py, gePanW, gePanH, 2, ColorModalBorder, false)
+	vector.FillRect(screen, px, py, gePanW, gePanH, colors.ColorModalBG, false)
+	vector.StrokeRect(screen, px, py, gePanW, gePanH, 2, colors.ColorModalBorder, false)
 
-	vector.FillRect(screen, px, py, gePanW, geTitleH, ColorModalTitleBar, false)
+	vector.FillRect(screen, px, py, gePanW, geTitleH, colors.ColorModalTitleBar, false)
 
 	m := fnt.Metrics()
 	glyphH := float32(m.HAscent + m.HDescent)
 	titleY := int(py) + int((geTitleH-glyphH)/2)
-	drawText(screen, "GENOME EDITOR", fnt, int(px)+gePad, titleY, ColorModalTitle)
+	drawText(screen, "GENOME EDITOR", fnt, int(px)+gePad, titleY, colors.ColorModalTitle)
 
 	cbx := px + gePanW - 28
 	cby := py + 3
@@ -747,7 +748,7 @@ func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 
 	// Vertical separator between traits/filter and NN section
 	sepX := px + geNNSectionX - 8
-	vector.FillRect(screen, sepX, py+geTitleH, 2, gePanH-geTitleH-geFooterH, ColorSeparator, false)
+	vector.FillRect(screen, sepX, py+geTitleH, 2, gePanH-geTitleH-geFooterH, colors.ColorSeparator, false)
 
 	e.drawTraits(screen, fnt)
 	e.drawFilterSection(screen)
@@ -755,7 +756,7 @@ func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 
 	// Footer
 	footerY := py + gePanH - geFooterH
-	vector.FillRect(screen, px, footerY, gePanW, geFooterH, ColorFooterBG, false)
+	vector.FillRect(screen, px, footerY, gePanW, geFooterH, colors.ColorFooterBG, false)
 
 	// Row 1 — Name input (use font metrics for vertical centering)
 	nameLabelX := px + gePad
@@ -766,13 +767,13 @@ func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	e.nameInputBounds = [4]float32{nameInputX, nameInputY, nameInputW, nameInputH}
 
 	labelTextY := int(nameInputY) + int((nameInputH-glyphH)/2)
-	drawText(screen, "Name:", fnt, int(nameLabelX), labelTextY, ColorLabelSecondary)
+	drawText(screen, "Name:", fnt, int(nameLabelX), labelTextY, colors.ColorLabelSecondary)
 
-	borderClr := ColorInputBorder
+	borderClr := colors.ColorInputBorder
 	if e.nameInputFocused {
-		borderClr = ColorInputBorderFocused
+		borderClr = colors.ColorInputBorderFocused
 	}
-	vector.FillRect(screen, nameInputX, nameInputY, nameInputW, nameInputH, ColorInputBG, false)
+	vector.FillRect(screen, nameInputX, nameInputY, nameInputW, nameInputH, colors.ColorInputBG, false)
 	vector.StrokeRect(screen, nameInputX, nameInputY, nameInputW, nameInputH, 1, borderClr, false)
 
 	displayName := e.name
@@ -783,7 +784,7 @@ func (e *GenomeEditor) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	}
 	var nameClr color.Color = color.White
 	if e.name == "" && !e.nameInputFocused {
-		nameClr = ColorInputPlaceholder
+		nameClr = colors.ColorInputPlaceholder
 	}
 	inputTextY := int(nameInputY) + int((nameInputH-glyphH)/2)
 	drawText(screen, displayName, fnt, int(nameInputX)+6, inputTextY, nameClr)
@@ -808,7 +809,7 @@ func (e *GenomeEditor) drawTraits(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	glyphH := float32(m.HAscent + m.HDescent)
 
 	sectionLabelY := int(secY) + int((float32(geTraitRowH)-glyphH)/2)
-	drawText(screen, "TRAITS", fnt, int(secX), sectionLabelY, ColorLabelMuted)
+	drawText(screen, "TRAITS", fnt, int(secX), sectionLabelY, colors.ColorLabelMuted)
 
 	e.traitSlots = e.traitSlots[:0]
 	rowY := secY + float32(geTraitRowH)
@@ -817,7 +818,7 @@ func (e *GenomeEditor) drawTraits(screen *ebiten.Image, fnt *textv2.GoXFace) {
 		ry := rowY + float32(i)*float32(geTraitRowH)
 		// Vertically centre the label text within the row height.
 		textY := int(ry) + int((float32(geTraitRowH)-glyphH)/2)
-		drawText(screen, td.label, fnt, int(secX), textY, ColorLabelSecondary)
+		drawText(screen, td.label, fnt, int(secX), textY, colors.ColorLabelSecondary)
 
 		trackX := secX + geTraitTrackX0
 		trackY := ry + (float32(geTraitRowH)-6)/2 // centre 6px track within row
@@ -826,10 +827,10 @@ func (e *GenomeEditor) drawTraits(screen *ebiten.Image, fnt *textv2.GoXFace) {
 		if td.isToggle {
 			cur := td.get(e.genome)
 			lbl := "Asexual"
-			btnClr := ColorBtnAsexual
+			btnClr := colors.ColorBtnAsexual
 			if cur == 1 {
 				lbl = "Sexual"
-				btnClr = ColorBtnSexual
+				btnClr = colors.ColorBtnSexual
 			}
 			toggleH := float32(geTraitRowH) - 4
 			vector.FillRect(screen, trackX, ry+2, geTraitTrackW+44, toggleH, btnClr, false)
@@ -858,12 +859,12 @@ func (e *GenomeEditor) drawTraits(screen *ebiten.Image, fnt *textv2.GoXFace) {
 			}
 		}
 
-		vector.FillRect(screen, trackX, trackY, geTraitTrackW, 6, ColorTraitTrackBG, false)
-		vector.FillRect(screen, trackX, trackY, float32(geTraitTrackW)*t, 6, ColorTraitTrackFill, false)
+		vector.FillRect(screen, trackX, trackY, geTraitTrackW, 6, colors.ColorTraitTrackBG, false)
+		vector.FillRect(screen, trackX, trackY, float32(geTraitTrackW)*t, 6, colors.ColorTraitTrackFill, false)
 		knobX := trackX + float32(geTraitTrackW)*t - 3
-		vector.FillRect(screen, knobX, trackY-2, 6, 10, ColorTraitKnob, false)
+		vector.FillRect(screen, knobX, trackY-2, 6, 10, colors.ColorTraitKnob, false)
 		valTextY := int(ry) + int((float32(geTraitRowH)-glyphH)/2)
-		drawText(screen, fmt.Sprintf("%d", byte(cur)), fnt, int(trackX)+geTraitTrackW+6, valTextY, ColorTraitValue)
+		drawText(screen, fmt.Sprintf("%d", byte(cur)), fnt, int(trackX)+geTraitTrackW+6, valTextY, colors.ColorTraitValue)
 	}
 }
 
@@ -883,11 +884,11 @@ func (e *GenomeEditor) drawFilterSection(screen *ebiten.Image) {
 	glyphH := float32(m.HAscent + m.HDescent)
 
 	// Section header
-	drawText(screen, "FILTER NODES", fnt, int(secX), int(secY), ColorLabelMuted)
+	drawText(screen, "FILTER NODES", fnt, int(secX), int(secY), colors.ColorLabelMuted)
 	secY += glyphH + 4
 
 	// Separator line
-	vector.FillRect(screen, secX, secY, float32(geTraitW-gePad), 1, ColorSeparator, false)
+	vector.FillRect(screen, secX, secY, float32(geTraitW-gePad), 1, colors.ColorSeparator, false)
 	secY += 3
 
 	colW := float32(geTraitW-gePad) / 2 // half for sensors, half for actions
@@ -895,8 +896,8 @@ func (e *GenomeEditor) drawFilterSection(screen *ebiten.Image) {
 	actX := secX + colW + 2
 
 	// Sub-headers
-	drawText(screen, "Sensors", fnt, int(sensX), int(secY), ColorSensorHdr)
-	drawText(screen, "Actions", fnt, int(actX), int(secY), ColorActionHdr)
+	drawText(screen, "Sensors", fnt, int(sensX), int(secY), colors.ColorSensorHdr)
+	drawText(screen, "Actions", fnt, int(actX), int(secY), colors.ColorActionHdr)
 	secY += glyphH + 2
 
 	// Scroll buttons for sensors (above the list)
@@ -906,13 +907,13 @@ func (e *GenomeEditor) drawFilterSection(screen *ebiten.Image) {
 	e.filterSensorUp = upBtnBounds
 	e.filterSensorDown = downBtnBounds
 
-	upClr := ColorArrowDisabled
+	upClr := colors.ColorArrowDisabled
 	if e.filterSensorScroll > 0 {
-		upClr = ColorArrowEnabled
+		upClr = colors.ColorArrowEnabled
 	}
-	downClr := ColorArrowDisabled
+	downClr := colors.ColorArrowDisabled
 	if e.filterSensorScroll < int(simulation.SENSOR_COUNT)-geFilterMaxSens {
-		downClr = ColorArrowEnabled
+		downClr = colors.ColorArrowEnabled
 	}
 	vector.FillRect(screen, upBtnBounds[0], upBtnBounds[1], upBtnBounds[2], upBtnBounds[3], upClr, false)
 	drawText(screen, "▲", fnt, int(upBtnBounds[0])+2, int(upBtnBounds[1]), color.White)
@@ -921,13 +922,13 @@ func (e *GenomeEditor) drawFilterSection(screen *ebiten.Image) {
 
 	// Toggle-all buttons
 	toggleAllSX := sensX + btnSz*2 + 6
-	vector.FillRect(screen, toggleAllSX, secY, 30, btnSz, ColorArrowEnabled, false)
+	vector.FillRect(screen, toggleAllSX, secY, 30, btnSz, colors.ColorArrowEnabled, false)
 	drawText(screen, "All", fnt, int(toggleAllSX)+4, int(secY), color.White)
 	e.filterSensorToggleAllBounds = [4]float32{toggleAllSX, secY, 30, btnSz}
 	e.filterSensorBounds = e.filterSensorBounds[:0]
 
 	toggleAllAX := actX
-	vector.FillRect(screen, toggleAllAX, secY, 30, btnSz, ColorArrowEnabled, false)
+	vector.FillRect(screen, toggleAllAX, secY, 30, btnSz, colors.ColorArrowEnabled, false)
 	drawText(screen, "All", fnt, int(toggleAllAX)+4, int(secY), color.White)
 	e.filterActionToggleAllBounds = [4]float32{toggleAllAX, secY, 30, btnSz}
 	e.filterActionBounds = e.filterActionBounds[:0]
@@ -995,7 +996,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	m := fnt.Metrics()
 	glyphH := float32(m.HAscent + m.HDescent)
 
-	drawText(screen, "NEURAL NETWORK", fnt, int(nnX), int(nnY)+int((float32(geNNSubtitleH)-glyphH)/2), ColorLabelMuted)
+	drawText(screen, "NEURAL NETWORK", fnt, int(nnX), int(nnY)+int((float32(geNNSubtitleH)-glyphH)/2), colors.ColorLabelMuted)
 
 	nodeAreaY := nnY + geNNSubtitleH + gePad
 	ctrlY := py + gePanH - geFooterH - gePad - geNNControlH
@@ -1137,7 +1138,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 		isSelected := gi == e.selEdgeIdx
 		ec := geEdgeColor(gene.WeightAsFloat32())
 		if isSelected {
-			ec = ColorNodeSelect
+			ec = colors.ColorNodeSelect
 			ec.A = 230
 		}
 
@@ -1151,7 +1152,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 			e.edgeMidPts = append(e.edgeMidPts, edgeMidPoint{cx: midX, cy: midY, geneIdx: gi})
 			dotClr := ec
 			if isSelected {
-				dotClr = ColorNodeSelect
+				dotClr = colors.ColorNodeSelect
 			}
 			vector.FillCircle(screen, midX, midY, geEdgeMidR, dotClr, false)
 			continue
@@ -1161,7 +1162,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 		midX, midY := (srcX+dstX)/2, (srcY+dstY)/2
 		dotClr := ec
 		if isSelected {
-			dotClr = ColorNodeSelect
+			dotClr = colors.ColorNodeSelect
 		}
 		vector.FillCircle(screen, midX, midY, geEdgeMidR, dotClr, false)
 		e.edgeMidPts = append(e.edgeMidPts, edgeMidPoint{cx: midX, cy: midY, geneIdx: gi})
@@ -1182,16 +1183,16 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 				srcX, srcY = nX[ni], nYFinal[ni]
 			}
 		}
-		vector.StrokeLine(screen, srcX, srcY, float32(cmx), float32(cmy), 1.5, ColorPendingLine, false)
+		vector.StrokeLine(screen, srcX, srcY, float32(cmx), float32(cmy), 1.5, colors.ColorPendingLine, false)
 	}
 
 	// ── Nodes ─────────────────────────────────────────────────────────────────
 	e.nodeHits = e.nodeHits[:0]
 
 	// Column headers
-	drawText(screen, "Sensors", fnt, int(sAbsX)-32, int(nodeAreaY)-6, ColorSensorHdr)
-	drawText(screen, "Neurons", fnt, int(nAbsX)-26, int(nodeAreaY)-6, ColorNeuronHdr)
-	drawText(screen, "Actions", fnt, int(aAbsX)-10, int(nodeAreaY)-6, ColorActionHdr)
+	drawText(screen, "Sensors", fnt, int(sAbsX)-32, int(nodeAreaY)-6, colors.ColorSensorHdr)
+	drawText(screen, "Neurons", fnt, int(nAbsX)-26, int(nodeAreaY)-6, colors.ColorNeuronHdr)
+	drawText(screen, "Actions", fnt, int(aAbsX)-10, int(nodeAreaY)-6, colors.ColorActionHdr)
 
 	// Max label width for sensor labels (must not go left of nnX)
 	maxSensorLabelW := sAbsX - nnX - 10
@@ -1199,9 +1200,9 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	// Sensor nodes
 	for i, sid := range visibleSensors {
 		sy := sY[i]
-		clr := ColorSensorNode
+		clr := colors.ColorSensorNode
 		if e.pendingSrc != nil && e.pendingSrc.typ == simulation.SENSOR && int(e.pendingSrc.id) == sid {
-			clr = ColorNodeSelect
+			clr = colors.ColorNodeSelect
 		}
 		vector.FillCircle(screen, sAbsX, sy, geNodeR, clr, false)
 
@@ -1209,7 +1210,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 		tw, _ := textv2.Measure(lbl, fnt, 0)
 		tx := int(sAbsX - float32(tw) - 7)
 		ty := int(sy - glyphH/2)
-		drawText(screen, lbl, fnt, tx, ty, ColorSensorLabel)
+		drawText(screen, lbl, fnt, tx, ty, colors.ColorSensorLabel)
 		e.nodeHits = append(e.nodeHits, geNodeHit{cx: sAbsX, cy: sy, typ: simulation.SENSOR, id: byte(sid)})
 	}
 
@@ -1230,12 +1231,12 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 			ny = ctrlY - 10
 		}
 
-		clr := ColorNeuronNode
+		clr := colors.ColorNeuronNode
 		if e.pendingSrc != nil && e.pendingSrc.typ == simulation.NEURON && effN(e.pendingSrc.id) == i {
-			clr = ColorNodeSelect
+			clr = colors.ColorNodeSelect
 		}
 		if e.draggingNeuronID == i {
-			clr = ColorNodeSelect
+			clr = colors.ColorNodeSelect
 		}
 		vector.FillCircle(screen, nx, ny, geNodeR+1, clr, false)
 
@@ -1247,7 +1248,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 			lblX = nx - float32(tw) - geNodeR - 3
 		}
 		ty := int(ny - glyphH/2)
-		drawText(screen, lbl, fnt, int(lblX), ty, ColorNeuronLabel)
+		drawText(screen, lbl, fnt, int(lblX), ty, colors.ColorNeuronLabel)
 		e.nodeHits = append(e.nodeHits, geNodeHit{cx: nx, cy: ny, typ: simulation.NEURON, id: byte(i)})
 	}
 
@@ -1255,17 +1256,17 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	maxActionLabelW := nnRight - aAbsX - 10
 	for i, aid := range visibleActions {
 		ay := aY[i]
-		vector.FillCircle(screen, aAbsX, ay, geNodeR, ColorActionNode, false)
+		vector.FillCircle(screen, aAbsX, ay, geNodeR, colors.ColorActionNode, false)
 
 		lbl := geTruncate(nnActionName(byte(aid)), maxActionLabelW, fnt)
 		ty := int(ay - glyphH/2)
-		drawText(screen, lbl, fnt, int(aAbsX)+9, ty, ColorActionLabel)
+		drawText(screen, lbl, fnt, int(aAbsX)+9, ty, colors.ColorActionLabel)
 		e.nodeHits = append(e.nodeHits, geNodeHit{cx: aAbsX, cy: ay, typ: simulation.ACTION, id: byte(aid)})
 	}
 
 	// ── Controls strip ────────────────────────────────────────────────────────
-	vector.FillRect(screen, nnX, ctrlY, geNNW, geNNControlH, ColorCtrlStripBG, false)
-	vector.StrokeRect(screen, nnX, ctrlY, geNNW, geNNControlH, 1, ColorCtrlStripBorder, false)
+	vector.FillRect(screen, nnX, ctrlY, geNNW, geNNControlH, colors.ColorCtrlStripBG, false)
+	vector.StrokeRect(screen, nnX, ctrlY, geNNW, geNNControlH, 1, colors.ColorCtrlStripBorder, false)
 
 	bnx := nnX + gePad
 	bny := ctrlY + gePad
@@ -1274,7 +1275,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 
 	neuronInfo := fmt.Sprintf("Neurons: %d/%d  (drag to reposition)", e.genome.CognitiveBreadth, e.params.Neurology.MaxSynapticDensity)
 	neuronInfoY := int(bny) + int((22-glyphH)/2)
-	drawText(screen, neuronInfo, fnt, int(bnx)+74, neuronInfoY, ColorWeightLabel)
+	drawText(screen, neuronInfo, fnt, int(bnx)+74, neuronInfoY, colors.ColorWeightLabel)
 
 	rightBtnX := nnX + geNNW - float32(e.delEdgeBtn.W) - gePad
 	if e.selNeuronID >= 0 && e.selEdgeIdx >= 0 {
@@ -1293,25 +1294,25 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 
 		labelEndX := nnX + gePad + 54
 		wtLblY := int(row2Y) + int((22-glyphH)/2)
-		drawText(screen, "Weight:", fnt, int(nnX)+gePad, wtLblY, ColorWeightLabel)
+		drawText(screen, "Weight:", fnt, int(nnX)+gePad, wtLblY, colors.ColorWeightLabel)
 
 		trkW := float32(geNNW) - (labelEndX - nnX) - 54
 		e.wtTrackX = labelEndX
 		e.wtTrackY = row2Y + 4
 		e.wtTrackW = trkW
 
-		vector.FillRect(screen, e.wtTrackX, e.wtTrackY, e.wtTrackW, 6, ColorTraitTrackBG, false)
+		vector.FillRect(screen, e.wtTrackX, e.wtTrackY, e.wtTrackW, 6, colors.ColorTraitTrackBG, false)
 		tFrac := (w + 1.0) / 2.0
-		fillClr := ColorWeightPos
+		fillClr := colors.ColorWeightPos
 		if w < 0 {
-			fillClr = ColorWeightNeg
+			fillClr = colors.ColorWeightNeg
 		}
 		vector.FillRect(screen, e.wtTrackX, e.wtTrackY, e.wtTrackW*tFrac, 6, fillClr, false)
 		knobX := e.wtTrackX + e.wtTrackW*tFrac - 3
-		vector.FillRect(screen, knobX, e.wtTrackY-2, 6, 10, ColorWeightKnob, false)
+		vector.FillRect(screen, knobX, e.wtTrackY-2, 6, 10, colors.ColorWeightKnob, false)
 		valY := int(row2Y) + int((22-glyphH)/2)
 		drawText(screen, fmt.Sprintf("%.2f", w), fnt,
-			int(e.wtTrackX+e.wtTrackW)+6, valY, ColorWeightLabel)
+			int(e.wtTrackX+e.wtTrackW)+6, valY, colors.ColorWeightLabel)
 	} else if e.pendingSrc != nil {
 		var srcDesc string
 		switch e.pendingSrc.typ {
@@ -1322,11 +1323,11 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 		}
 		hintY := int(row2Y) + int((22-glyphH)/2)
 		drawText(screen, "Click target to connect from "+srcDesc,
-			fnt, int(nnX)+gePad, hintY, ColorPendingHint)
+			fnt, int(nnX)+gePad, hintY, colors.ColorPendingHint)
 	} else {
 		hintY := int(row2Y) + int((22-glyphH)/2)
 		drawText(screen, "Left-click node to connect  |  Click edge dot to select  |  Right-click neuron to move",
-			fnt, int(nnX)+gePad, hintY, ColorHintMuted)
+			fnt, int(nnX)+gePad, hintY, colors.ColorHintMuted)
 	}
 }
 

@@ -644,17 +644,17 @@ func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled =
 func (s *Simulation) SetClusterInterval(v int) { s.Params.Spawn.ClusterInterval = v }
 func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v }
 
-func (s *Simulation) SetFoliageProportion(v float64) { s.Params.Food.FoliageProportion = v }
-func (s *Simulation) SetFungiProportion(v float64)   { s.Params.Food.FungiProportion = v }
-func (s *Simulation) SetMeatProportion(v float64)    { s.Params.Food.MeatProportion = v }
+func (s *Simulation) SetFoliageProportion(v float64)     { s.Params.Food.FoliageProportion = v }
+func (s *Simulation) SetFungiProportion(v float64)       { s.Params.Food.FungiProportion = v }
+func (s *Simulation) SetMeatProportion(v float64)        { s.Params.Food.MeatProportion = v }
 func (s *Simulation) SetFoliageRandomFraction(v float64) { s.Params.Food.Foliage.RandomFraction = v }
-func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.Fungi.RandomFraction = v }
-func (s *Simulation) SetMeatRandomFraction(v float64)    { s.Params.Food.Meat.RandomFraction = v }
 func (s *Simulation) SetFoliageDriftSpeed(v float64)     { s.Params.Food.Foliage.DriftSpeed = v }
-func (s *Simulation) SetMeatDriftSpeed(v float64)        { s.Params.Food.Meat.DriftSpeed = v }
-func (s *Simulation) SetFungiDriftSpeed(v float64)       { s.Params.Food.Fungi.DriftSpeed = v }
 func (s *Simulation) SetFoliageRadius(v float64)         { s.Params.Food.Foliage.Radius = v }
+func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.Fungi.RandomFraction = v }
+func (s *Simulation) SetFungiDriftSpeed(v float64)       { s.Params.Food.Fungi.DriftSpeed = v }
 func (s *Simulation) SetFungiRadius(v float64)           { s.Params.Food.Fungi.Radius = v }
+func (s *Simulation) SetMeatRandomFraction(v float64)    { s.Params.Food.Meat.RandomFraction = v }
+func (s *Simulation) SetMeatDriftSpeed(v float64)        { s.Params.Food.Meat.DriftSpeed = v }
 func (s *Simulation) SetMeatRadius(v float64)            { s.Params.Food.Meat.Radius = v }
 func (s *Simulation) SetWarmMetabolicMultiplier(v float32) {
 	s.Params.Environment.WarmMetabolicMultiplier = v

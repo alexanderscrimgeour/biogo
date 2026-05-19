@@ -287,7 +287,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params) * float32(instruction.Level)
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.VisionRadius+c.Radius, c.SightCreatureBuffer)
+		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius + params.Creature.AttackRadius, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		var closestPreyDistSq float32 = math.MaxFloat32

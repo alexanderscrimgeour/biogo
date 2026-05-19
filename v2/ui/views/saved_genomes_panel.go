@@ -1,7 +1,8 @@
-package ui
+package views
 
 import (
 	"biogo/v2/simulation"
+	"biogo/v2/ui/colors"
 	"fmt"
 	"image/color"
 
@@ -22,7 +23,7 @@ const (
 
 // SavedGenomesPanel is a modal list of persisted genomes the user can spawn or load.
 type SavedGenomesPanel struct {
-	visible  bool
+	Visible  bool
 	genomes  []simulation.NamedGenome
 	scroll   int // index of the first visible row
 	onSpawn  func(*simulation.Genome, float32)
@@ -37,7 +38,7 @@ type SavedGenomesPanel struct {
 	downBtn    [4]float32
 }
 
-func newSavedGenomesPanel(onSpawn func(*simulation.Genome, float32)) *SavedGenomesPanel {
+func NewSavedGenomesPanel(onSpawn func(*simulation.Genome, float32)) *SavedGenomesPanel {
 	return &SavedGenomesPanel{onSpawn: onSpawn}
 }
 
@@ -48,7 +49,7 @@ func (p *SavedGenomesPanel) Open() {
 	p.scroll = 0
 	p.loadMode = false
 	p.loadCb = nil
-	p.visible = true
+	p.Visible = true
 }
 
 // OpenForLoad opens the panel with a custom callback instead of spawning.
@@ -58,12 +59,12 @@ func (p *SavedGenomesPanel) OpenForLoad(cb func(*simulation.Genome, float32)) {
 	p.scroll = 0
 	p.loadMode = true
 	p.loadCb = cb
-	p.visible = true
+	p.Visible = true
 }
 
 // Scroll moves the list by delta rows (negative = up, positive = down).
 func (p *SavedGenomesPanel) Scroll(delta int) {
-	if !p.visible {
+	if !p.Visible {
 		return
 	}
 	p.scroll -= delta
@@ -85,13 +86,13 @@ func (p *SavedGenomesPanel) clampScroll() {
 
 // HandleInput processes a click. Returns true if consumed.
 func (p *SavedGenomesPanel) HandleInput(mx, my int) bool {
-	if !p.visible {
+	if !p.Visible {
 		return false
 	}
 	fx, fy := float32(mx), float32(my)
 
 	if inGeRect(fx, fy, p.closeBtn) {
-		p.visible = false
+		p.Visible = false
 		return true
 	}
 	if inGeRect(fx, fy, p.upBtn) {
@@ -123,7 +124,7 @@ func (p *SavedGenomesPanel) HandleInput(mx, my int) bool {
 
 // Draw renders the panel centred on screen.
 func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
-	if !p.visible {
+	if !p.Visible {
 		return
 	}
 
@@ -139,22 +140,22 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	// vertCenter returns the y-offset that visually centres a single line of text within boxH.
 	vertCenter := func(boxH float32) int { return int((boxH - glyphH) / 2) }
 
-	vector.FillRect(screen, px, py, sgPanW, sgPanH, ColorModalBG, false)
-	vector.StrokeRect(screen, px, py, sgPanW, sgPanH, 2, ColorModalBorder, false)
+	vector.FillRect(screen, px, py, sgPanW, sgPanH, colors.ColorModalBG, false)
+	vector.StrokeRect(screen, px, py, sgPanW, sgPanH, 2, colors.ColorModalBorder, false)
 
 	// Title bar
-	vector.FillRect(screen, px, py, sgPanW, sgTitleH, ColorModalTitleBar, false)
+	vector.FillRect(screen, px, py, sgPanW, sgTitleH, colors.ColorModalTitleBar, false)
 	title := "SAVED GENOMES"
 	if p.loadMode {
 		title = "SAVED GENOMES — select to load into editor"
 	}
-	drawText(screen, title, fnt, int(px)+sgPad, int(py)+vertCenter(sgTitleH), ColorModalTitle)
+	drawText(screen, title, fnt, int(px)+sgPad, int(py)+vertCenter(sgTitleH), colors.ColorModalTitle)
 
 	const closeBtnW = float32(24)
 	cbx := px + sgPanW - closeBtnW - 4
 	cby := py + (sgTitleH-btnH)/2
 	p.closeBtn = [4]float32{cbx, cby, closeBtnW, btnH}
-	vector.FillRect(screen, cbx, cby, closeBtnW, btnH, ColorBtnClose, false)
+	vector.FillRect(screen, cbx, cby, closeBtnW, btnH, colors.ColorBtnClose, false)
 	drawText(screen, "×", fnt, int(cbx)+6, int(cby)+vertCenter(btnH), color.White)
 
 	// Scroll arrows
@@ -163,13 +164,13 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 	p.upBtn = [4]float32{upBtnX, arrowY, btnH, btnH}
 	p.downBtn = [4]float32{upBtnX + btnH + 4, arrowY, btnH, btnH}
 
-	upClr := ColorArrowDisabled
+	upClr := colors.ColorArrowDisabled
 	if p.scroll > 0 {
-		upClr = ColorArrowEnabled
+		upClr = colors.ColorArrowEnabled
 	}
-	downClr := ColorArrowDisabled
+	downClr := colors.ColorArrowDisabled
 	if p.scroll < len(p.genomes)-sgMaxRows {
-		downClr = ColorArrowEnabled
+		downClr = colors.ColorArrowEnabled
 	}
 	vector.FillRect(screen, p.upBtn[0], p.upBtn[1], p.upBtn[2], p.upBtn[3], upClr, false)
 	drawText(screen, "▲", fnt, int(upBtnX)+4, int(arrowY)+vertCenter(btnH), color.White)
@@ -181,7 +182,7 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 
 	if len(p.genomes) == 0 {
 		drawText(screen, "No saved genomes found in data/creatures/",
-			fnt, int(px)+sgPad, int(listY)+sgPad, ColorSavedSummary)
+			fnt, int(px)+sgPad, int(listY)+sgPad, colors.ColorSavedSummary)
 		p.rowBounds = p.rowBounds[:0]
 		return
 	}
@@ -219,29 +220,29 @@ func (p *SavedGenomesPanel) Draw(screen *ebiten.Image, fnt *textv2.GoXFace) {
 		spawnBtnX := px + sgPanW - sgPad - sgBtnW
 		rowBg := color.RGBA{0, 0, 0, 0}
 		if cfx >= px+sgPad && cfx <= spawnBtnX-4 && cfy >= rowY && cfy <= rowY+sgRowH-2 {
-			rowBg = ColorSavedRowHover
+			rowBg = colors.ColorSavedRowHover
 		}
 		if rowBg.A > 0 {
 			vector.FillRect(screen, px+sgPad, rowY, spawnBtnX-px-sgPad*2, sgRowH-2, rowBg, false)
 		}
 
 		// Row separator
-		vector.FillRect(screen, px+sgPad, rowY+sgRowH-1, float32(sgPanW)-sgPad*2, 1, ColorSavedRowSep, false)
+		vector.FillRect(screen, px+sgPad, rowY+sgRowH-1, float32(sgPanW)-sgPad*2, 1, colors.ColorSavedRowSep, false)
 
 		// Name + summary, two-line block centred in row
-		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+line1Off, ColorSavedName)
+		drawText(screen, ng.Name, fnt, int(px)+sgPad+4, int(rowY)+line1Off, colors.ColorSavedName)
 		summary := fmt.Sprintf("Mass %d  Neurons %d  Genes %d  Gen %.1f",
 			ng.Genome.BodyMass, ng.Genome.CognitiveBreadth, len(ng.Genome.Brain), ng.Generation)
-		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+line2Off, ColorSavedSummary)
+		drawText(screen, summary, fnt, int(px)+sgPad+4, int(rowY)+line2Off, colors.ColorSavedSummary)
 
 		// Action button
 		sbx := spawnBtnX
 		sby := rowY + (sgRowH-btnH)/2
 		p.rowBounds = append(p.rowBounds, [4]float32{sbx, sby, sgBtnW, btnH})
-		vector.FillRect(screen, sbx, sby, sgBtnW, btnH, ColorBtnSave, false)
+		vector.FillRect(screen, sbx, sby, sgBtnW, btnH, colors.ColorBtnSave, false)
 		drawText(screen, actionLabel, fnt, int(sbx)+8, int(sby)+vertCenter(btnH), color.White)
 	}
 
 	drawText(screen, fmt.Sprintf("%d / %d", p.scroll+1, total), fnt,
-		int(px)+sgPad, int(arrowY)+vertCenter(btnH), ColorScrollCount)
+		int(px)+sgPad, int(arrowY)+vertCenter(btnH), colors.ColorScrollCount)
 }

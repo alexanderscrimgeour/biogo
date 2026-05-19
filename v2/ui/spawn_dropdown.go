@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"biogo/v2/ui/colors"
 	"biogo/v2/ui/components"
 	"fmt"
 	"image/color"
@@ -11,24 +12,24 @@ import (
 
 const spawnPanelW = float32(300)
 
-func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState, onSpawnSaved func()) *Dropdown {
+func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState, onSpawnSaved func()) *components.Dropdown {
 	p := sim.GetParams()
 	sw := spawnPanelW - ddPad*2
 	trackOff := float32(155)
 	trackW := sw - trackOff
 	sliderH := float32(24)
 
-	d := newDropdown(font, trigger, "Cluster Spawn", ColorSpawnTitle, spawnPanelW)
+	d := components.NewDropdown(font, trigger, "Cluster Spawn", colors.ColorSpawnTitle, spawnPanelW)
 
 	spawnSavedBtn := &components.Button{
 		W: sw, H: 26,
 		Label:      "Spawn Saved Genome",
-		Color:      components.ColorDefault,
+		Color:      colors.ColorDefault,
 		LabelColor: color.White,
 		Font:       font,
 	}
 	spawnSavedBtn.OnClick = onSpawnSaved
-	d.addButton(spawnSavedBtn)
+	d.AddButton(spawnSavedBtn)
 
 	enableBtn := &components.Button{
 		W: sw, H: 26,
@@ -38,10 +39,10 @@ func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simu
 	setEnableBtnState := func() {
 		if p.Spawn.ClusterEnabled {
 			enableBtn.Label = "Cluster Spawn: Enabled"
-			enableBtn.Color = components.ColorButtonGreen
+			enableBtn.Color = colors.ColorButtonGreen
 		} else {
 			enableBtn.Label = "Cluster Spawn: Disabled"
-			enableBtn.Color = components.ColorDefault
+			enableBtn.Color = colors.ColorDefault
 		}
 	}
 	setEnableBtnState()
@@ -49,9 +50,9 @@ func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simu
 		sim.SetClusterEnabled(!p.Spawn.ClusterEnabled)
 		setEnableBtnState()
 	}
-	d.addButton(enableBtn)
+	d.AddButton(enableBtn)
 
-	d.addSlider(&components.Slider{
+	d.AddSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
 		Font: font, LabelColor: color.White,
@@ -63,7 +64,7 @@ func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim Simu
 		OnChange: func(v float64) { sim.SetClusterInterval(int(math.Round(v))) },
 	})
 
-	d.addSlider(&components.Slider{
+	d.AddSlider(&components.Slider{
 		W: sw, H: sliderH,
 		TrackOffX: trackOff, TrackW: trackW,
 		Font: font, LabelColor: color.White,

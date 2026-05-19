@@ -25,7 +25,7 @@ type CreatureView struct {
 }
 
 // FoodView is a read-only snapshot of a food item (foliage or meat) for rendering.
-// Type is FoodTypeFoliage (0), FoodTypeFungi (1), or FoodTypeMeat (2).
+// Type is FoodTypeFoliage (0), FoodTypeMeat (1), or FoodTypeFungi (2).
 type FoodView struct {
 	ID     int
 	X, Y   float64

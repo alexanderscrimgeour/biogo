@@ -70,6 +70,7 @@ type CreatureParameters struct {
 	MaxBirthMass      float64
 	MinVisionRadius   float64
 	MaxVisionRadius   float64
+	AttackRadius      float32
 	MinFieldOfView    float64
 	MaxFieldOfView    float64
 }
@@ -208,6 +209,7 @@ func DefaultParams() *Parameters {
 			MaxBirthMass:      1500,
 			MinVisionRadius:   50,
 			MaxVisionRadius:   500,
+			AttackRadius:      10,
 			MinFieldOfView:    10,
 			MaxFieldOfView:    180,
 		},

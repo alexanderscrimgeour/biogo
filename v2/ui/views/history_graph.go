@@ -1,4 +1,4 @@
-package ui
+package views
 
 import (
 	"image/color"
@@ -17,15 +17,15 @@ const (
 // HistoryGraph renders population/food/energy time-series as a line chart.
 // It reads game state via closures set at construction time.
 type HistoryGraph struct {
-	getCount  func() int
-	getHead   func() int
-	getSample func(i int) histSample
+	GetCount  func() int
+	GetHead   func() int
+	GetSample func(i int) HistSample
 	maxEnergy float64
 }
 
 // Draw renders the line graph panel at (x, y).
 func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float32) {
-	count := hg.getCount()
+	count := hg.GetCount()
 	panelFill := color.RGBA{8, 10, 22, 160}
 	panelStroke := color.RGBA{50, 60, 90, 180}
 	vector.FillRect(screen, x, y, histGraphW, histGraphH, panelFill, false)
@@ -46,26 +46,26 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 	gw := histGraphW - histGraphPad*2
 	gh := histGraphH - histGraphPad*2
 
-	head := hg.getHead()
+	head := hg.GetHead()
 	popMax := 1
 	var foodEnergyMax float64 = 1
 	for i := 0; i < count; i++ {
 		idx := ((head-1-i)%historyLen + historyLen) % historyLen
-		s := hg.getSample(idx)
-		if s.pop > popMax {
-			popMax = s.pop
+		s := hg.GetSample(idx)
+		if s.Pop > popMax {
+			popMax = s.Pop
 		}
-		if s.foliageEnergy > foodEnergyMax {
-			foodEnergyMax = s.foliageEnergy
+		if s.FoliageEnergy > foodEnergyMax {
+			foodEnergyMax = s.FoliageEnergy
 		}
-		if s.fungiEnergy > foodEnergyMax {
-			foodEnergyMax = s.fungiEnergy
+		if s.FungiEnergy > foodEnergyMax {
+			foodEnergyMax = s.FungiEnergy
 		}
-		if s.meatEnergy > foodEnergyMax {
-			foodEnergyMax = s.meatEnergy
+		if s.MeatEnergy > foodEnergyMax {
+			foodEnergyMax = s.MeatEnergy
 		}
-		if s.totalEnergy > hg.maxEnergy {
-			hg.maxEnergy = s.totalEnergy
+		if s.TotalEnergy > hg.maxEnergy {
+			hg.maxEnergy = s.TotalEnergy
 		}
 	}
 
@@ -76,22 +76,22 @@ func (hg *HistoryGraph) Draw(screen *ebiten.Image, x, y float32) (float32, float
 
 	foodEnergyScale := int(foodEnergyMax * 2)
 	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, foliageColor,
-		func(s histSample) int { return int(s.foliageEnergy) })
+		func(s HistSample) int { return int(s.FoliageEnergy) })
 	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, fungiColor,
-		func(s histSample) int { return int(s.fungiEnergy) })
+		func(s HistSample) int { return int(s.FungiEnergy) })
 	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, foodEnergyScale, meatColor,
-		func(s histSample) int { return int(s.meatEnergy) })
+		func(s HistSample) int { return int(s.MeatEnergy) })
 	hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, popMax*2, popColor,
-		func(s histSample) int { return s.pop })
+		func(s HistSample) int { return s.Pop })
 	if hg.maxEnergy > 0 {
 		hg.drawLine(screen, gx, gy, gw, gh, steps, head, count, int(hg.maxEnergy), energyColor,
-			func(s histSample) int { return int(s.totalEnergy) })
+			func(s HistSample) int { return int(s.TotalEnergy) })
 	}
 
 	return histGraphW, histGraphH
 }
 
-func (hg *HistoryGraph) drawLine(screen *ebiten.Image, gx, gy, gw, gh float32, steps, head, count, maxVal int, clr color.RGBA, get func(histSample) int) {
+func (hg *HistoryGraph) drawLine(screen *ebiten.Image, gx, gy, gw, gh float32, steps, head, count, maxVal int, clr color.RGBA, get func(HistSample) int) {
 	if steps < 2 || maxVal == 0 {
 		return
 	}
@@ -100,7 +100,7 @@ func (hg *HistoryGraph) drawLine(screen *ebiten.Image, gx, gy, gw, gh float32, s
 		frac := float64(i) / float64(steps-1)
 		logicalPos := float64(head-count) + frac*float64(count-1)
 		sampleIdx := ((int(math.Round(logicalPos)) % historyLen) + historyLen) % historyLen
-		val := get(hg.getSample(sampleIdx))
+		val := get(hg.GetSample(sampleIdx))
 		x := gx + float32(i)/float32(steps-1)*gw
 		y := gy + gh*(1-float32(val)/float32(maxVal))
 		if y < gy {

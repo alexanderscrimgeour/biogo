@@ -1,4 +1,4 @@
-package ui
+package views
 
 import (
 	"biogo/v2/simulation"
