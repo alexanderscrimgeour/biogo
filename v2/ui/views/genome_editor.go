@@ -307,6 +307,21 @@ func (e *GenomeEditor) initFilters() {
 	}
 }
 
+// autoTickFromGenome enables filter checkboxes for every sensor and action
+// that appears in the genome's brain, so connected nodes are visible on open.
+func (e *GenomeEditor) autoTickFromGenome() {
+	for _, gene := range e.genome.Brain {
+		if gene.SourceType == simulation.SENSOR {
+			sid := int(gene.SourceID) % int(simulation.SENSOR_COUNT)
+			e.sensorFilter[sid] = true
+		}
+		if gene.SinkType == simulation.ACTION {
+			aid := int(gene.SinkID) % int(simulation.ACTION_COUNT)
+			e.actionFilter[aid] = true
+		}
+	}
+}
+
 // LoadGenome replaces the current genome without closing the editor.
 func (e *GenomeEditor) LoadGenome(g *simulation.Genome) {
 	e.genome = g.Copy()
@@ -318,6 +333,7 @@ func (e *GenomeEditor) LoadGenome(g *simulation.Genome) {
 	e.draggingNeuronID = -1
 	e.neuronPos = make(map[int][2]float32)
 	e.initFilters()
+	e.autoTickFromGenome()
 }
 
 // Open loads a genome for editing. Pass nil to start with a fresh random one.
@@ -357,6 +373,9 @@ func (e *GenomeEditor) Open(g *simulation.Genome, p *simulation.Parameters) {
 	e.nameInputFocused = false
 	e.filterSensorScroll = 0
 	e.initFilters()
+	if g != nil {
+		e.autoTickFromGenome()
+	}
 	e.Visible = true
 }
 
@@ -396,7 +415,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 	e.nameInputFocused = false
 
 	if e.addNeuronBtn.IsClicked(mx, my) {
-		if e.genome.CognitiveBreadth < e.params.Neurology.MaxSynapticDensity {
+		if e.genome.CognitiveBreadth < e.genome.SynapticDensity {
 			e.genome.CognitiveBreadth++
 			e.selNeuronID = -1
 		}
@@ -404,7 +423,7 @@ func (e *GenomeEditor) HandleInput(mx, my int) bool {
 	}
 
 	if e.remNeuronBtn.IsClicked(mx, my) {
-		if e.genome.CognitiveBreadth > e.params.Neurology.MinSynapticDensity {
+		if e.genome.CognitiveBreadth > 0 {
 			e.deleteNeuron(int(e.genome.CognitiveBreadth) - 1)
 		}
 		return true
@@ -1273,7 +1292,7 @@ func (e *GenomeEditor) drawNNSection(screen *ebiten.Image, fnt *textv2.GoXFace) 
 	e.addNeuronBtn.Draw(screen, bnx, bny)
 	e.remNeuronBtn.Draw(screen, bnx+36, bny)
 
-	neuronInfo := fmt.Sprintf("Neurons: %d/%d  (drag to reposition)", e.genome.CognitiveBreadth, e.params.Neurology.MaxSynapticDensity)
+	neuronInfo := fmt.Sprintf("Neurons: %d/%d  (drag to reposition)", e.genome.CognitiveBreadth, e.genome.SynapticDensity)
 	neuronInfoY := int(bny) + int((22-glyphH)/2)
 	drawText(screen, neuronInfo, fnt, int(bnx)+74, neuronInfoY, colors.ColorWeightLabel)
 

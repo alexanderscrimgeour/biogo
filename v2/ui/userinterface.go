@@ -71,11 +71,13 @@ type UserInterface struct {
 	climateDropdown  *components.Dropdown
 	spawnDropdown    *components.Dropdown
 	saveGameDropdown *components.Dropdown
+	paramsDropdown   *components.Dropdown
 
 	foodBtn     *components.Button
 	climateBtn  *components.Button
 	spawnBtn    *components.Button
 	saveGameBtn *components.Button
+	paramsBtn   *components.Button
 
 	saveGameNameInput   *components.TextInputField
 	saveGameName        string
@@ -137,6 +139,7 @@ func NewUserInterface(
 		ui.foodDropdown.Close()
 		ui.climateDropdown.Close()
 		ui.spawnDropdown.Close()
+		ui.paramsDropdown.Close()
 		if !ui.saveGameDropdown.IsOpen() {
 			// Refresh save list on every open.
 			saves := game.sim.ListSavedGames()
@@ -218,9 +221,11 @@ func NewUserInterface(
 	foodBtn := &components.Button{W: 60, H: 24, Label: "Food", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	climateBtn := &components.Button{W: 80, H: 24, Label: "Climate", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	spawnBtn := &components.Button{W: 80, H: 24, Label: "Spawning", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
+	paramsBtn := &components.Button{W: 80, H: 24, Label: "Params", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	ui.foodBtn = foodBtn
 	ui.climateBtn = climateBtn
 	ui.spawnBtn = spawnBtn
+	ui.paramsBtn = paramsBtn
 
 	mb := &components.MenuBar{
 		H:       menuBarH,
@@ -238,6 +243,7 @@ func NewUserInterface(
 	mb.AddButton(foodBtn)
 	mb.AddButton(climateBtn)
 	mb.AddButton(spawnBtn)
+	mb.AddButton(paramsBtn)
 
 	// Speed controls (right-aligned): < [speed] >
 	speedDownBtn := &components.Button{W: 24, H: 24, Label: "<", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
@@ -249,21 +255,6 @@ func NewUserInterface(
 	speedUpBtn.OnClick = func() {
 		game.simStepsPerTick = nextSimRate(game.simStepsPerTick, 1)
 	}
-	// Target Energy slider (right-aligned, left of speed controls).
-	// TrackOffX wide enough for "Tgt E: 30000k" (~95px); TrackW wider for easier dragging.
-	targetESlider := &components.Slider{
-		W: 270, H: 24,
-		TrackOffX: 100, TrackW: 170,
-		Font: font, LabelColor: colors.ColorLabelTargetE,
-		Min: 0, Max: 30_000_000,
-		Value: sim.TargetEnergy(),
-		FormatFunc: func(v float64) string {
-			return fmt.Sprintf("Tgt E: %.0fk", v/1000)
-		},
-		OnChange: func(v float64) { sim.SetTargetEnergy(v) },
-	}
-	mb.AddSliderRight(targetESlider)
-
 	mb.AddButtonRight(speedDownBtn)
 	mb.AddButtonRight(speedLabelBtn)
 	mb.AddButtonRight(speedUpBtn)
@@ -276,6 +267,7 @@ func NewUserInterface(
 		ui.climateDropdown.Close()
 		ui.spawnDropdown.Close()
 		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Close()
 		ui.foodDropdown.Toggle()
 	}
 
@@ -284,6 +276,7 @@ func NewUserInterface(
 		ui.foodDropdown.Close()
 		ui.spawnDropdown.Close()
 		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Close()
 		ui.climateDropdown.Toggle()
 	}
 
@@ -296,7 +289,17 @@ func NewUserInterface(
 		ui.foodDropdown.Close()
 		ui.climateDropdown.Close()
 		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Close()
 		ui.spawnDropdown.Toggle()
+	}
+
+	ui.paramsDropdown = newParamsDropdown(font, paramsBtn, sim)
+	paramsBtn.OnClick = func() {
+		ui.foodDropdown.Close()
+		ui.climateDropdown.Close()
+		ui.spawnDropdown.Close()
+		ui.saveGameDropdown.Close()
+		ui.paramsDropdown.Toggle()
 	}
 
 	// ── Left panel stack ──────────────────────────────────────────────────────
@@ -348,6 +351,7 @@ func (ui *UserInterface) rebuildParamDropdowns() {
 	ui.foodDropdown = newFoodDropdown(ui.font, ui.foodBtn, ui.sim)
 	ui.climateDropdown = newClimateDropdown(ui.font, ui.climateBtn, ui.sim)
 	ui.spawnDropdown = newSpawnDropdown(ui.font, ui.spawnBtn, ui.sim, ui.onSpawnSaved)
+	ui.paramsDropdown = newParamsDropdown(ui.font, ui.paramsBtn, ui.sim)
 }
 
 // AnySliderDragging reports whether any non-menubar slider is currently being dragged.
@@ -355,7 +359,8 @@ func (ui *UserInterface) AnySliderDragging() bool {
 	return (ui.foodDropdown != nil && ui.foodDropdown.AnyDragging()) ||
 		(ui.climateDropdown != nil && ui.climateDropdown.AnyDragging()) ||
 		(ui.spawnDropdown != nil && ui.spawnDropdown.AnyDragging()) ||
-		(ui.saveGameDropdown != nil && ui.saveGameDropdown.AnyDragging())
+		(ui.saveGameDropdown != nil && ui.saveGameDropdown.AnyDragging()) ||
+		(ui.paramsDropdown != nil && ui.paramsDropdown.AnyDragging())
 }
 
 // HandleClick processes a mouse-down event; returns true if consumed.
@@ -373,6 +378,9 @@ func (ui *UserInterface) HandleClick(mx, my int) bool {
 		return true
 	}
 	if ui.saveGameDropdown != nil && ui.saveGameDropdown.HandleClick(mx, my) {
+		return true
+	}
+	if ui.paramsDropdown != nil && ui.paramsDropdown.HandleClick(mx, my) {
 		return true
 	}
 	// Save name input field
@@ -412,6 +420,9 @@ func (ui *UserInterface) HandleContinuousInput() {
 		if ui.saveGameDropdown != nil {
 			ui.saveGameDropdown.HandleDrag(mx)
 		}
+		if ui.paramsDropdown != nil {
+			ui.paramsDropdown.HandleDrag(mx)
+		}
 	} else {
 		ui.menuBar.HandleRelease()
 		if ui.foodDropdown != nil {
@@ -425,6 +436,9 @@ func (ui *UserInterface) HandleContinuousInput() {
 		}
 		if ui.saveGameDropdown != nil {
 			ui.saveGameDropdown.HandleRelease()
+		}
+		if ui.paramsDropdown != nil {
+			ui.paramsDropdown.HandleRelease()
 		}
 	}
 }
@@ -504,6 +518,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	if ui.saveGameBtn != nil {
 		ui.saveGameBtn.Active = ui.saveGameDropdown != nil && ui.saveGameDropdown.IsOpen()
 	}
+	if ui.paramsBtn != nil {
+		ui.paramsBtn.Active = ui.paramsDropdown != nil && ui.paramsDropdown.IsOpen()
+	}
 	ui.menuBar.Draw(screen)
 	ui.leftStack.Draw(screen)
 	// Dropdowns drawn after leftStack so they render on top of all panels.
@@ -518,6 +535,9 @@ func (ui *UserInterface) Draw(screen *ebiten.Image, state UIDrawState, game *Gam
 	}
 	if ui.saveGameDropdown != nil {
 		ui.saveGameDropdown.Draw(screen)
+	}
+	if ui.paramsDropdown != nil {
+		ui.paramsDropdown.Draw(screen)
 	}
 
 	// Genome panel — drawn to the right of the detail panel.

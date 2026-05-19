@@ -643,6 +643,7 @@ func normProportions(fo, fu, me float64, hasMeatFountains bool) (float64, float6
 func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled = v }
 func (s *Simulation) SetClusterInterval(v int) { s.Params.Spawn.ClusterInterval = v }
 func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v }
+func (s *Simulation) SetBaseMutationRate(v float32) { s.Params.Neurology.BaseMutationRate = v }
 
 func (s *Simulation) SetFoliageProportion(v float64)     { s.Params.Food.FoliageProportion = v }
 func (s *Simulation) SetFungiProportion(v float64)       { s.Params.Food.FungiProportion = v }

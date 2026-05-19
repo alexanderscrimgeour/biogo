@@ -57,7 +57,7 @@ func (ng *NeuralNetGraph) computeHeight() float32 {
 			actionSet[e.SinkID] = true
 		}
 	}
-	neurons := nn.HiddenNeuronIDs
+	neurons := connectedNeuronIDs(nn)
 	const maxLayerDepth = 8
 	neuronDepth := map[byte]int{}
 	for _, id := range neurons {
@@ -133,7 +133,7 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 	}
 	sensors := sortedKeys(sensorSet)
 	actions := sortedKeys(actionSet)
-	neurons := nn.HiddenNeuronIDs
+	neurons := connectedNeuronIDs(nn)
 
 	// Derive column positions from the longest active label in each column.
 	sensorNodeX := float32(nnColSensor)
@@ -383,6 +383,26 @@ func (ng *NeuralNetGraph) Draw(screen *ebiten.Image, x, y float32) (float32, flo
 	}
 
 	return nnPanelW, panelH
+}
+
+// connectedNeuronIDs returns the subset of ids that appear in at least one edge.
+func connectedNeuronIDs(nn simulation.NeuralNetView) []byte {
+	reachable := map[byte]bool{}
+	for _, e := range nn.Edges {
+		if e.SourceType == simulation.NEURON {
+			reachable[e.SourceID] = true
+		}
+		if e.SinkType == simulation.NEURON {
+			reachable[e.SinkID] = true
+		}
+	}
+	var out []byte
+	for _, id := range nn.HiddenNeuronIDs {
+		if reachable[id] {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func sortedKeys(m map[byte]bool) []byte {
