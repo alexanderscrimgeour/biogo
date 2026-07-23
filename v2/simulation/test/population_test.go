@@ -1,8 +1,8 @@
 package test
 
 import (
-	grid "biogo/v2/world"
 	"biogo/v2/simulation"
+	grid "biogo/v2/world"
 	"testing"
 )
 
@@ -61,8 +61,8 @@ func TestProcessMoveQueueConsumesFood(t *testing.T) {
 
 	w := grid.NewWorld(20, 20, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.BodyMass =100
-	genome.SurvivalMass =10
+	genome.BodyMass = 100
+	genome.SurvivalMass = 10
 
 	startPos := grid.Position{X: 5, Y: 5}
 	destPos := grid.Position{X: 6, Y: 5}
@@ -123,7 +123,7 @@ func TestDeathSpawnsMeatMatchingMass(t *testing.T) {
 	w := grid.NewWorld(20, 20, 0)
 
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.BodyMass =120
+	genome.BodyMass = 120
 	loc := grid.Position{X: 10, Y: 10}
 	id := w.AddCreature(loc)
 	creature := simulation.NewAdultCreature(id, loc, genome, params)
@@ -206,8 +206,8 @@ func TestReproductionCreatesOffspring(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.BodyMass =200
-	genome.SurvivalMass =10
+	genome.BodyMass = 200
+	genome.SurvivalMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
@@ -232,8 +232,8 @@ func TestReproductionHalvesParentMass(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.BodyMass =100
-	genome.SurvivalMass =10
+	genome.BodyMass = 100
+	genome.SurvivalMass = 10
 	genome.MassSplitRatio = 255 // maximum split → 50%
 
 	parentPos := grid.Position{X: 25, Y: 25}
@@ -259,8 +259,8 @@ func TestReproductionChildStartsAtHalfMass(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.BodyMass =100
-	genome.SurvivalMass =10
+	genome.BodyMass = 100
+	genome.SurvivalMass = 10
 	genome.MutationRate = 0     // suppress mutations so child inherits same Mass
 	genome.MassSplitRatio = 255 // maximum split → 50%
 
@@ -298,8 +298,8 @@ func TestReproductionSkipsWhenEnergyBelowThreshold(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.BodyMass =200
-	genome.SurvivalMass =10
+	genome.BodyMass = 200
+	genome.SurvivalMass = 10
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)
@@ -324,8 +324,8 @@ func TestReproductionSkipsWhenMinMassConstraintViolated(t *testing.T) {
 
 	w := grid.NewWorld(50, 50, 0)
 	genome := simulation.MakeRandomGenome(params, 0)
-	genome.BodyMass =10
-	genome.SurvivalMass =6 // 6*2=12 >= 10: violates MinMass < Mass/2
+	genome.BodyMass = 10
+	genome.SurvivalMass = 6 // 6*2=12 >= 10: violates MinMass < Mass/2
 
 	parentPos := grid.Position{X: 25, Y: 25}
 	parentID := w.AddCreature(parentPos)

@@ -1,4 +1,4 @@
-﻿package simulation
+package simulation
 
 import (
 	"biogo/v2/world"
@@ -643,9 +643,9 @@ func normProportions(fo, fu, me float64, hasMeatFountains bool) (float64, float6
 	return fo / total, fu / total, me / total
 }
 
-func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled = v }
-func (s *Simulation) SetClusterInterval(v int) { s.Params.Spawn.ClusterInterval = v }
-func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v }
+func (s *Simulation) SetClusterEnabled(v bool)      { s.Params.Spawn.ClusterEnabled = v }
+func (s *Simulation) SetClusterInterval(v int)      { s.Params.Spawn.ClusterInterval = v }
+func (s *Simulation) SetClusterSize(v int)          { s.Params.Spawn.ClusterSize = v }
 func (s *Simulation) SetBaseMutationRate(v float32) { s.Params.Neurology.BaseMutationRate = v }
 
 func (s *Simulation) SetFoliageProportion(v float64)     { s.Params.Food.FoliageProportion = v }

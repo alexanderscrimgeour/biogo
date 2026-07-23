@@ -57,7 +57,7 @@ type GenomeSnapshot struct {
 	FieldOfView                byte
 	Responsiveness             byte
 	MutationRate               byte
-	BodyMass                    byte
+	BodyMass                   byte
 	SurvivalMass               byte
 	ReproductionType           byte
 	CognitiveBreadth           byte

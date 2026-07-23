@@ -28,20 +28,20 @@ type geneData struct {
 }
 
 type genomeData struct {
-	OscPeriod        byte       `json:"osc_period"`
-	VisionRadius    byte       `json:"sight_distance"`
-	FieldOfView      byte       `json:"field_of_view"`
-	Responsiveness   byte       `json:"responsiveness"`
-	MutationRate     byte       `json:"mutation_rate"`
-	BodyMass         byte       `json:"mass"`
-	SurvivalMass     byte       `json:"min_mass"`
-	ReproductionType byte       `json:"reproduction_type"`
-	CognitiveBreadth      byte       `json:"neuron_count"`
-	SynapticDensity      byte       `json:"brain_length"`
-	JuvenilePeriod   byte       `json:"juvenile_period"`
-	MetabolicRate    byte       `json:"metabolic_rate"`
-	StomachSize      byte       `json:"stomach_size"`
-	Neuroplasticity     byte       `json:"learning_rate"`
+	OscPeriod         byte       `json:"osc_period"`
+	VisionRadius      byte       `json:"sight_distance"`
+	FieldOfView       byte       `json:"field_of_view"`
+	Responsiveness    byte       `json:"responsiveness"`
+	MutationRate      byte       `json:"mutation_rate"`
+	BodyMass          byte       `json:"mass"`
+	SurvivalMass      byte       `json:"min_mass"`
+	ReproductionType  byte       `json:"reproduction_type"`
+	CognitiveBreadth  byte       `json:"neuron_count"`
+	SynapticDensity   byte       `json:"brain_length"`
+	JuvenilePeriod    byte       `json:"juvenile_period"`
+	MetabolicRate     byte       `json:"metabolic_rate"`
+	StomachSize       byte       `json:"stomach_size"`
+	Neuroplasticity   byte       `json:"learning_rate"`
 	LearningThreshold byte       `json:"learning_threshold"`
 	MassSplitRatio    byte       `json:"mass_split_ratio"`
 	Brain             []geneData `json:"brain"`
@@ -60,17 +60,17 @@ func toGenomeData(g *Genome) genomeData {
 		}
 	}
 	return genomeData{
-		OscPeriod:        g.OscPeriod,
-		VisionRadius:    g.VisionRadius,
-		FieldOfView:      g.FieldOfView,
-		Responsiveness:   g.Responsiveness,
-		MutationRate:     g.MutationRate,
-		BodyMass:         g.BodyMass,
-		SurvivalMass:     g.SurvivalMass,
-		ReproductionType: g.ReproductionType,
-		CognitiveBreadth:      g.CognitiveBreadth,
-		SynapticDensity:      g.SynapticDensity,
-		JuvenilePeriod:   g.JuvenilePeriod,
+		OscPeriod:         g.OscPeriod,
+		VisionRadius:      g.VisionRadius,
+		FieldOfView:       g.FieldOfView,
+		Responsiveness:    g.Responsiveness,
+		MutationRate:      g.MutationRate,
+		BodyMass:          g.BodyMass,
+		SurvivalMass:      g.SurvivalMass,
+		ReproductionType:  g.ReproductionType,
+		CognitiveBreadth:  g.CognitiveBreadth,
+		SynapticDensity:   g.SynapticDensity,
+		JuvenilePeriod:    g.JuvenilePeriod,
 		MetabolicRate:     g.MetabolicRate,
 		StomachSize:       g.StomachSize,
 		Neuroplasticity:   g.Neuroplasticity,
@@ -104,7 +104,7 @@ func fromGenomeData(gd genomeData) *Genome {
 	}
 	g := &Genome{
 		OscPeriod:         gd.OscPeriod,
-		VisionRadius:     gd.VisionRadius,
+		VisionRadius:      gd.VisionRadius,
 		FieldOfView:       gd.FieldOfView,
 		Responsiveness:    gd.Responsiveness,
 		MutationRate:      gd.MutationRate,

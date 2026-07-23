@@ -28,10 +28,10 @@ type SpawnParameters struct {
 }
 
 type FountainParameters struct {
-	Count                int
-	DriftSpeed           float64
-	Radius               float64
-	RandomFraction       float64
+	Count           int
+	DriftSpeed      float64
+	Radius          float64
+	RandomFraction  float64
 	StationaryCount int
 }
 

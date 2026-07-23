@@ -42,26 +42,26 @@ type PopulationDTO struct {
 //   - LastTickEnergy, LastDopamine, LastStomach → single-tick deltas, not critical
 //   - LastActionMask → single-tick bitmask
 type CreatureDTO struct {
-	Generation           float32
-	Tier                 byte
-	Energy               float32
-	Mass                 float32
-	SurvivalMass         float32
-	Radius               float32
-	VisionRadius         float32
-	Stomach              float32
-	Dopamine             float32
-	LocX, LocY           float32
-	LastLocX, LastLocY   float32
-	BirthLocX, BirthLocY float32
-	Heading              float32
-	Speed                float32
-	Responsiveness       float32
-	Clock                int
-	BaseOscTick          float64
-	IsResting            bool
-	Age                  int
-	ReproductionCooldown int
+	Generation                     float32
+	Tier                           byte
+	Energy                         float32
+	Mass                           float32
+	SurvivalMass                   float32
+	Radius                         float32
+	VisionRadius                   float32
+	Stomach                        float32
+	Dopamine                       float32
+	LocX, LocY                     float32
+	LastLocX, LastLocY             float32
+	BirthLocX, BirthLocY           float32
+	Heading                        float32
+	Speed                          float32
+	Responsiveness                 float32
+	Clock                          int
+	BaseOscTick                    float64
+	IsResting                      bool
+	Age                            int
+	ReproductionCooldown           int
 	ColorR, ColorG, ColorB, ColorA uint8
 	// Genome fields (inlined; all exported bytes — gob ignores the private cache fields).
 	// Brain genes are split into five parallel byte slices for flat, gzip-friendly layout.

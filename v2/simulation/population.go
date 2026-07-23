@@ -1,4 +1,4 @@
-﻿package simulation
+package simulation
 
 import (
 	"biogo/v2/utils"
@@ -360,7 +360,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		if droppedMeatMass > 0.01 {
 			w.AddMeat(target.Loc, droppedMeatMass)
 		}
-		
+
 		struggleCost := params.Predation.AttackEnergyCost
 		if sizeRatio < 1.0 {
 			// Gradually increases cost as target gets larger, maxing at 1.5x

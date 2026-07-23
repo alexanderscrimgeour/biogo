@@ -411,7 +411,6 @@ func (w *World) FindEmptyLocationNear(center Position, radius float64) Position 
 	return pos
 }
 
-
 // TempCold and TempWarm define the ambient temperature range across the world's
 // Y axis. The top 20% is TempCold, the bottom 20% is TempWarm, with a linear
 // gradient in between.

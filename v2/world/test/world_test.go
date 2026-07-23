@@ -166,7 +166,7 @@ func TestIsWall_NoWallsByDefault(t *testing.T) {
 func TestClampToBounds(t *testing.T) {
 	w := world.NewWorld(100, 100, 0)
 	cases := []struct {
-		in   world.Position
+		in           world.Position
 		wantInBounds bool
 	}{
 		{world.Position{X: -5, Y: 50}, true},

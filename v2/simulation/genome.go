@@ -1,4 +1,4 @@
-﻿package simulation
+package simulation
 
 import (
 	"biogo/v2/utils"
