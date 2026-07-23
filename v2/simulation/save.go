@@ -122,13 +122,13 @@ func (s *Simulation) captureState() snapshot.SimulationDTO {
 		}
 
 		// Learned NNet weights and neuron states.
-		weights := make([]float32, len(c.Nnet.Weights))
-		copy(weights, c.Nnet.Weights)
+		weights := make([]float32, len(c.NNet.Weights))
+		copy(weights, c.NNet.Weights)
 
-		nOut := make([]float32, len(c.Nnet.HiddenNeurons))
-		nAvg := make([]float32, len(c.Nnet.HiddenNeurons))
-		nSens := make([]float32, len(c.Nnet.HiddenNeurons))
-		for i, n := range c.Nnet.HiddenNeurons {
+		nOut := make([]float32, len(c.NNet.HiddenNeurons))
+		nAvg := make([]float32, len(c.NNet.HiddenNeurons))
+		nSens := make([]float32, len(c.NNet.HiddenNeurons))
+		for i, n := range c.NNet.HiddenNeurons {
 			nOut[i] = n.Output
 			nAvg[i] = n.AverageOutput
 			nSens[i] = n.Sensitivity
@@ -336,7 +336,7 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 			ReproductionCooldown: cdto.ReproductionCooldown,
 			Color:                color.RGBA{R: cdto.ColorR, G: cdto.ColorG, B: cdto.ColorB, A: cdto.ColorA},
 			Genome:               g,
-			Nnet:                 *nnet,
+			NNet:                 *nnet,
 		}
 		// Rebuild private cached constants from genome + params.
 		c.initCachedFields(g, s.Params)

@@ -142,7 +142,7 @@ func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params
 		return
 	}
 
-	if c.Nnet.NeedsKinship {
+	if c.NNet.NeedsKinship {
 		n := len(c.SightCreatureBuffer)
 		if cap(c.SightCreatureSimBuffer) < n {
 			c.SightCreatureSimBuffer = make([]float32, n)

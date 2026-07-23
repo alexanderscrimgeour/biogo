@@ -247,7 +247,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		c.UpdateSensorContext(s.World, s.Population, s.Params)
 	}
 	c.FeedForward(s.World, s.Population, s.Tick, s.Params)
-	s.executeActionsLocal(c, c.Nnet.LastActionValues[:], pending, temp)
+	s.executeActionsLocal(c, c.NNet.LastActionValues[:], pending, temp)
 
 	c.LastTickEnergy = c.Energy
 	c.LastStomach = c.Stomach
@@ -281,7 +281,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 	}
 
-	if c.Nnet.ActiveActions[SET_RESPONSIVENESS] {
+	if c.NNet.ActiveActions[SET_RESPONSIVENESS] {
 		c.Responsiveness = tanhf(actionLevels[SET_RESPONSIVENESS])
 	}
 

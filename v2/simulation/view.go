@@ -113,10 +113,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	r, g, b, a := c.Color.RGBA()
 
 	nnView := NeuralNetView{}
-	for i, edge := range c.Nnet.Edges {
+	for i, edge := range c.NNet.Edges {
 		w := edge.WeightAsFloat32()
-		if i < len(c.Nnet.Weights) {
-			w = c.Nnet.Weights[i]
+		if i < len(c.NNet.Weights) {
+			w = c.NNet.Weights[i]
 		}
 		nnView.Edges = append(nnView.Edges, NNEdgeView{
 			SourceType: edge.SourceType,
@@ -126,17 +126,17 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 			Weight:     w,
 		})
 	}
-	for i := range c.Nnet.HiddenNeurons {
+	for i := range c.NNet.HiddenNeurons {
 		nnView.HiddenNeuronIDs = append(nnView.HiddenNeuronIDs, byte(i))
 	}
 	nnView.SensorValues = make(map[byte]float32, SENSOR_COUNT)
 	for sid := byte(0); sid < SENSOR_COUNT; sid++ {
-		if c.Nnet.ActiveSensors[sid] {
-			nnView.SensorValues[sid] = c.Nnet.LastSensorValues[sid]
+		if c.NNet.ActiveSensors[sid] {
+			nnView.SensorValues[sid] = c.NNet.LastSensorValues[sid]
 		}
 	}
 	nnView.ActionValues = make(map[byte]float32, ACTION_COUNT)
-	for i, v := range c.Nnet.LastActionValues {
+	for i, v := range c.NNet.LastActionValues {
 		nnView.ActionValues[byte(i)] = v
 	}
 

@@ -31,7 +31,7 @@ type Creature struct {
 	Alive                bool
 	Clock                int
 	BaseOscTick          float64
-	Nnet                 NeuralNet
+	NNet                 NeuralNet
 	Loc                  world.Position
 	BirthLoc             world.Position
 	Heading              float32 // radians; 0 = east, π/2 = south (screen-down)
@@ -81,7 +81,7 @@ func NewCreature(id int, loc world.Position, g *Genome, mass float32, p *Paramet
 		Age:            0,
 		Alive:          true,
 		Clock:          int(g.OscPeriod),
-		Nnet:           NeuralNet{},
+		NNet:           NeuralNet{},
 		Loc:            loc,
 		BirthLoc:       loc,
 		Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
@@ -111,7 +111,7 @@ func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Cre
 		Age:            0,
 		Alive:          true,
 		Clock:          int(g.OscPeriod),
-		Nnet:           NeuralNet{},
+		NNet:           NeuralNet{},
 		Loc:            loc,
 		BirthLoc:       loc,
 		Responsiveness: utils.LerpByteAsFloat32(0, 1, g.Responsiveness),
@@ -155,13 +155,13 @@ func (c *Creature) cachedSimilarity(otherID int, other *Creature) float32 {
 }
 
 func (c *Creature) CreateNeuralNet() {
-	c.Nnet = *CreateNeuralNetworkFromGenome(c.Genome.Brain, c.Genome.CognitiveBreadth)
+	c.NNet = *CreateNeuralNetworkFromGenome(c.Genome.Brain, c.Genome.CognitiveBreadth)
 }
 
 func (c Creature) String() string {
-	return fmt.Sprintf("\nCREATURE| \nID: %d,\nEnergy: %f,\nResponsiveness: %f,\nAge: %d,\nAlive: %t,\nClock: %d,\nNnet: \n%s,\nLoc: %v,\nBirthLoc: %v,\nHeading: %f",
+	return fmt.Sprintf("\nCREATURE| \nID: %d,\nEnergy: %f,\nResponsiveness: %f,\nAge: %d,\nAlive: %t,\nClock: %d,\nNNet: \n%s,\nLoc: %v,\nBirthLoc: %v,\nHeading: %f",
 		c.Id, c.Energy, c.Responsiveness, c.Age, c.Alive, c.Clock,
-		c.Nnet.String(), c.Loc, c.BirthLoc, c.Heading)
+		c.NNet.String(), c.Loc, c.BirthLoc, c.Heading)
 }
 
 // MaxEnergy returns the creature's energy storage capacity, derived from current mass.
@@ -530,7 +530,7 @@ func (c *Creature) CalculateColor(p *Parameters) color.RGBA {
 	red := uint8(rVal*185 + 70)
 
 	// Green: Intelligence (Neuron Count & Brain Complexity)
-	iq := calculateFunctionalIntelligence(&c.Nnet, g)
+	iq := calculateFunctionalIntelligence(&c.NNet, g)
 	green := uint8(255 - (iq * 185))
 
 	// Blue: Perception (Sight & FOV)
