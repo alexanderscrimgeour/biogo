@@ -11,7 +11,7 @@ import (
 const paramsPanelW = float32(300)
 
 func newParamsDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState) *components.Dropdown {
-	p := sim.GetParams()
+	p := sim.Params()
 	sw := paramsPanelW - ddPad*2
 	trackOff := float32(155)
 	trackW := sw - trackOff

@@ -18,27 +18,27 @@ func NewBlob(img *ebiten.Image, geoM *ebiten.GeoM) *Blob {
 	return &Blob{img: img, geoM: geoM, center: point}
 }
 
-func (b *Blob) GetImage() *ebiten.Image {
+func (b *Blob) Image() *ebiten.Image {
 	return b.img
 }
 
-func (b *Blob) GetImageOptions() *ebiten.DrawImageOptions {
+func (b *Blob) ImageOptions() *ebiten.DrawImageOptions {
 	return &ebiten.DrawImageOptions{GeoM: *b.geoM}
 }
 
-func (b *Blob) GetSize() (width, height int) {
+func (b *Blob) Size() (width, height int) {
 	return b.img.Bounds().Dx(), b.img.Bounds().Dy()
 }
 
-func (b *Blob) GetHeight() (height int) {
+func (b *Blob) Height() (height int) {
 	return b.img.Bounds().Dy()
 }
 
-func (b *Blob) GetWidth() (width int) {
+func (b *Blob) Width() (width int) {
 	return b.img.Bounds().Dx()
 }
 
-func (b *Blob) GetCenter() *point {
+func (b *Blob) Center() *point {
 	return b.center
 }
 
@@ -55,7 +55,7 @@ func (b *Blob) Move(x, y float64) {
 }
 
 func (b *Blob) Draw(targetImage *ebiten.Image) {
-	targetImage.DrawImage(b.img, b.GetImageOptions())
+	targetImage.DrawImage(b.img, b.ImageOptions())
 }
 
 func (b *Blob) Rotate(angle float64, focalPoint point) {

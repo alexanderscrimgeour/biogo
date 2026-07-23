@@ -102,7 +102,7 @@ func TestSimulationFoodViews(t *testing.T) {
 	sim := simulation.New(p)
 	sim.Update()
 
-	snap := sim.GetSnapshot()
+	snap := sim.Snapshot()
 	plantCount := 0
 	for _, v := range snap.Food {
 		if v.Type == simulation.FoodTypePlant {
@@ -128,7 +128,7 @@ func TestSimulationMeatSpawnedOnDeath(t *testing.T) {
 
 	sim.Update()
 
-	snap := sim.GetSnapshot()
+	snap := sim.Snapshot()
 	for _, mv := range snap.Food {
 		if mv.Type != simulation.FoodTypeMeat {
 			continue
@@ -207,8 +207,8 @@ func TestAdultCreaturesCanReproduce(t *testing.T) {
 
 	for _, c := range sim.Population.Creatures {
 		c.Genome.JuvenilePeriod = 255
-		c.Genome.ReproductionType = 0   // asexual
-		c.Genome.MassSplitRatio = 128   // ~25% split
+		c.Genome.ReproductionType = 0 // asexual
+		c.Genome.MassSplitRatio = 128 // ~25% split
 		c.Energy = float32(c.Mass) * p.Metabolism.EnergyCapacityPerMass
 		// Wire ENERGY sensor directly to REPRODUCE action so it fires unconditionally.
 		c.Genome.Brain = append(c.Genome.Brain, simulation.Gene{

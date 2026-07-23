@@ -12,10 +12,10 @@ func TestHeadingToVec(t *testing.T) {
 		wantDX  float32
 		wantDY  float32
 	}{
-		{0, 1, 0},                         // east
-		{math.Pi / 2, 0, 1},               // south (screen-down)
-		{math.Pi, -1, 0},                  // west
-		{-math.Pi / 2, 0, -1},             // north (screen-up)
+		{0, 1, 0},             // east
+		{math.Pi / 2, 0, 1},   // south (screen-down)
+		{math.Pi, -1, 0},      // west
+		{-math.Pi / 2, 0, -1}, // north (screen-up)
 	}
 	for _, c := range cases {
 		dx, dy := world.HeadingToVec(c.heading)

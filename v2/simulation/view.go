@@ -57,7 +57,7 @@ type GenomeSnapshot struct {
 	FieldOfView                byte
 	Responsiveness             byte
 	MutationRate               byte
-	BodyMass                    byte
+	BodyMass                   byte
 	SurvivalMass               byte
 	ReproductionType           byte
 	CognitiveBreadth           byte
@@ -113,10 +113,10 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	r, g, b, a := c.Color.RGBA()
 
 	nnView := NeuralNetView{}
-	for i, edge := range c.Nnet.Edges {
+	for i, edge := range c.NNet.Edges {
 		w := edge.WeightAsFloat32()
-		if i < len(c.Nnet.Weights) {
-			w = c.Nnet.Weights[i]
+		if i < len(c.NNet.Weights) {
+			w = c.NNet.Weights[i]
 		}
 		nnView.Edges = append(nnView.Edges, NNEdgeView{
 			SourceType: edge.SourceType,
@@ -126,46 +126,46 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 			Weight:     w,
 		})
 	}
-	for i := range c.Nnet.HiddenNeurons {
+	for i := range c.NNet.HiddenNeurons {
 		nnView.HiddenNeuronIDs = append(nnView.HiddenNeuronIDs, byte(i))
 	}
 	nnView.SensorValues = make(map[byte]float32, SENSOR_COUNT)
 	for sid := byte(0); sid < SENSOR_COUNT; sid++ {
-		if c.Nnet.ActiveSensors[sid] {
-			nnView.SensorValues[sid] = c.Nnet.LastSensorValues[sid]
+		if c.NNet.ActiveSensors[sid] {
+			nnView.SensorValues[sid] = c.NNet.LastSensorValues[sid]
 		}
 	}
 	nnView.ActionValues = make(map[byte]float32, ACTION_COUNT)
-	for i, v := range c.Nnet.LastActionValues {
+	for i, v := range c.NNet.LastActionValues {
 		nnView.ActionValues[byte(i)] = v
 	}
 
 	return CreatureDetailView{
-		ID:                c.Id,
+		ID:                c.ID,
 		Generation:        c.Generation,
 		Tier:              c.Tier,
 		Energy:            c.Energy,
-		MaxEnergy:         c.MaxEnergy(s.Params),
+		MaxEnergy:         c.MaxEnergy(s.params),
 		Age:               c.Age,
 		IsJuvenile:        c.IsJuvenile(),
 		JuvenilePeriod:    c.JuvenilePeriod(),
 		CurrentMass:       float32(c.CurrentMass()),
 		LastAction:        actionMaskToString(c.LastActionMask),
-		VisionRadius:      float64(c.GetVisionRadius()),
+		VisionRadius:      float64(c.VisionRadius),
 		FieldOfView:       c.FieldOfView(),
 		Dopamine:          c.Dopamine,
-		MutationPct:       s.Params.Neurology.BaseMutationRate * float32(c.Genome.MutationRate),
+		MutationPct:       s.params.Neurology.BaseMutationRate * float32(c.Genome.MutationRate),
 		R:                 uint8(r >> 8),
 		G:                 uint8(g >> 8),
 		B:                 uint8(b >> 8),
 		A:                 uint8(a >> 8),
-		MetabolicRate:     c.MetabolicRate(s.Params, s.World.TemperatureAt(c.Loc.Y)),
-		MaxAge:            c.MaxAge(s.Params),
+		MetabolicRate:     c.MetabolicRate(s.params, s.World.TemperatureAt(c.Loc.Y)),
+		MaxAge:            c.MaxAge(s.params),
 		Stomach:           float64(c.Stomach),
-		StomachCapacity:   float64(c.StomachCapacity(s.Params)),
-		FoliageEfficiency: c.GetFoodEfficiency(FoodTypeFoliage),
-		FungiEfficiency:   c.GetFoodEfficiency(FoodTypeFungi),
-		MeatEfficiency:    c.GetFoodEfficiency(FoodTypeMeat),
+		StomachCapacity:   float64(c.StomachCapacity(s.params)),
+		FoliageEfficiency: c.FoodEfficiency(FoodTypeFoliage),
+		FungiEfficiency:   c.FoodEfficiency(FoodTypeFungi),
+		MeatEfficiency:    c.FoodEfficiency(FoodTypeMeat),
 		ReproductionType:  c.Genome.ReproductionType,
 		Responsiveness:    c.Responsiveness,
 		NeuralNet:         nnView,
@@ -212,7 +212,7 @@ func (s *Simulation) CreatureViews() []CreatureView {
 			B:                uint8(b),
 			A:                uint8(a),
 			Heading:          float64(c.Heading),
-			VisionRadius:     float64(c.GetVisionRadius()),
+			VisionRadius:     float64(c.VisionRadius),
 			FieldOfView:      c.FieldOfView(),
 			Radius:           float64(c.Radius),
 			BodyMass:         c.Genome.BodyMass,

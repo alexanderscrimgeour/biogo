@@ -9,10 +9,10 @@ const decayRate = 0.0005
 const energyCostOfLearning = 0.005
 
 func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *Parameters) {
-	neuroplasticityMod := softsign(c.Nnet.LastActionValues[SET_LEARNING_RATE])
+	neuroplasticityMod := softsign(c.NNet.LastActionValues[SET_LEARNING_RATE])
 
-	c.Nnet.LastActionValues = [ACTION_COUNT]float32{}
-	actionLevels := &c.Nnet.LastActionValues
+	c.NNet.LastActionValues = [ACTION_COUNT]float32{}
+	actionLevels := &c.NNet.LastActionValues
 
 	var neuronAccumulators [256]float32
 
@@ -21,12 +21,12 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 	ctx.HalfFOVCosSq = c.halfFOVCos * c.halfFOVCos
 
 	var sensorCache [SENSOR_COUNT]float32
-	c.Nnet.LastSensorValues = [SENSOR_COUNT]float32{}
+	c.NNet.LastSensorValues = [SENSOR_COUNT]float32{}
 	for sid := byte(0); sid < SENSOR_COUNT; sid++ {
-		if c.Nnet.ActiveSensors[sid] {
-			val := c.GetSensor(sid, w, p, ctx, step, params)
+		if c.NNet.ActiveSensors[sid] {
+			val := c.Sensor(sid, w, p, ctx, step, params)
 			sensorCache[sid] = val
-			c.Nnet.LastSensorValues[sid] = val
+			c.NNet.LastSensorValues[sid] = val
 		}
 	}
 
@@ -52,79 +52,79 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 	// the previous step's value — Hebbian uses that as sinkOutput intentionally.
 	if canLearn {
 		// 1a: Sensor→Neuron
-		for i := 0; i < c.Nnet.SensorNeuronEnd; i++ {
-			gene := c.Nnet.Edges[i]
+		for i := 0; i < c.NNet.SensorNeuronEnd; i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
 			inputVal := sensorCache[gene.SourceID]
-			neuronAccumulators[gene.SinkID] += inputVal * c.Nnet.Weights[i]
-			sinkOutput := c.Nnet.HiddenNeurons[gene.SinkID].Output
+			neuronAccumulators[gene.SinkID] += inputVal * c.NNet.Weights[i]
+			sinkOutput := c.NNet.HiddenNeurons[gene.SinkID].Output
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
-				c.Nnet.Weights[i] += neuroplasticity * learningSignal
+				c.NNet.Weights[i] += neuroplasticity * learningSignal
 				c.DrainEnergy(energyCostOfLearning)
-				if c.Nnet.Weights[i] > 4.0 {
-					c.Nnet.Weights[i] = 4.0
-				} else if c.Nnet.Weights[i] < -4.0 {
-					c.Nnet.Weights[i] = -4.0
+				if c.NNet.Weights[i] > 4.0 {
+					c.NNet.Weights[i] = 4.0
+				} else if c.NNet.Weights[i] < -4.0 {
+					c.NNet.Weights[i] = -4.0
 				}
 			}
 		}
 		// 1b: Neuron→Neuron
-		for i := c.Nnet.SensorNeuronEnd; i < c.Nnet.NeuronEdgeCount; i++ {
-			gene := c.Nnet.Edges[i]
+		for i := c.NNet.SensorNeuronEnd; i < c.NNet.NeuronEdgeCount; i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
-			inputVal := c.Nnet.HiddenNeurons[gene.SourceID].Output
-			neuronAccumulators[gene.SinkID] += inputVal * c.Nnet.Weights[i]
-			sinkOutput := c.Nnet.HiddenNeurons[gene.SinkID].Output
+			inputVal := c.NNet.HiddenNeurons[gene.SourceID].Output
+			neuronAccumulators[gene.SinkID] += inputVal * c.NNet.Weights[i]
+			sinkOutput := c.NNet.HiddenNeurons[gene.SinkID].Output
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
-				c.Nnet.Weights[i] += neuroplasticity * learningSignal
+				c.NNet.Weights[i] += neuroplasticity * learningSignal
 				c.DrainEnergy(energyCostOfLearning)
-				if c.Nnet.Weights[i] > 4.0 {
-					c.Nnet.Weights[i] = 4.0
-				} else if c.Nnet.Weights[i] < -4.0 {
-					c.Nnet.Weights[i] = -4.0
+				if c.NNet.Weights[i] > 4.0 {
+					c.NNet.Weights[i] = 4.0
+				} else if c.NNet.Weights[i] < -4.0 {
+					c.NNet.Weights[i] = -4.0
 				}
 			}
 		}
 	} else {
 		// 1a: Sensor→Neuron (no Hebbian)
-		for i := 0; i < c.Nnet.SensorNeuronEnd; i++ {
-			gene := c.Nnet.Edges[i]
+		for i := 0; i < c.NNet.SensorNeuronEnd; i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
-			neuronAccumulators[gene.SinkID] += sensorCache[gene.SourceID] * c.Nnet.Weights[i]
+			neuronAccumulators[gene.SinkID] += sensorCache[gene.SourceID] * c.NNet.Weights[i]
 		}
 		// 1b: Neuron→Neuron (no Hebbian)
-		for i := c.Nnet.SensorNeuronEnd; i < c.Nnet.NeuronEdgeCount; i++ {
-			gene := c.Nnet.Edges[i]
+		for i := c.NNet.SensorNeuronEnd; i < c.NNet.NeuronEdgeCount; i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
-			neuronAccumulators[gene.SinkID] += c.Nnet.HiddenNeurons[gene.SourceID].Output * c.Nnet.Weights[i]
+			neuronAccumulators[gene.SinkID] += c.NNet.HiddenNeurons[gene.SourceID].Output * c.NNet.Weights[i]
 		}
 	}
 
 	// Evaluate hidden neurons now that all neuron-sink inputs are accumulated.
-	for key := range c.Nnet.HiddenNeurons {
-		neuron := &c.Nnet.HiddenNeurons[key]
+	for key := range c.NNet.HiddenNeurons {
+		neuron := &c.NNet.HiddenNeurons[key]
 		if neuron.Driven {
 			sum := neuronAccumulators[key] * neuron.Sensitivity
 			output := tanhf(sum)
@@ -138,73 +138,73 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 	// Phase 2: action-sink edges. Neuron outputs are current-step values.
 	if canLearn {
 		// 2a: Sensor→Action
-		for i := c.Nnet.NeuronEdgeCount; i < c.Nnet.SensorActionEnd; i++ {
-			gene := c.Nnet.Edges[i]
+		for i := c.NNet.NeuronEdgeCount; i < c.NNet.SensorActionEnd; i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
 			inputVal := sensorCache[gene.SourceID]
-			actionLevels[gene.SinkID] += inputVal * c.Nnet.Weights[i]
+			actionLevels[gene.SinkID] += inputVal * c.NNet.Weights[i]
 			sinkOutput := actionLevels[gene.SinkID]
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
-				c.Nnet.Weights[i] += neuroplasticity * learningSignal
+				c.NNet.Weights[i] += neuroplasticity * learningSignal
 				c.DrainEnergy(energyCostOfLearning)
-				if c.Nnet.Weights[i] > 4.0 {
-					c.Nnet.Weights[i] = 4.0
-				} else if c.Nnet.Weights[i] < -4.0 {
-					c.Nnet.Weights[i] = -4.0
+				if c.NNet.Weights[i] > 4.0 {
+					c.NNet.Weights[i] = 4.0
+				} else if c.NNet.Weights[i] < -4.0 {
+					c.NNet.Weights[i] = -4.0
 				}
 			}
 		}
 		// 2b: Neuron→Action
-		for i := c.Nnet.SensorActionEnd; i < len(c.Nnet.Edges); i++ {
-			gene := c.Nnet.Edges[i]
+		for i := c.NNet.SensorActionEnd; i < len(c.NNet.Edges); i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
-			inputVal := c.Nnet.HiddenNeurons[gene.SourceID].Output
-			actionLevels[gene.SinkID] += inputVal * c.Nnet.Weights[i]
+			inputVal := c.NNet.HiddenNeurons[gene.SourceID].Output
+			actionLevels[gene.SinkID] += inputVal * c.NNet.Weights[i]
 			sinkOutput := actionLevels[gene.SinkID]
 			learningSignal := inputVal * sinkOutput * dopamineSoftSign
 			if absf32(learningSignal) > learningThreshold {
-				c.Nnet.Weights[i] += neuroplasticity * learningSignal
+				c.NNet.Weights[i] += neuroplasticity * learningSignal
 				c.DrainEnergy(energyCostOfLearning)
-				if c.Nnet.Weights[i] > 4.0 {
-					c.Nnet.Weights[i] = 4.0
-				} else if c.Nnet.Weights[i] < -4.0 {
-					c.Nnet.Weights[i] = -4.0
+				if c.NNet.Weights[i] > 4.0 {
+					c.NNet.Weights[i] = 4.0
+				} else if c.NNet.Weights[i] < -4.0 {
+					c.NNet.Weights[i] = -4.0
 				}
 			}
 		}
 	} else {
 		// 2a: Sensor→Action (no Hebbian)
-		for i := c.Nnet.NeuronEdgeCount; i < c.Nnet.SensorActionEnd; i++ {
-			gene := c.Nnet.Edges[i]
+		for i := c.NNet.NeuronEdgeCount; i < c.NNet.SensorActionEnd; i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
-			actionLevels[gene.SinkID] += sensorCache[gene.SourceID] * c.Nnet.Weights[i]
+			actionLevels[gene.SinkID] += sensorCache[gene.SourceID] * c.NNet.Weights[i]
 		}
 		// 2b: Neuron→Action (no Hebbian)
-		for i := c.Nnet.SensorActionEnd; i < len(c.Nnet.Edges); i++ {
-			gene := c.Nnet.Edges[i]
+		for i := c.NNet.SensorActionEnd; i < len(c.NNet.Edges); i++ {
+			gene := c.NNet.Edges[i]
 			instinctWeight := gene.WeightAsFloat32()
-			if c.Nnet.Weights[i] > instinctWeight {
-				c.Nnet.Weights[i] -= decayRate
-			} else if c.Nnet.Weights[i] < instinctWeight {
-				c.Nnet.Weights[i] += decayRate
+			if c.NNet.Weights[i] > instinctWeight {
+				c.NNet.Weights[i] -= decayRate
+			} else if c.NNet.Weights[i] < instinctWeight {
+				c.NNet.Weights[i] += decayRate
 			}
-			actionLevels[gene.SinkID] += c.Nnet.HiddenNeurons[gene.SourceID].Output * c.Nnet.Weights[i]
+			actionLevels[gene.SinkID] += c.NNet.HiddenNeurons[gene.SourceID].Output * c.NNet.Weights[i]
 		}
 	}
 
@@ -214,8 +214,8 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 
 	const targetActivity = 0.4
 	const adjustmentSpeed = 0.001
-	for key := range c.Nnet.HiddenNeurons {
-		neuron := &c.Nnet.HiddenNeurons[key]
+	for key := range c.NNet.HiddenNeurons {
+		neuron := &c.NNet.HiddenNeurons[key]
 		neuron.Sensitivity += (targetActivity - neuron.AverageOutput) * adjustmentSpeed
 		if neuron.Sensitivity < 0.1 {
 			neuron.Sensitivity = 0.1
@@ -233,8 +233,8 @@ func (c *Creature) normalizeWeights() {
 	var weightSumsNeurons [256]float32
 	var weightSumsActions [ACTION_COUNT]float32
 
-	for i, gene := range c.Nnet.Edges {
-		aw := absf32(c.Nnet.Weights[i])
+	for i, gene := range c.NNet.Edges {
+		aw := absf32(c.NNet.Weights[i])
 		if gene.SinkType == NEURON {
 			weightSumsNeurons[gene.SinkID] += aw
 		} else {
@@ -244,14 +244,14 @@ func (c *Creature) normalizeWeights() {
 
 	const neuronBudget = 8.0
 	const actionBudget = 12.0
-	for i, gene := range c.Nnet.Edges {
+	for i, gene := range c.NNet.Edges {
 		if gene.SinkType == NEURON {
 			if total := weightSumsNeurons[gene.SinkID]; total > neuronBudget {
-				c.Nnet.Weights[i] *= neuronBudget / total
+				c.NNet.Weights[i] *= neuronBudget / total
 			}
 		} else {
 			if total := weightSumsActions[gene.SinkID]; total > actionBudget {
-				c.Nnet.Weights[i] *= actionBudget / total
+				c.NNet.Weights[i] *= actionBudget / total
 			}
 		}
 	}

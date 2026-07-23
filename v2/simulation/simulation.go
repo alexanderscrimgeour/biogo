@@ -1,8 +1,7 @@
-﻿package simulation
+package simulation
 
 import (
 	"biogo/v2/world"
-	"fmt"
 	"math"
 	"math/rand"
 	"runtime"
@@ -10,7 +9,7 @@ import (
 )
 
 // sensorUpdatePeriod controls how often each creature refreshes its spatial
-// sensor context (GetAllInRadius). A value of 4 staggers updates across ticks
+// sensor context (AllInRadius). A value of 4 staggers updates across ticks
 // by creature ID, reducing spatial queries by ~75% at the cost of sensor data
 // being at most (sensorUpdatePeriod-1) ticks stale.
 const sensorUpdatePeriod = 4
@@ -19,7 +18,7 @@ type Simulation struct {
 	World        *world.World
 	Population   *Population
 	Tick         int
-	Params       *Parameters
+	params       *Parameters
 	Energy       float64 // total liquid energy to maintain (set at initialisation)
 	displayCache []CreatureView
 	foodCache    []FoodView // combined Foliages and meat
@@ -30,7 +29,7 @@ type Simulation struct {
 func New(params *Parameters) *Simulation {
 	InitResponseCurve(params)
 	sim := &Simulation{
-		Params: params,
+		params: params,
 	}
 	sim.initialiseWorld()
 	sim.initialisePopulation()
@@ -39,25 +38,25 @@ func New(params *Parameters) *Simulation {
 }
 
 func (s *Simulation) initialiseWorld() {
-	s.World = world.NewWorld(s.Params.World.Width, s.Params.World.Height, 1)
-	s.World.TempMin = s.Params.Environment.TempMin
-	s.World.TempMax = s.Params.Environment.TempMax
+	s.World = world.NewWorld(s.params.World.Width, s.params.World.Height, 1)
+	s.World.TempMin = s.params.Environment.TempMin
+	s.World.TempMax = s.params.Environment.TempMax
 	s.World.InitFountains(
-		s.Params.Food.Foliage.Count, s.Params.Food.Fungi.Count, s.Params.Food.Meat.Count,
-		s.Params.Food.Foliage.StationaryCount, s.Params.Food.Fungi.StationaryCount, s.Params.Food.Meat.StationaryCount,
+		s.params.Food.Foliage.Count, s.params.Food.Fungi.Count, s.params.Food.Meat.Count,
+		s.params.Food.Foliage.StationaryCount, s.params.Food.Fungi.StationaryCount, s.params.Food.Meat.StationaryCount,
 	)
 	s.spawnInitialFood()
 }
 
 func (s *Simulation) initialisePopulation() {
-	pop := NewPopulation(s.Params)
+	pop := NewPopulation(s.params)
 	savedGenomes, _ := LoadAllCreatureGenomes()
-	maxSeeded := int(float64(s.Params.Population.Initial) * s.Params.Spawn.SavedGenomeProportion)
+	maxSeeded := int(float64(s.params.Population.Initial) * s.params.Spawn.SavedGenomeProportion)
 	numSaved := len(savedGenomes)
 	bubbleSize := 5
 	spawnRadius := 15.0
 
-	for i := 0; i < s.Params.Population.Initial; i += bubbleSize {
+	for i := 0; i < s.params.Population.Initial; i += bubbleSize {
 		centerLoc, ok := s.World.FindEmptyLocation()
 		if !ok {
 			break
@@ -68,18 +67,18 @@ func (s *Simulation) initialisePopulation() {
 			genome = savedGenomes[(i/bubbleSize)%numSaved]
 		} else {
 			// Initialise genomes at tier zero
-			genome = MakeRandomGenome(s.Params, 0)
+			genome = MakeRandomGenome(s.params, 0)
 		}
 
 		for j := 0; j < bubbleSize; j++ {
-			if i+j >= s.Params.Population.Initial {
+			if i+j >= s.params.Population.Initial {
 				break
 			}
 
 			loc := s.World.FindEmptyLocationNear(centerLoc, spawnRadius)
 
 			id := s.World.AddCreature(loc)
-			c := NewAdultCreature(id, loc, genome, s.Params)
+			c := NewAdultCreature(id, loc, genome, s.params)
 			pop.SetCreature(id, c)
 			pop.AddAlive(id)
 		}
@@ -113,8 +112,8 @@ func (s *Simulation) Update() {
 }
 
 func (s *Simulation) step() {
-	s.World.StepFountains(s.Params.Food.Foliage.DriftSpeed, s.Params.Food.Fungi.DriftSpeed, s.Params.Food.Meat.DriftSpeed)
-	if s.Tick%s.Params.Food.SpawnInterval == 0 {
+	s.World.StepFountains(s.params.Food.Foliage.DriftSpeed, s.params.Food.Fungi.DriftSpeed, s.params.Food.Meat.DriftSpeed)
+	if s.Tick%s.params.Food.SpawnInterval == 0 {
 		deficit := s.Energy - s.TotalEnergy()
 		if deficit <= 0 {
 			deficit = 0
@@ -173,17 +172,17 @@ func (s *Simulation) step() {
 	s.pairMates(wantMate)
 
 	s.Population.ProcessMoveQueue(s.World)
-	s.Population.ProcessEatingParallel(s.World, s.Params, batches)
+	s.Population.ProcessEatingParallel(s.World, s.params, batches)
 	s.processCollisions()
-	s.Population.ProcessAttackQueue(s.World, s.Params)
-	s.Population.ProcessFeedQueue(s.Params)
-	s.Population.ProcessDeathQueue(s.World, s.Params)
-	s.Population.ProcessReproductionQueue(s.World, s.Params)
-	s.World.DecayMeat(s.Params.Food.MeatDecayRate)
+	s.Population.ProcessAttackQueue(s.World, s.params)
+	s.Population.ProcessFeedQueue(s.params)
+	s.Population.ProcessDeathQueue(s.World, s.params)
+	s.Population.ProcessReproductionQueue(s.World, s.params)
+	s.World.DecayMeat(s.params.Food.MeatDecayRate)
 
 	aliveCount := s.Population.AliveCount()
 	const toSpawn = 5
-	for aliveCount < s.Params.Population.Min {
+	for aliveCount < s.params.Population.Min {
 		loc, ok := s.fountainLocation()
 		if !ok {
 			break
@@ -192,11 +191,11 @@ func (s *Simulation) step() {
 		aliveCount += toSpawn
 	}
 
-	if s.Params.Spawn.ClusterEnabled && s.Tick > 0 && s.Tick%s.Params.Spawn.ClusterInterval == 0 &&
-		aliveCount < s.Params.Population.Max {
+	if s.params.Spawn.ClusterEnabled && s.Tick > 0 && s.Tick%s.params.Spawn.ClusterInterval == 0 &&
+		aliveCount < s.params.Population.Max {
 		loc, ok := s.fountainLocation()
 		if ok {
-			s.SpawnClusterAt(float64(loc.X), float64(loc.Y), s.Params.Spawn.ClusterSize)
+			s.SpawnClusterAt(float64(loc.X), float64(loc.Y), s.params.Spawn.ClusterSize)
 		}
 	}
 
@@ -214,48 +213,44 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	}
 	c.LastActionMask = 0
 	temp := s.World.TemperatureAt(c.Loc.Y)
-	c.DrainEnergy(c.MetabolicRate(s.Params, temp))
-	if float64(c.Loc.X) < s.Params.Environment.Radiation.ZoneWidth*s.Params.World.Width {
-		absoluteMassScale := float64(c.Mass) / float64(s.Params.Creature.MinSurvivalMass)
+	c.DrainEnergy(c.MetabolicRate(s.params, temp))
+	if float64(c.Loc.X) < s.params.Environment.Radiation.ZoneWidth*s.params.World.Width {
+		absoluteMassScale := float64(c.Mass) / float64(s.params.Creature.MinSurvivalMass)
 		// Kleiber's Law (M^0.75)
 		massEffect := float32(math.Sqrt(absoluteMassScale * math.Sqrt(absoluteMassScale)))
-		c.DrainEnergy(s.Params.Environment.Radiation.DamagePerTick * massEffect)
+		c.DrainEnergy(s.params.Environment.Radiation.DamagePerTick * massEffect)
 	}
-	c.Digest(s.Params)
-	c.GrowMass(s.Params, temp)
+	c.Digest(s.params)
+	c.GrowMass(s.params, temp)
 
 	// Starvation catabolism: when energy reserves run critically low, the body
 	// breaks down structural mass to keep itself alive — at lower efficiency than
 	// digestion. This burns through mass faster than food would imply, making
 	// prolonged starvation fatal even in a creature with mass to spare.
 	const catabolismThreshold float32 = 0.15
-	if c.Energy < c.MaxEnergy(s.Params)*catabolismThreshold {
+	if c.Energy < c.MaxEnergy(s.params)*catabolismThreshold {
 		const catabolismEfficiency float32 = 0.35
-		bmr := c.MetabolicRate(s.Params, temp)
-		massConsumed := bmr / (s.Params.Metabolism.EnergyPerFoodMass * catabolismEfficiency)
+		bmr := c.MetabolicRate(s.params, temp)
+		massConsumed := bmr / (s.params.Metabolism.EnergyPerFoodMass * catabolismEfficiency)
 		c.Mass -= massConsumed
-		c.UpdateRadius(s.Params)
-		c.GainEnergy(massConsumed*s.Params.Metabolism.EnergyPerFoodMass*catabolismEfficiency, s.Params)
+		c.UpdateRadius(s.params)
+		c.GainEnergy(massConsumed*s.params.Metabolism.EnergyPerFoodMass*catabolismEfficiency, s.params)
 	}
 
-	if c.Energy <= 0 || c.Mass < c.SurvivalMass || c.Age > c.MaxAge(s.Params) {
+	if c.Energy <= 0 || c.Mass < c.SurvivalMass || c.Age > c.MaxAge(s.params) {
 		pending.death = append(pending.death, DeathInstruction{c})
 		return
 	}
 
-	if s.Tick%sensorUpdatePeriod == c.Id%sensorUpdatePeriod {
-		c.UpdateSensorContext(s.World, s.Population, s.Params)
+	if s.Tick%sensorUpdatePeriod == c.ID%sensorUpdatePeriod {
+		c.UpdateSensorContext(s.World, s.Population, s.params)
 	}
-	c.FeedForward(s.World, s.Population, s.Tick, s.Params)
-	s.executeActionsLocal(c, c.Nnet.LastActionValues[:], pending, temp)
+	c.FeedForward(s.World, s.Population, s.Tick, s.params)
+	s.executeActionsLocal(c, c.NNet.LastActionValues[:], pending, temp)
 
 	c.LastTickEnergy = c.Energy
 	c.LastStomach = c.Stomach
 	c.LastLoc = c.Loc
-}
-
-func (s *Simulation) Print() {
-	fmt.Printf("Population Size: %d", len(s.Population.Creatures))
 }
 
 func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pending *pendingInstructions, temp float32) {
@@ -270,10 +265,10 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			// Resting pays fraction of the basal metabolic rate: refund the base drain
 			// already charged this tick, then re-charge the lower resting rate.
 			const restingCostFactor float32 = 0.20
-			rate := c.MetabolicRate(s.Params, temp)
+			rate := c.MetabolicRate(s.params, temp)
 
 			// Refund energy as resting
-			c.GainEnergy(rate, s.Params)
+			c.GainEnergy(rate, s.params)
 			c.DrainEnergy(rate * restingCostFactor)
 			c.IsResting = true
 
@@ -281,7 +276,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		}
 	}
 
-	if c.Nnet.ActiveActions[SET_RESPONSIVENESS] {
+	if c.NNet.ActiveActions[SET_RESPONSIVENESS] {
 		c.Responsiveness = tanhf(actionLevels[SET_RESPONSIVENESS])
 	}
 
@@ -330,7 +325,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 
 	if IsActionEnabled(REPRODUCE) {
 		currentTier := c.Tier
-		baseThreshold := s.Params.Reproduction.EnergyThreshold * c.MaxEnergy(s.Params)
+		baseThreshold := s.params.Reproduction.EnergyThreshold * c.MaxEnergy(s.params)
 
 		// Mass the parent must donate: their split ratio × their current mass
 		requiredMassContribution := c.Mass * c.Genome.CalculateSplitRatio()
@@ -384,7 +379,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			var bestDistSq float32 = math.MaxFloat32
 			var recipient *Creature
 			for _, id := range c.Sensors.SightCreatureIDs {
-				if id == c.Id {
+				if id == c.ID {
 					continue
 				}
 				other, ok := s.Population.Get(id)
@@ -420,7 +415,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		rotateAmount := float32(0)
 		if IsActionEnabled(ROTATE) {
 			act := actionLevels[ROTATE]
-			rawTorque := tanhf(act) * responseAdjust * s.Params.Creature.BaseMaxForce * c.Radius
+			rawTorque := tanhf(act) * responseAdjust * s.params.Creature.BaseMaxForce * c.Radius
 			angularAccel := rawTorque / momentOfInertia
 			rotateAmount = angularAccel * float32(1.0)
 		}
@@ -428,7 +423,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		if rotateAmount != 0 {
 			// Kinetic Energy Tax: E_k = 0.5 * I * omega^2
 			rotationalWork := float32(0.5) * momentOfInertia * (rotateAmount * rotateAmount)
-			energyTax := s.Params.Metabolism.MoveCostMultiplier * rotationalWork
+			energyTax := s.params.Metabolism.MoveCostMultiplier * rotationalWork
 
 			c.DrainEnergy(energyTax)
 			c.LastActionMask |= ActionRotating
@@ -438,25 +433,25 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 		accelAmount := float32(0)
 		if IsActionEnabled(ACCELERATE) {
 			act := actionLevels[ACCELERATE]
-			accelAmount = act * responseAdjust * s.Params.Creature.BaseMaxForce * c.Radius
+			accelAmount = act * responseAdjust * s.params.Creature.BaseMaxForce * c.Radius
 		}
 
-		optTemp := (s.Params.Environment.TempMin + s.Params.Environment.TempMax) / 2
+		optTemp := (s.params.Environment.TempMin + s.params.Environment.TempMax) / 2
 		speedMult := float32(1.0)
-		if temp < optTemp && optTemp > s.Params.Environment.TempMin {
-			coldNorm := (optTemp - temp) / (optTemp - s.Params.Environment.TempMin)
+		if temp < optTemp && optTemp > s.params.Environment.TempMin {
+			coldNorm := (optTemp - temp) / (optTemp - s.params.Environment.TempMin)
 			if coldNorm > 1 {
 				coldNorm = 1
 			}
-			speedMult = s.Params.Environment.ColdSpeedMultiplier + (1.0-s.Params.Environment.ColdSpeedMultiplier)*(1.0-coldNorm)
+			speedMult = s.params.Environment.ColdSpeedMultiplier + (1.0-s.params.Environment.ColdSpeedMultiplier)*(1.0-coldNorm)
 		}
 		accelAmount *= speedMult
 		// A = F / M
 		c.Speed += accelAmount / c.Mass
 
-		fluidDensity := s.Params.World.FluidDensity
+		fluidDensity := s.params.World.FluidDensity
 		frontalArea := c.Radius * 2.0
-		dragCoefficient := s.Params.World.DragCoefficient
+		dragCoefficient := s.params.World.DragCoefficient
 
 		currentSpeed := c.Speed
 		var dragForce float32
@@ -493,7 +488,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 					absAccel = -absAccel
 				}
 				if absAccel > 0.001 {
-					energyTax := s.Params.Metabolism.MoveCostMultiplier * absAccel
+					energyTax := s.params.Metabolism.MoveCostMultiplier * absAccel
 					c.DrainEnergy(energyTax)
 				}
 				c.LastActionMask |= ActionMoving
@@ -520,7 +515,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 
 	for i, c := range candidates {
 		// guard against dead or auto-splitting creatures
-		if paired[c.Id] || !c.Alive || (c.LastActionMask&ActionAutoSplitting) != 0 {
+		if paired[c.ID] || !c.Alive || (c.LastActionMask&ActionAutoSplitting) != 0 {
 			continue
 		}
 
@@ -529,19 +524,19 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 		var bestDistSq float32 = math.MaxFloat32
 
 		for j, other := range candidates {
-			if i == j || paired[other.Id] || !other.Alive {
+			if i == j || paired[other.ID] || !other.Alive {
 				continue
 			}
 
 			dx := other.Loc.X - c.Loc.X
 			dy := other.Loc.Y - c.Loc.Y
 			d2 := dx*dx + dy*dy
-			mr := float32(s.Params.Reproduction.MatingRadius)
+			mr := float32(s.params.Reproduction.MatingRadius)
 			matingRadiusSq := (c.VisionRadius + c.Radius + mr) * (c.VisionRadius + c.Radius + mr)
 
 			if d2 <= matingRadiusSq {
-				similarity := c.cachedSimilarity(other.Id, other)
-				if similarity >= s.Params.Reproduction.MinSimilarity {
+				similarity := c.cachedSimilarity(other.ID, other)
+				if similarity >= s.params.Reproduction.MinSimilarity {
 					if similarity > bestSimilarity {
 						bestSimilarity = similarity
 						bestDistSq = d2
@@ -556,8 +551,8 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 
 		if bestIdx != -1 {
 			partner := candidates[bestIdx]
-			paired[c.Id] = true
-			paired[partner.Id] = true
+			paired[c.ID] = true
+			paired[partner.ID] = true
 			s.Population.ReproductionQueue = append(s.Population.ReproductionQueue,
 				ReproductionInstruction{Creature: c, Partner: partner, IsFallback: false})
 		}
@@ -579,10 +574,10 @@ func (s *Simulation) fountainLocation() (world.Position, bool) {
 	var radius float64
 	if idx < len(foliage) {
 		center = foliage[idx].Pos
-		radius = s.Params.Food.Foliage.Radius
+		radius = s.params.Food.Foliage.Radius
 	} else {
 		center = fungi[idx-len(foliage)].Pos
-		radius = s.Params.Food.Fungi.Radius
+		radius = s.params.Food.Fungi.Radius
 	}
 	pos := s.World.FindEmptyLocationNear(center, radius)
 	return pos, true
@@ -591,7 +586,7 @@ func (s *Simulation) fountainLocation() (world.Position, bool) {
 // spawnInitialFood seeds the world with food equal to Food.InitialEnergy,
 // split by the configured proportions and placed around fountains.
 func (s *Simulation) spawnInitialFood() {
-	p := s.Params.Food
+	p := s.params.Food
 	fp, funp, mp := normProportions(p.FoliageProportion, p.FungiProportion, p.MeatProportion, len(s.World.MeatFountains) > 0)
 	epu := p.InitialEnergy
 	epf := float64(p.FoliageMass) * float64(p.FoliageEnergyDensity)
@@ -613,7 +608,7 @@ func (s *Simulation) spawnDeficit(deficit float64) {
 	if deficit <= 0 {
 		return
 	}
-	p := s.Params.Food
+	p := s.params.Food
 	fp, funp, mp := normProportions(p.FoliageProportion, p.FungiProportion, p.MeatProportion, len(s.World.MeatFountains) > 0)
 	epf := float64(p.FoliageMass) * float64(p.FoliageEnergyDensity)
 	epu2 := float64(p.FungiMass) * float64(p.FungiEnergyDensity)
@@ -643,35 +638,35 @@ func normProportions(fo, fu, me float64, hasMeatFountains bool) (float64, float6
 	return fo / total, fu / total, me / total
 }
 
-func (s *Simulation) SetClusterEnabled(v bool) { s.Params.Spawn.ClusterEnabled = v }
-func (s *Simulation) SetClusterInterval(v int) { s.Params.Spawn.ClusterInterval = v }
-func (s *Simulation) SetClusterSize(v int)     { s.Params.Spawn.ClusterSize = v }
-func (s *Simulation) SetBaseMutationRate(v float32) { s.Params.Neurology.BaseMutationRate = v }
+func (s *Simulation) SetClusterEnabled(v bool)      { s.params.Spawn.ClusterEnabled = v }
+func (s *Simulation) SetClusterInterval(v int)      { s.params.Spawn.ClusterInterval = v }
+func (s *Simulation) SetClusterSize(v int)          { s.params.Spawn.ClusterSize = v }
+func (s *Simulation) SetBaseMutationRate(v float32) { s.params.Neurology.BaseMutationRate = v }
 
-func (s *Simulation) SetFoliageProportion(v float64)     { s.Params.Food.FoliageProportion = v }
-func (s *Simulation) SetFungiProportion(v float64)       { s.Params.Food.FungiProportion = v }
-func (s *Simulation) SetMeatProportion(v float64)        { s.Params.Food.MeatProportion = v }
-func (s *Simulation) SetFoliageRandomFraction(v float64) { s.Params.Food.Foliage.RandomFraction = v }
-func (s *Simulation) SetFoliageDriftSpeed(v float64)     { s.Params.Food.Foliage.DriftSpeed = v }
-func (s *Simulation) SetFoliageRadius(v float64)         { s.Params.Food.Foliage.Radius = v }
-func (s *Simulation) SetFungiRandomFraction(v float64)   { s.Params.Food.Fungi.RandomFraction = v }
-func (s *Simulation) SetFungiDriftSpeed(v float64)       { s.Params.Food.Fungi.DriftSpeed = v }
-func (s *Simulation) SetFungiRadius(v float64)           { s.Params.Food.Fungi.Radius = v }
-func (s *Simulation) SetMeatRandomFraction(v float64)    { s.Params.Food.Meat.RandomFraction = v }
-func (s *Simulation) SetMeatDriftSpeed(v float64)        { s.Params.Food.Meat.DriftSpeed = v }
-func (s *Simulation) SetMeatRadius(v float64)            { s.Params.Food.Meat.Radius = v }
+func (s *Simulation) SetFoliageProportion(v float64)     { s.params.Food.FoliageProportion = v }
+func (s *Simulation) SetFungiProportion(v float64)       { s.params.Food.FungiProportion = v }
+func (s *Simulation) SetMeatProportion(v float64)        { s.params.Food.MeatProportion = v }
+func (s *Simulation) SetFoliageRandomFraction(v float64) { s.params.Food.Foliage.RandomFraction = v }
+func (s *Simulation) SetFoliageDriftSpeed(v float64)     { s.params.Food.Foliage.DriftSpeed = v }
+func (s *Simulation) SetFoliageRadius(v float64)         { s.params.Food.Foliage.Radius = v }
+func (s *Simulation) SetFungiRandomFraction(v float64)   { s.params.Food.Fungi.RandomFraction = v }
+func (s *Simulation) SetFungiDriftSpeed(v float64)       { s.params.Food.Fungi.DriftSpeed = v }
+func (s *Simulation) SetFungiRadius(v float64)           { s.params.Food.Fungi.Radius = v }
+func (s *Simulation) SetMeatRandomFraction(v float64)    { s.params.Food.Meat.RandomFraction = v }
+func (s *Simulation) SetMeatDriftSpeed(v float64)        { s.params.Food.Meat.DriftSpeed = v }
+func (s *Simulation) SetMeatRadius(v float64)            { s.params.Food.Meat.Radius = v }
 func (s *Simulation) SetWarmMetabolicMultiplier(v float32) {
-	s.Params.Environment.WarmMetabolicMultiplier = v
+	s.params.Environment.WarmMetabolicMultiplier = v
 }
 func (s *Simulation) SetColdSpeedMultiplier(v float32) {
-	s.Params.Environment.ColdSpeedMultiplier = v
+	s.params.Environment.ColdSpeedMultiplier = v
 }
 func (s *Simulation) SetTempMin(v float32) {
-	s.Params.Environment.TempMin = v
+	s.params.Environment.TempMin = v
 	s.World.TempMin = v
 }
 func (s *Simulation) SetTempMax(v float32) {
-	s.Params.Environment.TempMax = v
+	s.params.Environment.TempMax = v
 	s.World.TempMax = v
 }
 
@@ -679,38 +674,38 @@ func (s *Simulation) SetFoliageFountainCount(n int) {
 	if n < 0 {
 		n = 0
 	}
-	s.Params.Food.Foliage.Count = n
-	s.World.SetFoliageFountainCount(n, s.Params.Food.Foliage.StationaryCount)
+	s.params.Food.Foliage.Count = n
+	s.World.SetFoliageFountainCount(n, s.params.Food.Foliage.StationaryCount)
 }
 
 func (s *Simulation) SetFungiFountainCount(n int) {
 	if n < 0 {
 		n = 0
 	}
-	s.Params.Food.Fungi.Count = n
-	s.World.SetFungiFountainCount(n, s.Params.Food.Fungi.StationaryCount)
+	s.params.Food.Fungi.Count = n
+	s.World.SetFungiFountainCount(n, s.params.Food.Fungi.StationaryCount)
 }
 
 func (s *Simulation) SetMeatFountainCount(n int) {
 	if n < 0 {
 		n = 0
 	}
-	s.Params.Food.Meat.Count = n
-	s.World.SetMeatFountainCount(n, s.Params.Food.Meat.StationaryCount)
+	s.params.Food.Meat.Count = n
+	s.World.SetMeatFountainCount(n, s.params.Food.Meat.StationaryCount)
 }
 
 func (s *Simulation) SetFoliageStationaryCount(v int) {
-	s.Params.Food.Foliage.StationaryCount = v
+	s.params.Food.Foliage.StationaryCount = v
 	s.World.RecomputeFoliageStationary(v)
 }
 
 func (s *Simulation) SetFungiStationaryCount(v int) {
-	s.Params.Food.Fungi.StationaryCount = v
+	s.params.Food.Fungi.StationaryCount = v
 	s.World.RecomputeFungiStationary(v)
 }
 
 func (s *Simulation) SetMeatStationaryCount(v int) {
-	s.Params.Food.Meat.StationaryCount = v
+	s.params.Food.Meat.StationaryCount = v
 	s.World.RecomputeMeatStationary(v)
 }
 
@@ -721,12 +716,12 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 	if s.World.IsWall(pos) {
 		return false
 	}
-	spawnParams := *s.Params
+	spawnParams := *s.params
 
 	id := s.World.AddCreature(pos)
 	// Initialise genomes at tier zero
 	genome := MakeRandomGenome(&spawnParams, 0)
-	c := NewAdultCreature(id, pos, genome, s.Params)
+	c := NewAdultCreature(id, pos, genome, s.params)
 	s.Population.SetCreature(id, c)
 	s.Population.AddAlive(id)
 
@@ -736,7 +731,7 @@ func (s *Simulation) SpawnAt(x, y float64) bool {
 // SpawnClusterAt creates count identical creatures near the given world-space position.
 // All creatures share the same randomly generated genome. Positions that are walls are skipped.
 func (s *Simulation) SpawnClusterAt(x, y float64, count int) bool {
-	spawnParams := *s.Params
+	spawnParams := *s.params
 	// Initialise genomes at tier zero
 	genome := MakeRandomGenome(&spawnParams, 0)
 
@@ -748,7 +743,7 @@ func (s *Simulation) SpawnClusterAt(x, y float64, count int) bool {
 			continue
 		}
 		id := s.World.AddCreature(pos)
-		c := NewAdultCreature(id, pos, genome.Copy(), s.Params)
+		c := NewAdultCreature(id, pos, genome.Copy(), s.params)
 		s.Population.SetCreature(id, c)
 		s.Population.AddAlive(id)
 		spawned++
@@ -764,10 +759,10 @@ func (s *Simulation) SpawnGenome(g *Genome, generation float32) bool {
 		return false
 	}
 	id := s.World.AddCreature(loc)
-	c := NewAdultCreature(id, loc, g, s.Params)
+	c := NewAdultCreature(id, loc, g, s.params)
 	if generation > 1 {
 		c.Generation = generation
-		c.Tier = GetTierFromGeneration(c.Generation, s.Params)
+		c.Tier = GetTierFromGeneration(c.Generation, s.params)
 	}
 	s.Population.SetCreature(id, c)
 	s.Population.AddAlive(id)
@@ -783,11 +778,11 @@ func (s *Simulation) CreatureGenomeCopy(id int) (*Genome, bool) {
 	return c.Genome.Copy(), true
 }
 
-// GetParams exposes the simulation parameters to the UI layer.
-func (s *Simulation) GetParams() *Parameters { return s.Params }
+// Params exposes the simulation parameters to the UI layer.
+func (s *Simulation) Params() *Parameters { return s.params }
 
-func (s *Simulation) WorldWidth() float64  { return s.Params.World.Width }
-func (s *Simulation) WorldHeight() float64 { return s.Params.World.Height }
+func (s *Simulation) WorldWidth() float64  { return s.params.World.Width }
+func (s *Simulation) WorldHeight() float64 { return s.params.World.Height }
 
 func (s *Simulation) PopulationCount() int { return s.Population.AliveCount() }
 
@@ -797,25 +792,25 @@ func (s *Simulation) FungiCount() int { return s.World.FungiCount() }
 func (s *Simulation) MeatCount() int  { return s.World.MeatCount() }
 
 func (s *Simulation) FoliageEnergy() float64 {
-	return s.World.TotalFoliageMass() * float64(s.Params.Food.FoliageEnergyDensity)
+	return s.World.TotalFoliageMass() * float64(s.params.Food.FoliageEnergyDensity)
 }
 
 func (s *Simulation) FungiEnergy() float64 {
-	return s.World.TotalFungiMass() * float64(s.Params.Food.FungiEnergyDensity)
+	return s.World.TotalFungiMass() * float64(s.params.Food.FungiEnergyDensity)
 }
 
 func (s *Simulation) MeatEnergy() float64 {
-	return s.World.TotalMeatMass() * float64(s.Params.Food.MeatEnergyDensity)
+	return s.World.TotalMeatMass() * float64(s.params.Food.MeatEnergyDensity)
 }
 
 // TotalEnergy returns the total liquid energy in the system: food, meat, and the
 // immediate metabolic stores (energy + stomach contents) of all living creatures.
 // Stomach contents are valued at EnergyPerFoodMass because density is baked in at eat time.
 func (s *Simulation) TotalEnergy() float64 {
-	epu := float64(s.Params.Metabolism.EnergyPerFoodMass)
-	energy := s.World.TotalFoliageMass() * float64(s.Params.Food.FoliageEnergyDensity)
-	energy += s.World.TotalFungiMass() * float64(s.Params.Food.FungiEnergyDensity)
-	energy += s.World.TotalMeatMass() * float64(s.Params.Food.MeatEnergyDensity)
+	epu := float64(s.params.Metabolism.EnergyPerFoodMass)
+	energy := s.World.TotalFoliageMass() * float64(s.params.Food.FoliageEnergyDensity)
+	energy += s.World.TotalFungiMass() * float64(s.params.Food.FungiEnergyDensity)
+	energy += s.World.TotalMeatMass() * float64(s.params.Food.MeatEnergyDensity)
 	for _, c := range s.Population.Creatures {
 		if c == nil {
 			continue
@@ -944,7 +939,7 @@ func (s *Simulation) updatePopulationCaches() {
 			ID: id, X: float64(c.Loc.X), Y: float64(c.Loc.Y), Heading: float64(c.Heading),
 			R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
 			CurrentMass:      float64(c.Mass),
-			VisionRadius:     float64(c.GetVisionRadius()),
+			VisionRadius:     float64(c.VisionRadius),
 			FieldOfView:      c.FieldOfView(),
 			Radius:           float64(c.Radius),
 			ReproductionType: c.Genome.ReproductionType,
@@ -967,7 +962,7 @@ type StateSnapshot struct {
 	Food      []FoodView
 }
 
-func (s *Simulation) GetSnapshot() StateSnapshot {
+func (s *Simulation) Snapshot() StateSnapshot {
 	s.cacheMu.Lock()
 	if s.cacheDirty {
 		s.updatePopulationCaches()

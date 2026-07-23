@@ -210,7 +210,7 @@ func NewUserInterface(
 
 	createGenomeBtn := &components.Button{W: 130, H: 24, Label: "Create Genome", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
 	createGenomeBtn.OnClick = func() {
-		game.genomeEditor.Open(nil, game.sim.GetParams())
+		game.genomeEditor.Open(nil, game.sim.Params())
 	}
 
 	tierBtn := &components.Button{W: 90, H: 24, Label: "Tier: All", Color: colors.ColorDefault, LabelColor: color.White, Font: font}
@@ -783,7 +783,7 @@ func (ui *UserInterface) buildDetailPanel(d simulation.CreatureDetailView, creat
 	}
 	editBtn.OnClick = func() {
 		if genome, ok := game.sim.CreatureGenomeCopy(creatureID); ok {
-			game.genomeEditor.Open(genome, game.sim.GetParams())
+			game.genomeEditor.Open(genome, game.sim.Params())
 		}
 	}
 	p.Add(editBtn)

@@ -5,6 +5,7 @@ import (
 	"biogo/v2/world"
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"image/color"
 	"path/filepath"
@@ -33,7 +34,7 @@ func (s *Simulation) ListSavedGames() []SavedGame {
 func (s *Simulation) SaveGame(name string) error {
 	safe := sanitizeFilename(name)
 	if safe == "" {
-		return fmt.Errorf("save name cannot be empty")
+		return errors.New("save name cannot be empty")
 	}
 	filename := safe + ".biogosave"
 	path := filepath.Join(saveGameDir, filename)
@@ -61,7 +62,7 @@ func (s *Simulation) LoadGame(path string) error {
 func (s *Simulation) captureState() snapshot.SimulationDTO {
 	// Encode Parameters via gob (all value types, no registration needed).
 	var paramsBuf bytes.Buffer
-	_ = gob.NewEncoder(&paramsBuf).Encode(*s.Params)
+	_ = gob.NewEncoder(&paramsBuf).Encode(*s.params)
 
 	// --- World fountains (flat parallel arrays, grouped foliage/fungi/meat) ---
 	totalFountains := len(s.World.FoliageFountains) + len(s.World.FungiFountains) + len(s.World.MeatFountains)
@@ -91,7 +92,7 @@ func (s *Simulation) captureState() snapshot.SimulationDTO {
 	s.World.ForEachActiveFood(func(id int, x, y float64, _ float64, typ uint8) {
 		wdto.FoodX = append(wdto.FoodX, float32(x))
 		wdto.FoodY = append(wdto.FoodY, float32(y))
-		wdto.FoodMass = append(wdto.FoodMass, s.World.GetFoodMass(id))
+		wdto.FoodMass = append(wdto.FoodMass, s.World.FoodMass(id))
 		wdto.FoodType = append(wdto.FoodType, typ)
 	})
 
@@ -122,13 +123,13 @@ func (s *Simulation) captureState() snapshot.SimulationDTO {
 		}
 
 		// Learned NNet weights and neuron states.
-		weights := make([]float32, len(c.Nnet.Weights))
-		copy(weights, c.Nnet.Weights)
+		weights := make([]float32, len(c.NNet.Weights))
+		copy(weights, c.NNet.Weights)
 
-		nOut := make([]float32, len(c.Nnet.HiddenNeurons))
-		nAvg := make([]float32, len(c.Nnet.HiddenNeurons))
-		nSens := make([]float32, len(c.Nnet.HiddenNeurons))
-		for i, n := range c.Nnet.HiddenNeurons {
+		nOut := make([]float32, len(c.NNet.HiddenNeurons))
+		nAvg := make([]float32, len(c.NNet.HiddenNeurons))
+		nSens := make([]float32, len(c.NNet.HiddenNeurons))
+		for i, n := range c.NNet.HiddenNeurons {
 			nOut[i] = n.Output
 			nAvg[i] = n.AverageOutput
 			nSens[i] = n.Sensitivity
@@ -211,8 +212,8 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 		return fmt.Errorf("decode params: %w", err)
 	}
 	params.recomputeCachedFields()
-	s.Params = &params
-	InitResponseCurve(s.Params)
+	s.params = &params
+	InitResponseCurve(s.params)
 
 	// 2. Rebuild world from scratch with restored dimensions.
 	s.World = world.NewWorld(params.World.Width, params.World.Height, 1)
@@ -256,7 +257,7 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 	}
 
 	// 5. Restore population.
-	pop := NewPopulation(s.Params)
+	pop := NewPopulation(s.params)
 	for _, cdto := range dto.Population.Creatures {
 		brain := make([]Gene, len(cdto.BrainSourceID))
 		for i := range brain {
@@ -312,7 +313,7 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 		id := s.World.AddCreature(pos)
 
 		c := &Creature{
-			Id:                   id,
+			ID:                   id,
 			Alive:                true,
 			Generation:           cdto.Generation,
 			Tier:                 cdto.Tier,
@@ -336,10 +337,10 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 			ReproductionCooldown: cdto.ReproductionCooldown,
 			Color:                color.RGBA{R: cdto.ColorR, G: cdto.ColorG, B: cdto.ColorB, A: cdto.ColorA},
 			Genome:               g,
-			Nnet:                 *nnet,
+			NNet:                 *nnet,
 		}
 		// Rebuild private cached constants from genome + params.
-		c.initCachedFields(g, s.Params)
+		c.initCachedFields(g, s.params)
 
 		pop.SetCreature(id, c)
 		pop.AddAlive(id)

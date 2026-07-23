@@ -64,8 +64,8 @@ type SimulationState interface {
 	SpawnClusterAt(x, y float64, count int) bool
 	SpawnGenome(g *simulation.Genome, generation float32) bool
 	CreatureGenomeCopy(id int) (*simulation.Genome, bool)
-	GetParams() *simulation.Parameters
-	GetSnapshot() simulation.StateSnapshot
+	Params() *simulation.Parameters
+	Snapshot() simulation.StateSnapshot
 	FillSnapshot(dst *simulation.StateSnapshot)
 	SaveGame(name string) error
 	SaveGameTo(path string) error

@@ -1,4 +1,4 @@
-﻿package simulation
+package simulation
 
 import (
 	"biogo/v2/utils"
@@ -156,7 +156,7 @@ func (p *Population) ProcessMoveQueue(w *world.World) {
 			continue
 		}
 		if instruction.MoveAmount > 0 {
-			w.MoveCreature(c.Id, instruction.Loc)
+			w.MoveCreature(c.ID, instruction.Loc)
 			c.Loc = instruction.Loc
 		}
 	}
@@ -196,17 +196,17 @@ func gatherEatBatch(ids []int, p *Population, w *world.World, params *Parameters
 			continue
 		}
 		bite := c.BiteSize(params)
-		foodIDs, meatIDs, fungiIDs := w.GetFoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoliageBuffer, c.SightMeatBuffer, c.SightFungiBuffer)
+		foodIDs, meatIDs, fungiIDs := w.FoodAndMeatInRadius(c.Loc, c.Radius, c.SightFoliageBuffer, c.SightMeatBuffer, c.SightFungiBuffer)
 
 		appendNearest := func(fids []int, foodType uint8) {
-			eff := c.GetFoodEfficiency(foodType)
+			eff := c.FoodEfficiency(foodType)
 			if len(fids) == 0 || eff <= 0 {
 				return
 			}
 			closestID := fids[0]
 			var closestDistSq float32 = math.MaxFloat32
 			for _, fid := range fids {
-				fpos := w.GetFoodPos(fid)
+				fpos := w.FoodPos(fid)
 				dx := fpos.X - c.Loc.X
 				dy := fpos.Y - c.Loc.Y
 				d2 := dx*dx + dy*dy
@@ -238,7 +238,7 @@ func applyEatInstructions(w *world.World, params *Parameters, instrs []eatInstru
 		if stomachSpace <= 0 {
 			continue
 		}
-		foodMass := w.GetFoodMass(inst.foodID)
+		foodMass := w.FoodMass(inst.foodID)
 		if foodMass <= 0 {
 			continue
 		}
@@ -287,19 +287,19 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		}
 
 		bite := c.BiteSize(params) * float32(instruction.Level)
-		creatureIDs := w.GetCreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius+params.Creature.AttackRadius, c.SightCreatureBuffer)
+		creatureIDs := w.CreaturesInCone(c.Loc, c.Heading, c.halfFOVCos, c.Radius+params.Creature.AttackRadius, c.SightCreatureBuffer)
 
 		closestPreyID := -1
 		var closestPreyDistSq float32 = math.MaxFloat32
 		for _, cid := range creatureIDs {
-			if cid == c.Id {
+			if cid == c.ID {
 				continue
 			}
 			cr, ok := p.Get(cid)
 			if !ok || !cr.Alive {
 				continue
 			}
-			cpos, ok := w.GetCreaturePos(cid)
+			cpos, ok := w.CreaturePos(cid)
 			if !ok {
 				continue
 			}
@@ -331,7 +331,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 			damage = target.Mass
 		}
 
-		meatEff := c.GetFoodEfficiency(world.FoodTypeMeat)
+		meatEff := c.FoodEfficiency(world.FoodTypeMeat)
 		meatDensityRatio := params.Food.MeatEnergyDensity / params.Metabolism.EnergyPerFoodMass
 
 		var eaten float32
@@ -360,7 +360,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		if droppedMeatMass > 0.01 {
 			w.AddMeat(target.Loc, droppedMeatMass)
 		}
-		
+
 		struggleCost := params.Predation.AttackEnergyCost
 		if sizeRatio < 1.0 {
 			// Gradually increases cost as target gets larger, maxing at 1.5x
@@ -448,10 +448,10 @@ func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 	// Serial: spawn meat, remove from world and population map.
 	for _, di := range p.DeathQueue {
 		c := di.Creature
-		p.removeAlive(c.Id)
+		p.removeAlive(c.ID)
 		spawnMeatFromCreature(w, c, params)
-		w.RemoveCreature(c.Id)
-		p.Creatures[c.Id] = nil
+		w.RemoveCreature(c.ID)
+		p.Creatures[c.ID] = nil
 	}
 	p.DeathQueue = p.DeathQueue[:0]
 }

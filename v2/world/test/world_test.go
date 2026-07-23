@@ -41,12 +41,12 @@ func TestAddAndGetCreature(t *testing.T) {
 	pos := world.Position{X: 50, Y: 50}
 	id := w.AddCreature(pos)
 
-	got, ok := w.GetCreaturePos(id)
+	got, ok := w.CreaturePos(id)
 	if !ok {
-		t.Fatal("GetCreaturePos should find creature after AddCreature")
+		t.Fatal("CreaturePos should find creature after AddCreature")
 	}
 	if got != pos {
-		t.Errorf("GetCreaturePos returned %v, want %v", got, pos)
+		t.Errorf("CreaturePos returned %v, want %v", got, pos)
 	}
 }
 
@@ -56,7 +56,7 @@ func TestMoveCreature(t *testing.T) {
 	newPos := world.Position{X: 20, Y: 30}
 	w.MoveCreature(id, newPos)
 
-	got, ok := w.GetCreaturePos(id)
+	got, ok := w.CreaturePos(id)
 	if !ok || got != newPos {
 		t.Errorf("after MoveCreature, got %v, want %v", got, newPos)
 	}
@@ -66,18 +66,18 @@ func TestRemoveCreature(t *testing.T) {
 	w := world.NewWorld(100, 100, 0)
 	id := w.AddCreature(world.Position{X: 50, Y: 50})
 	w.RemoveCreature(id)
-	if _, ok := w.GetCreaturePos(id); ok {
+	if _, ok := w.CreaturePos(id); ok {
 		t.Error("creature should not be found after RemoveCreature")
 	}
 }
 
-func TestGetCreaturesInRadius(t *testing.T) {
+func TestCreaturesInRadius(t *testing.T) {
 	w := world.NewWorld(200, 200, 0)
 	id1 := w.AddCreature(world.Position{X: 100, Y: 100})
 	id2 := w.AddCreature(world.Position{X: 102, Y: 100}) // within radius 5
 	id3 := w.AddCreature(world.Position{X: 200, Y: 200}) // far away
 
-	ids := w.GetCreaturesInRadius(world.Position{X: 100, Y: 100}, 5, nil)
+	ids := w.CreaturesInRadius(world.Position{X: 100, Y: 100}, 5, nil)
 	found := map[int]bool{}
 	for _, id := range ids {
 		found[id] = true
@@ -102,13 +102,13 @@ func TestAddAndRemovePlant(t *testing.T) {
 	}
 }
 
-func TestGetFoodInRadius(t *testing.T) {
+func TestFoodInRadius(t *testing.T) {
 	w := world.NewWorld(200, 200, 0)
 	id1 := w.AddPlant(world.Position{X: 100, Y: 100}, 10)
 	id2 := w.AddPlant(world.Position{X: 102, Y: 100}, 10) // within radius 5
 	_ = w.AddPlant(world.Position{X: 150, Y: 150}, 10)    // far away
 
-	ids := w.GetFoodInRadius(world.Position{X: 100, Y: 100}, 5, nil)
+	ids := w.FoodInRadius(world.Position{X: 100, Y: 100}, 5, nil)
 	found := map[int]bool{}
 	for _, id := range ids {
 		found[id] = true
@@ -166,7 +166,7 @@ func TestIsWall_NoWallsByDefault(t *testing.T) {
 func TestClampToBounds(t *testing.T) {
 	w := world.NewWorld(100, 100, 0)
 	cases := []struct {
-		in   world.Position
+		in           world.Position
 		wantInBounds bool
 	}{
 		{world.Position{X: -5, Y: 50}, true},
