@@ -8,7 +8,7 @@ import (
 // processCollisions applies soft repulsive corrections between overlapping creatures
 // and resolves tunneling for fast-moving creatures using swept-sphere detection.
 func (s *Simulation) processCollisions() {
-	if s.Params.World.CollisionRepulsion <= 0 {
+	if s.params.World.CollisionRepulsion <= 0 {
 		return
 	}
 
@@ -17,7 +17,7 @@ func (s *Simulation) processCollisions() {
 		return
 	}
 
-	repulsion := float32(s.Params.World.CollisionRepulsion)
+	repulsion := float32(s.params.World.CollisionRepulsion)
 
 	// Pre-compute the maximum alive radius so small creatures search far enough
 	// to find large creatures that overlap them (pairs are processed from the
@@ -40,7 +40,7 @@ func (s *Simulation) processCollisions() {
 			speed = -speed
 		}
 		localSweptExpansion := speed * 2.0
-		searchRadius := c.Radius + maxRadius + localSweptExpansion + s.Params.World.MaxVelocityFallback
+		searchRadius := c.Radius + maxRadius + localSweptExpansion + s.params.World.MaxVelocityFallback
 		buf = s.World.CreaturesInRadius(c.Loc, searchRadius, buf)
 
 		for _, otherID := range buf {

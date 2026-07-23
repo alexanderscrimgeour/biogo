@@ -61,7 +61,7 @@ func (s *Simulation) LoadGame(path string) error {
 func (s *Simulation) captureState() snapshot.SimulationDTO {
 	// Encode Parameters via gob (all value types, no registration needed).
 	var paramsBuf bytes.Buffer
-	_ = gob.NewEncoder(&paramsBuf).Encode(*s.Params)
+	_ = gob.NewEncoder(&paramsBuf).Encode(*s.params)
 
 	// --- World fountains (flat parallel arrays, grouped foliage/fungi/meat) ---
 	totalFountains := len(s.World.FoliageFountains) + len(s.World.FungiFountains) + len(s.World.MeatFountains)
@@ -211,8 +211,8 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 		return fmt.Errorf("decode params: %w", err)
 	}
 	params.recomputeCachedFields()
-	s.Params = &params
-	InitResponseCurve(s.Params)
+	s.params = &params
+	InitResponseCurve(s.params)
 
 	// 2. Rebuild world from scratch with restored dimensions.
 	s.World = world.NewWorld(params.World.Width, params.World.Height, 1)
@@ -256,7 +256,7 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 	}
 
 	// 5. Restore population.
-	pop := NewPopulation(s.Params)
+	pop := NewPopulation(s.params)
 	for _, cdto := range dto.Population.Creatures {
 		brain := make([]Gene, len(cdto.BrainSourceID))
 		for i := range brain {
@@ -339,7 +339,7 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 			NNet:                 *nnet,
 		}
 		// Rebuild private cached constants from genome + params.
-		c.initCachedFields(g, s.Params)
+		c.initCachedFields(g, s.params)
 
 		pop.SetCreature(id, c)
 		pop.AddAlive(id)

@@ -363,10 +363,6 @@ func (c *Creature) LoseDopamine(ratio float32) {
 	}
 }
 
-func (c Creature) VisionRadius() float32 {
-	return c.VisionRadius
-}
-
 func (c *Creature) CanAffordMassInvestment(massCost float32) bool {
 	return (c.Mass - massCost) >= c.SurvivalMass
 }
