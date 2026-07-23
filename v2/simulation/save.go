@@ -33,7 +33,7 @@ func (s *Simulation) ListSavedGames() []SavedGame {
 func (s *Simulation) SaveGame(name string) error {
 	safe := sanitizeFilename(name)
 	if safe == "" {
-		return fmt.Errorf("save name cannot be empty")
+		return errors.New("save name cannot be empty")
 	}
 	filename := safe + ".biogosave"
 	path := filepath.Join(saveGameDir, filename)

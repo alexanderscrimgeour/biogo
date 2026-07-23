@@ -254,10 +254,6 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 	c.LastLoc = c.Loc
 }
 
-func (s *Simulation) Print() {
-	fmt.Printf("Population Size: %d", len(s.Population.Creatures))
-}
-
 func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pending *pendingInstructions, temp float32) {
 	c.IsResting = false
 	if IsActionEnabled(REST) {
