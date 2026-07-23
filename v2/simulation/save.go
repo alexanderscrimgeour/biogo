@@ -312,7 +312,7 @@ func (s *Simulation) restoreState(dto snapshot.SimulationDTO) error {
 		id := s.World.AddCreature(pos)
 
 		c := &Creature{
-			Id:                   id,
+			ID:                   id,
 			Alive:                true,
 			Generation:           cdto.Generation,
 			Tier:                 cdto.Tier,

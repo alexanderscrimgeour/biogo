@@ -149,7 +149,7 @@ func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params
 		}
 		c.SightCreatureSimBuffer = c.SightCreatureSimBuffer[:n]
 		for i, id := range c.SightCreatureBuffer {
-			if id != c.Id {
+			if id != c.ID {
 				if other, ok := p.Get(id); ok {
 					c.SightCreatureSimBuffer[i] = c.cachedSimilarity(id, other)
 				}
@@ -376,7 +376,7 @@ func calculateSightPopCentroid(c Creature, w *world.World, p *Population, ctx *S
 	count := 0
 
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -460,7 +460,7 @@ func calcaulatePopulationDensityFov(c Creature, w *world.World, p *Population, c
 
 	var sum float32
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -499,7 +499,7 @@ func calculateLocalPopulationDensity(c Creature, ctx *SensorContext, p *Populati
 
 	var sum float32
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -534,7 +534,7 @@ func calculateLocalPopulationHeading(c Creature, ctx *SensorContext, p *Populati
 	radiusSq := rad * rad
 
 	for _, id := range ctx.LocalCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		neighbor, ok := p.Get(id)
@@ -579,7 +579,7 @@ func getLocalPopulationCentreOfMass(c Creature, ctx *SensorContext, p *Populatio
 	radiusSq := rad * rad
 
 	for _, id := range ctx.LocalCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		neighbor, ok := p.Get(id)
@@ -808,7 +808,7 @@ func calculateNearestThreatDistFov(c Creature, p *Population, ctx *SensorContext
 	var bestDistSq float32 = math.MaxFloat32
 
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -856,7 +856,7 @@ func calculateNearestPreyDistFov(c Creature, p *Population, ctx *SensorContext, 
 	var bestDistSq float32 = math.MaxFloat32
 
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -900,7 +900,7 @@ func calculateDistanceToClosestKin(c Creature, p *Population, ctx *SensorContext
 	var bestDistSq float32 = math.MaxFloat32
 
 	for i, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 
@@ -945,7 +945,7 @@ func calculateLocalKinship(c Creature, p *Population, ctx *SensorContext) float3
 	var total float32
 	count := 0
 	for i, id := range ctx.LocalCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -976,7 +976,7 @@ func calculateNearestKinship(c Creature, p *Population, ctx *SensorContext) floa
 	found := false
 
 	for i, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -1028,7 +1028,7 @@ func calculateBlockedFwd(c Creature, w *world.World, p *Population, ctx *SensorC
 	// Check if any visible creature lies along the forward ray.
 	if p != nil && ctx != nil {
 		for _, id := range ctx.SightCreatureIDs {
-			if id == c.Id {
+			if id == c.ID {
 				continue
 			}
 			other, ok := p.Get(id)
@@ -1068,7 +1068,7 @@ func calculateNearestThreatAngle(c Creature, p *Population, ctx *SensorContext) 
 	var bestDx, bestDy float32
 	found := false
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -1099,7 +1099,7 @@ func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) fl
 	var bestDx, bestDy float32
 	found := false
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)
@@ -1183,7 +1183,7 @@ func calculateTouching(c Creature, p *Population, ctx *SensorContext) float32 {
 	found := false
 
 	for _, id := range ctx.SightCreatureIDs {
-		if id == c.Id {
+		if id == c.ID {
 			continue
 		}
 		other, ok := p.Get(id)

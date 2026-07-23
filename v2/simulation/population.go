@@ -156,7 +156,7 @@ func (p *Population) ProcessMoveQueue(w *world.World) {
 			continue
 		}
 		if instruction.MoveAmount > 0 {
-			w.MoveCreature(c.Id, instruction.Loc)
+			w.MoveCreature(c.ID, instruction.Loc)
 			c.Loc = instruction.Loc
 		}
 	}
@@ -292,7 +292,7 @@ func (p *Population) ProcessAttackQueue(w *world.World, params *Parameters) {
 		closestPreyID := -1
 		var closestPreyDistSq float32 = math.MaxFloat32
 		for _, cid := range creatureIDs {
-			if cid == c.Id {
+			if cid == c.ID {
 				continue
 			}
 			cr, ok := p.Get(cid)
@@ -448,10 +448,10 @@ func (p *Population) ProcessDeathQueue(w *world.World, params *Parameters) {
 	// Serial: spawn meat, remove from world and population map.
 	for _, di := range p.DeathQueue {
 		c := di.Creature
-		p.removeAlive(c.Id)
+		p.removeAlive(c.ID)
 		spawnMeatFromCreature(w, c, params)
-		w.RemoveCreature(c.Id)
-		p.Creatures[c.Id] = nil
+		w.RemoveCreature(c.ID)
+		p.Creatures[c.ID] = nil
 	}
 	p.DeathQueue = p.DeathQueue[:0]
 }

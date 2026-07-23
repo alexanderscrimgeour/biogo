@@ -141,7 +141,7 @@ func (s *Simulation) CreatureDetail(id int) (CreatureDetailView, bool) {
 	}
 
 	return CreatureDetailView{
-		ID:                c.Id,
+		ID:                c.ID,
 		Generation:        c.Generation,
 		Tier:              c.Tier,
 		Energy:            c.Energy,

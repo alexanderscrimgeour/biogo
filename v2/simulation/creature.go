@@ -22,7 +22,7 @@ type simCacheEntry struct {
 }
 
 type Creature struct {
-	Id                   int
+	ID                   int
 	Generation           float32
 	Energy               float32
 	LastTickEnergy       float32
@@ -76,7 +76,7 @@ type Creature struct {
 func NewCreature(id int, loc world.Position, g *Genome, mass float32, p *Parameters) *Creature {
 	g.recomputeBytes()
 	c := Creature{
-		Id:             id,
+		ID:             id,
 		Generation:     1.0,
 		Age:            0,
 		Alive:          true,
@@ -106,7 +106,7 @@ func NewCreature(id int, loc world.Position, g *Genome, mass float32, p *Paramet
 func NewAdultCreature(id int, loc world.Position, g *Genome, p *Parameters) *Creature {
 	g.recomputeBytes()
 	c := Creature{
-		Id:             id,
+		ID:             id,
 		Generation:     1.0,
 		Age:            0,
 		Alive:          true,
@@ -160,7 +160,7 @@ func (c *Creature) CreateNeuralNet() {
 
 func (c Creature) String() string {
 	return fmt.Sprintf("\nCREATURE| \nID: %d,\nEnergy: %f,\nResponsiveness: %f,\nAge: %d,\nAlive: %t,\nClock: %d,\nNNet: \n%s,\nLoc: %v,\nBirthLoc: %v,\nHeading: %f",
-		c.Id, c.Energy, c.Responsiveness, c.Age, c.Alive, c.Clock,
+		c.ID, c.Energy, c.Responsiveness, c.Age, c.Alive, c.Clock,
 		c.NNet.String(), c.Loc, c.BirthLoc, c.Heading)
 }
 

@@ -243,7 +243,7 @@ func (s *Simulation) stepCreatureLocal(c *Creature, pending *pendingInstructions
 		return
 	}
 
-	if s.Tick%sensorUpdatePeriod == c.Id%sensorUpdatePeriod {
+	if s.Tick%sensorUpdatePeriod == c.ID%sensorUpdatePeriod {
 		c.UpdateSensorContext(s.World, s.Population, s.Params)
 	}
 	c.FeedForward(s.World, s.Population, s.Tick, s.Params)
@@ -384,7 +384,7 @@ func (s *Simulation) executeActionsLocal(c *Creature, actionLevels []float32, pe
 			var bestDistSq float32 = math.MaxFloat32
 			var recipient *Creature
 			for _, id := range c.Sensors.SightCreatureIDs {
-				if id == c.Id {
+				if id == c.ID {
 					continue
 				}
 				other, ok := s.Population.Get(id)
@@ -520,7 +520,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 
 	for i, c := range candidates {
 		// guard against dead or auto-splitting creatures
-		if paired[c.Id] || !c.Alive || (c.LastActionMask&ActionAutoSplitting) != 0 {
+		if paired[c.ID] || !c.Alive || (c.LastActionMask&ActionAutoSplitting) != 0 {
 			continue
 		}
 
@@ -529,7 +529,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 		var bestDistSq float32 = math.MaxFloat32
 
 		for j, other := range candidates {
-			if i == j || paired[other.Id] || !other.Alive {
+			if i == j || paired[other.ID] || !other.Alive {
 				continue
 			}
 
@@ -540,7 +540,7 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 			matingRadiusSq := (c.VisionRadius + c.Radius + mr) * (c.VisionRadius + c.Radius + mr)
 
 			if d2 <= matingRadiusSq {
-				similarity := c.cachedSimilarity(other.Id, other)
+				similarity := c.cachedSimilarity(other.ID, other)
 				if similarity >= s.Params.Reproduction.MinSimilarity {
 					if similarity > bestSimilarity {
 						bestSimilarity = similarity
@@ -556,8 +556,8 @@ func (s *Simulation) pairMates(candidates []*Creature) {
 
 		if bestIdx != -1 {
 			partner := candidates[bestIdx]
-			paired[c.Id] = true
-			paired[partner.Id] = true
+			paired[c.ID] = true
+			paired[partner.ID] = true
 			s.Population.ReproductionQueue = append(s.Population.ReproductionQueue,
 				ReproductionInstruction{Creature: c, Partner: partner, IsFallback: false})
 		}
