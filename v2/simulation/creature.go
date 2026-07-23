@@ -190,11 +190,11 @@ func (c *Creature) BiteSize(params *Parameters) float32 {
 	return float32(params.Creature.BaseBiteSize) * radiusScaleFactor
 }
 
-// GetFoodEfficiency returns the normalised digestion efficiency for the given food
+// FoodEfficiency returns the normalised digestion efficiency for the given food
 // type. Each of the three raw gene values (foliage, fungi, meat) is divided by
 // their sum, so a creature with all genes at maximum still gets 33% per food type.
 // Returns 0 if all three genes are zero (edge case: creatures cannot digest anything).
-func (c Creature) GetFoodEfficiency(foodType uint8) float32 {
+func (c Creature) FoodEfficiency(foodType uint8) float32 {
 	total := float32(c.Genome.FoliageDigestionEfficiency) +
 		float32(c.Genome.FungiDigestionEfficiency) +
 		float32(c.Genome.MeatDigestionEfficiency)
@@ -363,7 +363,7 @@ func (c *Creature) LoseDopamine(ratio float32) {
 	}
 }
 
-func (c Creature) GetVisionRadius() float32 {
+func (c Creature) VisionRadius() float32 {
 	return c.VisionRadius
 }
 

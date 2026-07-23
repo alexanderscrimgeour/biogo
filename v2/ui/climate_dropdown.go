@@ -17,7 +17,7 @@ const (
 )
 
 func newClimateDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState) *components.Dropdown {
-	p := sim.GetParams()
+	p := sim.Params()
 	sw := climatePanelW - ddPad*2
 	trackOff := float32(150)
 	trackW := sw - trackOff

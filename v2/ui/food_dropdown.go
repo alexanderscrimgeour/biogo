@@ -13,7 +13,7 @@ import (
 const foodPanelW = float32(300)
 
 func newFoodDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState) *components.Dropdown {
-	p := sim.GetParams()
+	p := sim.Params()
 	sw := foodPanelW - ddPad*2
 	trackOff := float32(155)
 	trackW := sw - trackOff

@@ -13,7 +13,7 @@ import (
 const spawnPanelW = float32(300)
 
 func newSpawnDropdown(font *textv2.GoXFace, trigger *components.Button, sim SimulationState, onSpawnSaved func()) *components.Dropdown {
-	p := sim.GetParams()
+	p := sim.Params()
 	sw := spawnPanelW - ddPad*2
 	trackOff := float32(155)
 	trackW := sw - trackOff

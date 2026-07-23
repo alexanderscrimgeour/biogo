@@ -91,7 +91,7 @@ func (s *Simulation) captureState() snapshot.SimulationDTO {
 	s.World.ForEachActiveFood(func(id int, x, y float64, _ float64, typ uint8) {
 		wdto.FoodX = append(wdto.FoodX, float32(x))
 		wdto.FoodY = append(wdto.FoodY, float32(y))
-		wdto.FoodMass = append(wdto.FoodMass, s.World.GetFoodMass(id))
+		wdto.FoodMass = append(wdto.FoodMass, s.World.FoodMass(id))
 		wdto.FoodType = append(wdto.FoodType, typ)
 	})
 

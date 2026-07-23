@@ -24,7 +24,7 @@ func (c *Creature) FeedForward(w *world.World, p *Population, step int, params *
 	c.NNet.LastSensorValues = [SENSOR_COUNT]float32{}
 	for sid := byte(0); sid < SENSOR_COUNT; sid++ {
 		if c.NNet.ActiveSensors[sid] {
-			val := c.GetSensor(sid, w, p, ctx, step, params)
+			val := c.Sensor(sid, w, p, ctx, step, params)
 			sensorCache[sid] = val
 			c.NNet.LastSensorValues[sid] = val
 		}

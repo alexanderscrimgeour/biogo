@@ -10,7 +10,7 @@ import (
 )
 
 // sensorUpdatePeriod controls how often each creature refreshes its spatial
-// sensor context (GetAllInRadius). A value of 4 staggers updates across ticks
+// sensor context (AllInRadius). A value of 4 staggers updates across ticks
 // by creature ID, reducing spatial queries by ~75% at the cost of sensor data
 // being at most (sensorUpdatePeriod-1) ticks stale.
 const sensorUpdatePeriod = 4
@@ -783,8 +783,8 @@ func (s *Simulation) CreatureGenomeCopy(id int) (*Genome, bool) {
 	return c.Genome.Copy(), true
 }
 
-// GetParams exposes the simulation parameters to the UI layer.
-func (s *Simulation) GetParams() *Parameters { return s.Params }
+// Params exposes the simulation parameters to the UI layer.
+func (s *Simulation) Params() *Parameters { return s.Params }
 
 func (s *Simulation) WorldWidth() float64  { return s.Params.World.Width }
 func (s *Simulation) WorldHeight() float64 { return s.Params.World.Height }
@@ -944,7 +944,7 @@ func (s *Simulation) updatePopulationCaches() {
 			ID: id, X: float64(c.Loc.X), Y: float64(c.Loc.Y), Heading: float64(c.Heading),
 			R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8),
 			CurrentMass:      float64(c.Mass),
-			VisionRadius:     float64(c.GetVisionRadius()),
+			VisionRadius:     float64(c.VisionRadius()),
 			FieldOfView:      c.FieldOfView(),
 			Radius:           float64(c.Radius),
 			ReproductionType: c.Genome.ReproductionType,
@@ -967,7 +967,7 @@ type StateSnapshot struct {
 	Food      []FoodView
 }
 
-func (s *Simulation) GetSnapshot() StateSnapshot {
+func (s *Simulation) Snapshot() StateSnapshot {
 	s.cacheMu.Lock()
 	if s.cacheDirty {
 		s.updatePopulationCaches()

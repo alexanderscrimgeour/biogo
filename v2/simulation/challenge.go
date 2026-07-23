@@ -40,7 +40,7 @@ func PassedSurvivalCriteria(c *Creature, s *Simulation, challenge ChallengeType)
 		if nearEdge {
 			return false
 		}
-		neighbours := s.World.GetCreaturesInRadius(c.Loc, radius, c.LocalCreatureBuffer)
+		neighbours := s.World.CreaturesInRadius(c.Loc, radius, c.LocalCreatureBuffer)
 		return len(neighbours)-1 >= minNeighbours // -1 to exclude self
 
 	case Center:

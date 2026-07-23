@@ -41,7 +41,7 @@ func (s *Simulation) processCollisions() {
 		}
 		localSweptExpansion := speed * 2.0
 		searchRadius := c.Radius + maxRadius + localSweptExpansion + s.Params.World.MaxVelocityFallback
-		buf = s.World.GetCreaturesInRadius(c.Loc, searchRadius, buf)
+		buf = s.World.CreaturesInRadius(c.Loc, searchRadius, buf)
 
 		for _, otherID := range buf {
 			if otherID <= id {

@@ -33,7 +33,7 @@ func TestSightFoodForward_DetectsFood(t *testing.T) {
 
 	params := defaultParams()
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
 	if val <= -1 {
 		t.Errorf("expected food to be detected ahead, got %f", val)
 	}
@@ -49,7 +49,7 @@ func TestSightFoodForward_NoFoodBehind(t *testing.T) {
 
 	params := defaultParams()
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.SIGHT_FOOD_FORWARD, w, nil, &c.Sensors, 0, params)
 	if val != -1 {
 		t.Errorf("expected -1 for food behind creature (none in FOV), got %f", val)
 	}
@@ -71,8 +71,8 @@ func TestSightFoodForward_WiderFOVSeesMoreFood(t *testing.T) {
 	params := defaultParams()
 	cNarrow.UpdateSensorContext(wNarrow, nil, params)
 	cWide.UpdateSensorContext(wWide, nil, params)
-	narrow := cNarrow.GetSensor(simulation.SIGHT_FOOD_FORWARD, wNarrow, nil, &cNarrow.Sensors, 0, params)
-	wide := cWide.GetSensor(simulation.SIGHT_FOOD_FORWARD, wWide, nil, &cWide.Sensors, 0, params)
+	narrow := cNarrow.Sensor(simulation.SIGHT_FOOD_FORWARD, wNarrow, nil, &cNarrow.Sensors, 0, params)
+	wide := cWide.Sensor(simulation.SIGHT_FOOD_FORWARD, wWide, nil, &cWide.Sensors, 0, params)
 
 	if narrow != -1 {
 		t.Errorf("narrow FOV should not see NE food (expect -1), got %f", narrow)
@@ -89,7 +89,7 @@ func TestSightPopForward_EmptyWorldReturnsZero(t *testing.T) {
 
 	params := defaultParams()
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.SIGHT_POPULATION_FORWARD, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.SIGHT_POPULATION_FORWARD, w, nil, &c.Sensors, 0, params)
 	if val != 0 {
 		t.Errorf("expected 0 for empty world ahead, got %f", val)
 	}
@@ -109,8 +109,8 @@ func TestSightFoodForward_ScalesWithDistance(t *testing.T) {
 	params := defaultParams()
 	cClose.UpdateSensorContext(wClose, nil, params)
 	cFar.UpdateSensorContext(wFar, nil, params)
-	scoreClose := cClose.GetSensor(simulation.SIGHT_FOOD_FORWARD, wClose, nil, &cClose.Sensors, 0, params)
-	scoreFar := cFar.GetSensor(simulation.SIGHT_FOOD_FORWARD, wFar, nil, &cFar.Sensors, 0, params)
+	scoreClose := cClose.Sensor(simulation.SIGHT_FOOD_FORWARD, wClose, nil, &cClose.Sensors, 0, params)
+	scoreFar := cFar.Sensor(simulation.SIGHT_FOOD_FORWARD, wFar, nil, &cFar.Sensors, 0, params)
 
 	if scoreClose <= scoreFar {
 		t.Errorf("close food (%f) should score higher than far food (%f)", scoreClose, scoreFar)
@@ -126,7 +126,7 @@ func TestSatiation_FullStomach(t *testing.T) {
 	cap := c.StomachCapacity(params)
 	c.Stomach = cap
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-1.0) > 0.01 {
 		t.Errorf("SATIATION at full stomach should be ~1.0, got %f", val)
 	}
@@ -140,7 +140,7 @@ func TestSatiation_EmptyStomach(t *testing.T) {
 
 	c.Stomach = 0
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)) > 0.01 {
 		t.Errorf("SATIATION at empty stomach should be ~0.0, got %f", val)
 	}
@@ -155,7 +155,7 @@ func TestSatiation_HalfStomach(t *testing.T) {
 	cap := c.StomachCapacity(params)
 	c.Stomach = cap / 2
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.SATIATION, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-0.5) > 0.01 {
 		t.Errorf("SATIATION at half stomach should be ~0.5, got %f", val)
 	}
@@ -170,7 +170,7 @@ func TestStomachRate_MaxDigestion(t *testing.T) {
 	c.LastStomach = float32(params.Metabolism.DigestionRate)
 	c.Stomach = 0
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-1.0) > 0.01 {
 		t.Errorf("STOMACH_RATE at max digestion should be ~1.0, got %f", val)
 	}
@@ -184,7 +184,7 @@ func TestStomachRate_NoDigestion(t *testing.T) {
 	c.LastStomach = 5
 	c.Stomach = 5
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.STOMACH_RATE, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)) > 0.01 {
 		t.Errorf("STOMACH_RATE with no change should be ~0.0, got %f", val)
 	}
@@ -199,7 +199,7 @@ func TestEnergyDelta_MaxGain(t *testing.T) {
 	c.LastTickEnergy = 0
 	c.Energy = maxE
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-1.0) > 0.01 {
 		t.Errorf("ENERGY_DELTA at max gain should be ~1.0, got %f", val)
 	}
@@ -214,7 +214,7 @@ func TestEnergyDelta_NoChange(t *testing.T) {
 	c.Energy = maxE / 2
 	c.LastTickEnergy = maxE / 2
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-0.5) > 0.01 {
 		t.Errorf("ENERGY_DELTA with no change should be ~0.5, got %f", val)
 	}
@@ -229,7 +229,7 @@ func TestEnergyDelta_MaxLoss(t *testing.T) {
 	c.LastTickEnergy = maxE
 	c.Energy = 0
 	c.UpdateSensorContext(w, nil, params)
-	val := c.GetSensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
+	val := c.Sensor(simulation.ENERGY_DELTA, w, nil, &c.Sensors, 0, params)
 	if math.Abs(float64(val)-0.0) > 0.01 {
 		t.Errorf("ENERGY_DELTA at max loss should be ~0.0, got %f", val)
 	}

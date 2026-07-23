@@ -125,7 +125,7 @@ func (w *World) RemoveCreature(id int) {
 	w.freeCreatureIDs = append(w.freeCreatureIDs, id)
 }
 
-func (w *World) GetCreaturePos(id int) (Position, bool) {
+func (w *World) CreaturePos(id int) (Position, bool) {
 	if id < 0 || id >= len(w.creatureActive) || !w.creatureActive[id] {
 		return Position{}, false
 	}
@@ -134,13 +134,13 @@ func (w *World) GetCreaturePos(id int) (Position, bool) {
 
 func (w *World) CreatureCount() int { return w.creatureCount }
 
-func (w *World) GetCreaturesInRadius(center Position, radius float32, buffer []int) []int {
+func (w *World) CreaturesInRadius(center Position, radius float32, buffer []int) []int {
 	return w.cHash.InRadius(center, radius, w.creaturePos, w.creatureActive, buffer)
 }
 
-// GetCreaturesInCone returns IDs of creatures within maxDist that lie inside
+// CreaturesInCone returns IDs of creatures within maxDist that lie inside
 // the cone defined by heading ± halfFOVCos (cosine of the half-angle).
-func (w *World) GetCreaturesInCone(center Position, heading float32, halfFOVCos float32, maxDist float32, buffer []int) []int {
+func (w *World) CreaturesInCone(center Position, heading float32, halfFOVCos float32, maxDist float32, buffer []int) []int {
 	return w.cHash.InCone(center, heading, halfFOVCos, maxDist, w.creaturePos, w.creatureActive, buffer)
 }
 
@@ -214,13 +214,13 @@ func (w *World) RemoveMeat(id int) {
 	w.removeFoodItem(id)
 }
 
-// GetFoodPos returns the position of any food item (foliage or meat) by ID.
-func (w *World) GetFoodPos(id int) Position {
+// FoodPos returns the position of any food item (foliage or meat) by ID.
+func (w *World) FoodPos(id int) Position {
 	return w.foodPos[id]
 }
 
-// GetFoodMass returns the mass of any food item by ID, or 0 if the item is inactive.
-func (w *World) GetFoodMass(id int) float32 {
+// FoodMass returns the mass of any food item by ID, or 0 if the item is inactive.
+func (w *World) FoodMass(id int) float32 {
 	if id < 0 || id >= len(w.foodActive) || !w.foodActive[id] {
 		return 0
 	}
@@ -313,13 +313,13 @@ func (w *World) MeatCount() int { return w.meatCount }
 // FungiCount returns the number of active fungi items.
 func (w *World) FungiCount() int { return w.fungiCount }
 
-// GetFoodInRadius returns IDs of foliage items within radius of center.
-func (w *World) GetFoodInRadius(center Position, radius float32, buffer []int) []int {
-	return w.GetFoodInRadiusByMask(center, radius, FoodMaskFoliage, buffer)
+// FoodInRadius returns IDs of foliage items within radius of center.
+func (w *World) FoodInRadius(center Position, radius float32, buffer []int) []int {
+	return w.FoodInRadiusByMask(center, radius, FoodMaskFoliage, buffer)
 }
 
-// GetFoodInRadiusByMask returns IDs of food items within radius matching the type bitmask.
-func (w *World) GetFoodInRadiusByMask(center Position, radius float32, mask uint8, buffer []int) []int {
+// FoodInRadiusByMask returns IDs of food items within radius matching the type bitmask.
+func (w *World) FoodInRadiusByMask(center Position, radius float32, mask uint8, buffer []int) []int {
 	buffer = buffer[:0]
 	rSq := radius * radius
 	minBx, maxBx, minBy, maxBy := w.foodHash.cellBounds(center, radius)
@@ -444,9 +444,9 @@ func (w *World) ForEachActiveFood(fn func(id int, x, y float64, r float64, typ u
 	}
 }
 
-// GetFoodAndMeatInRadius fills foliageBuf, meatBuf, and fungiBuf for a radius query
+// FoodAndMeatInRadius fills foliageBuf, meatBuf, and fungiBuf for a radius query
 // in a single cell traversal of the unified food hash.
-func (w *World) GetFoodAndMeatInRadius(center Position, radius float32, foliageBuf, meatBuf, fungiBuf []int) ([]int, []int, []int) {
+func (w *World) FoodAndMeatInRadius(center Position, radius float32, foliageBuf, meatBuf, fungiBuf []int) ([]int, []int, []int) {
 	foliageBuf = foliageBuf[:0]
 	meatBuf = meatBuf[:0]
 	fungiBuf = fungiBuf[:0]
@@ -478,10 +478,10 @@ func (w *World) GetFoodAndMeatInRadius(center Position, radius float32, foliageB
 	return foliageBuf, meatBuf, fungiBuf
 }
 
-// GetAllInRadius fills all four buffers (foliage, meat, fungi, creature) in a single pass
+// AllInRadius fills all four buffers (foliage, meat, fungi, creature) in a single pass
 // over the cell bounds. The food hash and creature hash share the same grid dimensions,
 // so both are visited in one loop.
-func (w *World) GetAllInRadius(center Position, radius float32, foliageBuf, meatBuf, fungiBuf, creatureBuf []int) ([]int, []int, []int, []int) {
+func (w *World) AllInRadius(center Position, radius float32, foliageBuf, meatBuf, fungiBuf, creatureBuf []int) ([]int, []int, []int, []int) {
 	foliageBuf = foliageBuf[:0]
 	meatBuf = meatBuf[:0]
 	fungiBuf = fungiBuf[:0]

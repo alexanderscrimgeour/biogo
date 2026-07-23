@@ -41,7 +41,7 @@ func NewWorldRenderer(sim SimulationState) *WorldRenderer {
 	wImg.Fill(color.White)
 
 	geom := NewGeometryBuffer(12)
-	maxPop := sim.GetParams().Population.Max
+	maxPop := sim.Params().Population.Max
 
 	wr := &WorldRenderer{
 		sim:         sim,
@@ -258,7 +258,7 @@ func (wr *WorldRenderer) drawBackgroundPass(sw, sh int, camGeoM ebiten.GeoM) {
 
 	wr.renderWorld.DrawBackground(wr.worldLayer, camGeoM)
 
-	params := wr.sim.GetParams()
+	params := wr.sim.Params()
 	radZoneWorldX := params.Environment.Radiation.ZoneWidth * float64(int(wr.sim.WorldWidth())*UnitSize)
 	screenRadX, _ := camGeoM.Apply(radZoneWorldX, 0)
 	if screenRadX > 0 {

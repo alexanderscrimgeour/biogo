@@ -50,7 +50,7 @@ func TestProcessMoveQueue(t *testing.T) {
 	if creature.Loc != newPos {
 		t.Errorf("creature did not move: got %v, want %v", creature.Loc, newPos)
 	}
-	pos, ok := w.GetCreaturePos(id)
+	pos, ok := w.CreaturePos(id)
 	if !ok || pos != newPos {
 		t.Errorf("world creature position not updated: got %v", pos)
 	}

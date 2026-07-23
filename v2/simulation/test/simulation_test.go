@@ -102,7 +102,7 @@ func TestSimulationFoodViews(t *testing.T) {
 	sim := simulation.New(p)
 	sim.Update()
 
-	snap := sim.GetSnapshot()
+	snap := sim.Snapshot()
 	plantCount := 0
 	for _, v := range snap.Food {
 		if v.Type == simulation.FoodTypePlant {
@@ -128,7 +128,7 @@ func TestSimulationMeatSpawnedOnDeath(t *testing.T) {
 
 	sim.Update()
 
-	snap := sim.GetSnapshot()
+	snap := sim.Snapshot()
 	for _, mv := range snap.Food {
 		if mv.Type != simulation.FoodTypeMeat {
 			continue
