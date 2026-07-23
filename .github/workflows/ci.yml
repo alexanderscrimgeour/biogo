@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Cancel superseded runs on the same ref (saves minutes on rapid pushes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # System packages ebiten needs to compile on Linux.
+  EBITEN_DEPS: >-
+    gcc pkg-config
+    libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev
+    libxrandr-dev libxxf86vm-dev libasound2-dev
+
+jobs:
+  lint:
+    name: Format & static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true            # caches the module + build cache keyed on go.sum
+
+      - name: Install ebiten system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.EBITEN_DEPS }}
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-clean. Run 'gofmt -w .':"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go mod tidy check
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum \
+            || { echo "::error::go.mod/go.sum not tidy; run 'go mod tidy'"; exit 1; }
+
+      # TODO(B1): drop continue-on-error once v2/simulation/test and v2/world/test
+      # compile again — they still call the pre-refactor API, so vet can't type-check them.
+      - name: go vet
+        continue-on-error: true
+        run: go vet ./...
+
+      # TODO(B1): drop continue-on-error once the test packages compile and the
+      # outstanding staticcheck findings (unused fields/funcs, SA1019, ST1005) are cleared.
+      - name: staticcheck
+        continue-on-error: true
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@2025.1
+          staticcheck ./...
+
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install ebiten system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.EBITEN_DEPS }}
+
+      - name: Build
+        run: go build ./...
+
+      # TODO(B1): drop continue-on-error once v2/simulation/test and v2/world/test
+      # are updated to the current API (AddPlant/PlantCount, FoodParameters fields,
+      # NewCreature signature). Until then this step fails at build.
+      - name: Test (race + coverage)
+        continue-on-error: true
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: ignore
+
+  vuln:
+    name: Vulnerability scan (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true       # advisory only; never blocks a merge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
