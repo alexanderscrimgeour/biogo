@@ -3,6 +3,7 @@ package main
 import (
 	"biogo/v2/simulation"
 	"biogo/v2/ui"
+	"flag"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -10,12 +11,21 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// pprofAddr is where the profiling server binds when enabled. It stays on
+// localhost so profiles are never exposed on other network interfaces.
+const pprofAddr = "localhost:6060"
+
 func main() {
-	go func() {
-		// Using "0.0.0.0" instead of "localhost" can sometimes bypass
-		// IPv6 vs IPv4 issues (the [::1] in your error)
-		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
-	}()
+	enablePprof := flag.Bool("pprof", false, "serve net/http/pprof on "+pprofAddr)
+	flag.Parse()
+
+	if *enablePprof {
+		go func() {
+			log.Printf("pprof listening on http://%s/debug/pprof/", pprofAddr)
+			log.Println(http.ListenAndServe(pprofAddr, nil))
+		}()
+	}
+
 	params := simulation.DefaultParams()
 	sim := simulation.New(params)
 
