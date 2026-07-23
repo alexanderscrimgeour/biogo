@@ -158,7 +158,7 @@ func (c *Creature) CreateNeuralNet() {
 	c.NNet = *CreateNeuralNetworkFromGenome(c.Genome.Brain, c.Genome.CognitiveBreadth)
 }
 
-func (c Creature) String() string {
+func (c *Creature) String() string {
 	return fmt.Sprintf("\nCREATURE| \nID: %d,\nEnergy: %f,\nResponsiveness: %f,\nAge: %d,\nAlive: %t,\nClock: %d,\nNNet: \n%s,\nLoc: %v,\nBirthLoc: %v,\nHeading: %f",
 		c.ID, c.Energy, c.Responsiveness, c.Age, c.Alive, c.Clock,
 		c.NNet.String(), c.Loc, c.BirthLoc, c.Heading)
@@ -166,12 +166,12 @@ func (c Creature) String() string {
 
 // MaxEnergy returns the creature's energy storage capacity, derived from current mass.
 // Energy capacity scales linearly with body size (larger creatures can store more energy).
-func (c Creature) MaxEnergy(params *Parameters) float32 {
+func (c *Creature) MaxEnergy(params *Parameters) float32 {
 	return c.Mass * params.Metabolism.EnergyCapacityPerMass
 }
 
 // StomachCapacity returns the maximum food mass this creature's stomach can hold.
-func (c Creature) StomachCapacity(params *Parameters) float32 {
+func (c *Creature) StomachCapacity(params *Parameters) float32 {
 	baseFloor := float64(params.Creature.MinSurvivalMass) * 0.5
 	upperBound := float64(c.Mass) * 0.5
 	if upperBound < baseFloor {
@@ -194,7 +194,7 @@ func (c *Creature) BiteSize(params *Parameters) float32 {
 // type. Each of the three raw gene values (foliage, fungi, meat) is divided by
 // their sum, so a creature with all genes at maximum still gets 33% per food type.
 // Returns 0 if all three genes are zero (edge case: creatures cannot digest anything).
-func (c Creature) FoodEfficiency(foodType uint8) float32 {
+func (c *Creature) FoodEfficiency(foodType uint8) float32 {
 	total := float32(c.Genome.FoliageDigestionEfficiency) +
 		float32(c.Genome.FungiDigestionEfficiency) +
 		float32(c.Genome.MeatDigestionEfficiency)
@@ -274,18 +274,18 @@ func (c *Creature) UpdateRadius(p *Parameters) {
 }
 
 // JuvenilePeriod returns the number of ticks before this creature is considered an adult.
-func (c Creature) JuvenilePeriod() int {
+func (c *Creature) JuvenilePeriod() int {
 	return c.cachedJuvenilePeriod
 }
 
 // IsJuvenile reports whether the creature has not yet completed its juvenile phase.
-func (c Creature) IsJuvenile() bool {
+func (c *Creature) IsJuvenile() bool {
 	jp := c.JuvenilePeriod()
 	return jp > 0 && c.Age < jp
 }
 
 // CurrentMass returns the creature's actual tracked body mass.
-func (c Creature) CurrentMass() float64 {
+func (c *Creature) CurrentMass() float64 {
 	return float64(c.Mass)
 }
 
@@ -371,7 +371,7 @@ func (c *Creature) CanAffordMassInvestment(massCost float32) bool {
 // Follows Kleiber's Law: absolute BMR scales as Mass^0.75. The genome gene shifts
 // efficiency in [0.7, 1.3]. Above the optimal temperature the cost scales up to
 // WarmMetabolicMultiplier; at or below optimal there is no metabolic penalty.
-func (c Creature) MetabolicRate(params *Parameters, temp float32) float32 {
+func (c *Creature) MetabolicRate(params *Parameters, temp float32) float32 {
 	// Kleiber's law: BMR ∝ M^0.75, normalised to MetabolicReferenceMass so that
 	// BaseBMR is the exact cost at reference body size rather than an unscaled coefficient.
 	sqrtMass := math.Sqrt(float64(c.Mass))
@@ -401,7 +401,7 @@ func (c Creature) MetabolicRate(params *Parameters, temp float32) float32 {
 // MaxAge returns the creature's maximum lifespan in ticks.
 // Lifespan scales with sqrt of actual somatic growth (mass / survival floor), capped at 3x.
 // Higher metabolic gene shortens life (rate-of-living theory).
-func (c Creature) MaxAge(params *Parameters) int {
+func (c *Creature) MaxAge(params *Parameters) int {
 	baseLife := float32(params.Creature.BaseMaxAge)
 	somaticScale := c.Mass / c.SurvivalMass
 	if somaticScale < 1 {
@@ -540,7 +540,7 @@ func (c *Creature) CalculateColor(p *Parameters) color.RGBA {
 	return color.RGBA{red, green, blue, alpha}
 }
 
-func (c Creature) FieldOfView() float64 {
+func (c *Creature) FieldOfView() float64 {
 	return getFOVFromCosine(float64(c.halfFOVCos))
 }
 

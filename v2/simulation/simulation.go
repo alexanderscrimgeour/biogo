@@ -2,7 +2,6 @@ package simulation
 
 import (
 	"biogo/v2/world"
-	"fmt"
 	"math"
 	"math/rand"
 	"runtime"

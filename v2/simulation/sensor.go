@@ -167,7 +167,7 @@ func (c *Creature) UpdateSensorContext(world *world.World, p *Population, params
 	}
 }
 
-func (c Creature) Sensor(sensorID byte, w *world.World, p *Population, ctx *SensorContext, simStep int, params *Parameters) float32 {
+func (c *Creature) Sensor(sensorID byte, w *world.World, p *Population, ctx *SensorContext, simStep int, params *Parameters) float32 {
 	var output float32
 	switch sensorID {
 	case BIAS:
@@ -320,7 +320,7 @@ func (c Creature) Sensor(sensorID byte, w *world.World, p *Population, ctx *Sens
 	return output
 }
 
-func calculateSpeed(c Creature, p *Parameters) float32 {
+func calculateSpeed(c *Creature, p *Parameters) float32 {
 	// How much mass over the skeletal mass is there?
 	massOverhead := float64(c.Mass) / float64(c.SurvivalMass)
 	massFactor := 1.0 + (massOverhead * massOverhead * 0.5)
@@ -337,7 +337,7 @@ func calculateSpeed(c Creature, p *Parameters) float32 {
 // calculateFoodDensityFwd returns a proximity-weighted density of food in the
 // creature's forward FOV cone, mapped to [-1, 1]. -1 = empty, 1 = fully dense.
 // Items closer to the creature contribute more; saturates at maxFoodDensity total weight.
-func calculateFoodDensityFwd(c Creature, w *world.World, ctx *SensorContext) float32 {
+func calculateFoodDensityFwd(c *Creature, w *world.World, ctx *SensorContext) float32 {
 	dist := c.VisionRadius
 	fwdX, fwdY := ctx.FwdX, ctx.FwdY
 	halfFOVCosSq := ctx.HalfFOVCosSq
@@ -363,7 +363,7 @@ func calculateFoodDensityFwd(c Creature, w *world.World, ctx *SensorContext) flo
 
 // calculateSightPopCentroid returns the average horizontal position of
 // neighbors in FOV. [-1, 1]
-func calculateSightPopCentroid(c Creature, w *world.World, p *Population, ctx *SensorContext) float32 {
+func calculateSightPopCentroid(c *Creature, w *world.World, p *Population, ctx *SensorContext) float32 {
 	if len(ctx.SightCreatureIDs) == 0 {
 		return 0.5
 	}
@@ -423,7 +423,7 @@ func calculateSightPopCentroid(c Creature, w *world.World, p *Population, ctx *S
 
 // calculateMeatDensityFwd returns a proximity-weighted density of meat in the
 // creature's forward FOV cone, mapped to [-1, 1]. -1 = empty, 1 = fully dense.
-func calculateMeatDensityFwd(c Creature, w *world.World, ctx *SensorContext) float32 {
+func calculateMeatDensityFwd(c *Creature, w *world.World, ctx *SensorContext) float32 {
 	dist := c.VisionRadius
 	fwdX, fwdY := ctx.FwdX, ctx.FwdY
 	halfFOVCosSq := ctx.HalfFOVCosSq
@@ -449,7 +449,7 @@ func calculateMeatDensityFwd(c Creature, w *world.World, ctx *SensorContext) flo
 
 // calcaulatePopulationDensityFov returns a density signal [-1,1] for living creatures in
 // the forward FOV cone. 0 = none visible, 1 = cone is at capacity.
-func calcaulatePopulationDensityFov(c Creature, w *world.World, p *Population, ctx *SensorContext) float32 {
+func calcaulatePopulationDensityFov(c *Creature, w *world.World, p *Population, ctx *SensorContext) float32 {
 	visionDist := c.VisionRadius
 	visionDistSq := visionDist * visionDist
 	fwdX, fwdY := ctx.FwdX, ctx.FwdY
@@ -488,7 +488,7 @@ func calcaulatePopulationDensityFov(c Creature, w *world.World, p *Population, c
 	return float32((unipolar * 2.0) - 1.0)
 }
 
-func calculateLocalPopulationDensity(c Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
+func calculateLocalPopulationDensity(c *Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
 	visionDist := c.VisionRadius
 	visionDistSq := visionDist * visionDist
 	fwdX, fwdY := ctx.FwdX, ctx.FwdY
@@ -526,7 +526,7 @@ func calculateLocalPopulationDensity(c Creature, ctx *SensorContext, p *Populati
 	return float32((unipolar * 2.0) - 1.0)
 }
 
-func calculateLocalPopulationHeading(c Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
+func calculateLocalPopulationHeading(c *Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
 	var sumX, sumY float32
 	var count int
 
@@ -572,7 +572,7 @@ func calculateLocalPopulationHeading(c Creature, ctx *SensorContext, p *Populati
 	return float32(diff * (1.0 / math.Pi))
 }
 
-func getLocalPopulationCentreOfMass(c Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
+func getLocalPopulationCentreOfMass(c *Creature, ctx *SensorContext, p *Population, params *Parameters) float32 {
 	var sumX, sumY float32
 	var count int
 	rad := c.VisionRadius
@@ -626,7 +626,7 @@ func getLocalPopulationCentreOfMass(c Creature, ctx *SensorContext, p *Populatio
 // sight range, relative to the creature's heading, mapped to [-1, 1] where 0
 // means directly ahead. Returns 0 when no food is visible; pair with
 // NEAREST_FOOD_DIST to distinguish this from food directly behind.
-func calculateNearestFoodAngle(c Creature, w *world.World, ctx *SensorContext) float32 {
+func calculateNearestFoodAngle(c *Creature, w *world.World, ctx *SensorContext) float32 {
 	var bestDistSq float32 = math.MaxFloat32
 	var bestDx, bestDy float32
 	found := false
@@ -658,7 +658,7 @@ func calculateNearestFoodAngle(c Creature, w *world.World, ctx *SensorContext) f
 	return float32(diff * invPi)
 }
 
-func calculateNearestFoodDistFov(c Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
+func calculateNearestFoodDistFov(c *Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
 	maxDist := c.VisionRadius
 	var bestDistSq float32 = math.MaxFloat32
 
@@ -684,7 +684,7 @@ func calculateNearestFoodDistFov(c Creature, w *world.World, ctx *SensorContext,
 // calculateNearestMeatAngle returns the angle to the nearest meat item within
 // sight range, relative to the creature's heading, mapped to [-1, 1] where 0
 // means directly ahead. Returns 0 when no meat is visible.
-func calculateNearestMeatAngle(c Creature, w *world.World, ctx *SensorContext) float32 {
+func calculateNearestMeatAngle(c *Creature, w *world.World, ctx *SensorContext) float32 {
 	var bestDistSq float32 = math.MaxFloat32
 	var bestDx, bestDy float32
 	found := false
@@ -716,7 +716,7 @@ func calculateNearestMeatAngle(c Creature, w *world.World, ctx *SensorContext) f
 	return float32(diff * invPi)
 }
 
-func calculateNearestMeatDistFov(c Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
+func calculateNearestMeatDistFov(c *Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
 	maxDist := c.VisionRadius
 	var bestDistSq float32 = math.MaxFloat32
 
@@ -742,7 +742,7 @@ func calculateNearestMeatDistFov(c Creature, w *world.World, ctx *SensorContext,
 // calculateNearestFungiAngle returns the angle to the nearest fungi item within
 // sight range, relative to the creature's heading, mapped to [-1, 1] where 0
 // means directly ahead. Returns 0 when no fungi is visible.
-func calculateNearestFungiAngle(c Creature, w *world.World, ctx *SensorContext) float32 {
+func calculateNearestFungiAngle(c *Creature, w *world.World, ctx *SensorContext) float32 {
 	var bestDistSq float32 = math.MaxFloat32
 	var bestDx, bestDy float32
 	found := false
@@ -771,7 +771,7 @@ func calculateNearestFungiAngle(c Creature, w *world.World, ctx *SensorContext) 
 	return float32(diff * invPi)
 }
 
-func calculateNearestFungiDistFov(c Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
+func calculateNearestFungiDistFov(c *Creature, w *world.World, ctx *SensorContext, params *Parameters) float32 {
 	maxDist := c.VisionRadius
 	var bestDistSq float32 = math.MaxFloat32
 
@@ -795,7 +795,7 @@ func calculateNearestFungiDistFov(c Creature, w *world.World, ctx *SensorContext
 
 // calculateNearestThreatDistFov returns a proximity-weighted signal [1,-1] for the nearest
 // creature heavier than self within the forward FOV cone. 0 = no threat.
-func calculateNearestThreatDistFov(c Creature, p *Population, ctx *SensorContext, params *Parameters) float32 {
+func calculateNearestThreatDistFov(c *Creature, p *Population, ctx *SensorContext, params *Parameters) float32 {
 	if p == nil {
 		return 1.0
 	}
@@ -843,7 +843,7 @@ func calculateNearestThreatDistFov(c Creature, p *Population, ctx *SensorContext
 
 // calculateNearestPreyDistFov returns a proximity-weighted signal [1,-1] for the nearest
 // creature lighter than self within the forward FOV cone. 0 = no prey.
-func calculateNearestPreyDistFov(c Creature, p *Population, ctx *SensorContext, params *Parameters) float32 {
+func calculateNearestPreyDistFov(c *Creature, p *Population, ctx *SensorContext, params *Parameters) float32 {
 	if p == nil {
 		return 1.0
 	}
@@ -889,7 +889,7 @@ func calculateNearestPreyDistFov(c Creature, p *Population, ctx *SensorContext, 
 	return (normDist * 2.0) - 1.0
 }
 
-func calculateDistanceToClosestKin(c Creature, p *Population, ctx *SensorContext, params *Parameters) float32 {
+func calculateDistanceToClosestKin(c *Creature, p *Population, ctx *SensorContext, params *Parameters) float32 {
 	if p == nil {
 		return 1.0
 	}
@@ -941,7 +941,7 @@ func calculateDistanceToClosestKin(c Creature, p *Population, ctx *SensorContext
 
 // calculateLocalKinship returns the average genetic similarity [0,1] of all
 // living creatures within the population sensor radius. 0 = none nearby.
-func calculateLocalKinship(c Creature, p *Population, ctx *SensorContext) float32 {
+func calculateLocalKinship(c *Creature, p *Population, ctx *SensorContext) float32 {
 	var total float32
 	count := 0
 	for i, id := range ctx.LocalCreatureIDs {
@@ -970,7 +970,7 @@ func calculateLocalKinship(c Creature, p *Population, ctx *SensorContext) float3
 // nearest living creature within sight range, regardless of heading direction.
 // Returns 0 when no neighbours are visible. Useful as a mate-selection signal:
 // creatures that are close and genetically similar score near 1.0.
-func calculateNearestKinship(c Creature, p *Population, ctx *SensorContext) float32 {
+func calculateNearestKinship(c *Creature, p *Population, ctx *SensorContext) float32 {
 	var bestDistSq float32 = math.MaxFloat32
 	bestSim := float32(0)
 	found := false
@@ -1006,7 +1006,7 @@ func calculateNearestKinship(c Creature, p *Population, ctx *SensorContext) floa
 // calculateBlockedFwd returns a proximity signal [0,1] for the nearest obstacle
 // (wall, boundary, or creature) along the heading within sight distance.
 // 0 = clear path, approaching 1 as the obstacle nears.
-func calculateBlockedFwd(c Creature, w *world.World, p *Population, ctx *SensorContext, params *Parameters) float32 {
+func calculateBlockedFwd(c *Creature, w *world.World, p *Population, ctx *SensorContext, params *Parameters) float32 {
 	sightDist := c.VisionRadius
 	if sightDist == 0 {
 		return 0
@@ -1060,7 +1060,7 @@ func calculateBlockedFwd(c Creature, w *world.World, p *Population, ctx *SensorC
 // calculateNearestThreatAngle returns the angle to the nearest creature heavier
 // than self within sight range, relative to heading, mapped to [0,1] where 0.5
 // is directly ahead. Returns 0 when no threat is visible.
-func calculateNearestThreatAngle(c Creature, p *Population, ctx *SensorContext) float32 {
+func calculateNearestThreatAngle(c *Creature, p *Population, ctx *SensorContext) float32 {
 	if p == nil {
 		return 0
 	}
@@ -1091,7 +1091,7 @@ func calculateNearestThreatAngle(c Creature, p *Population, ctx *SensorContext) 
 // calculateNearestPreyAngle returns the angle to the nearest creature lighter
 // than self within sight range, relative to heading, mapped to [0,1] where 0.5
 // is directly ahead. Returns 0 when no prey is visible.
-func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) float32 {
+func calculateNearestPreyAngle(c *Creature, p *Population, ctx *SensorContext) float32 {
 	if p == nil {
 		return 0
 	}
@@ -1121,7 +1121,7 @@ func calculateNearestPreyAngle(c Creature, p *Population, ctx *SensorContext) fl
 
 // calculateWallProximity returns a proximity signal [0,1] for the nearest wall
 // or world boundary within sight distance. 0 = none within range, 1 = adjacent.
-func calculateWallProximity(c Creature, w *world.World, params *Parameters) float32 {
+func calculateWallProximity(c *Creature, w *world.World, params *Parameters) float32 {
 	sightDist := c.VisionRadius
 	if sightDist <= 0 {
 		return -1
@@ -1171,7 +1171,7 @@ func calculateLocalFoodPerCapita(ctx *SensorContext, params *Parameters) float32
 
 // calculateTouching returns 1 if the nearest creature in the forward FOV is
 // physically touching this creature (centres within combined radii), -1 otherwise.
-func calculateTouching(c Creature, p *Population, ctx *SensorContext) float32 {
+func calculateTouching(c *Creature, p *Population, ctx *SensorContext) float32 {
 	if p == nil {
 		return -1
 	}

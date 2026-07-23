@@ -5,6 +5,7 @@ import (
 	"biogo/v2/world"
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"image/color"
 	"path/filepath"
